@@ -1,0 +1,194 @@
+{
+  "topic": "deploy-target-conflict: verification of the always-on container host research (Railway / Fly.io / Render / DigitalOcean / Hetzner+Coolify vs Netlify Free / Vercel Hobby / Cloudflare Workers) for an Astro 7 + Node 24 standalone SSR site, and the knock-on cache-layer conclusions",
+  "verdicts": [
+    {
+      "claim": "Railway Hobby costs $5/month with $5 usage credit; Free is $0 with $1 credit; CPU $0.00000772 per vCPU/s, memory $0.00000386 per GB/s, egress $0.05/GB; custom domains Free 0 / Hobby 2 / Pro 20; replicas Free 1 / Hobby 6 / Pro 42, so Free cannot host serioludere.com.",
+      "verdict": "confirmed",
+      "correction": "All figures match the live pricing page. Attribution note: the pricing page describes Hobby as 'For solo developers and side projects'; the wording 'For indie hackers and developers to build and deploy personal projects' is on the docs plans page (https://docs.railway.com/reference/pricing/plans), as the researcher stated.",
+      "source_url": "https://railway.com/pricing"
+    },
+    {
+      "claim": "Railway runs exactly one long-lived instance per service by default (one deploy per service; replicas are manual and traffic is randomly distributed across them); Serverless/app sleeping is an opt-in toggle and a sleeping service wakes 5-10 minutes after last traffic.",
+      "verdict": "confirmed",
+      "correction": "Verbatim: 'By default, Railway maintains only one deploy per service' (optimize-performance). Enable steps 'Navigate to your service's settings > Deploy > Serverless' / 'Toggle Enable Serverless' are on https://docs.railway.com/guides/optimize-usage; the 5-10 minute wording is on https://docs.railway.com/reference/app-sleeping. No page says 'off by default' in those words, but the feature is only reachable via an explicit enable toggle.",
+      "source_url": "https://docs.railway.com/guides/optimize-performance"
+    },
+    {
+      "claim": "Railway provisions TLS automatically on custom domains, auto-detects a Dockerfile, and has an official Astro SSR guide using @astrojs/node standalone with start command node ./dist/server/entry.mjs and server.host '0.0.0.0'; Astro's deploy index lists Railway as on-demand capable.",
+      "verdict": "confirmed",
+      "correction": "Public networking page: 'Automatic SSL - Free SSL certificates automatically provisioned and renewed', 'Custom Domains - Bring your own domain with easy DNS configuration'. Astro guide: 'Railway automatically detects the Dockerfile', adapter: node({ mode: 'standalone' }), start 'node ./dist/server/entry.mjs', '0.0.0.0 or :: ... 502 error'. Astro deploy index (https://docs.astro.build/en/guides/deploy/) shows 'Railway On demand Static'.",
+      "source_url": "https://docs.railway.com/guides/astro"
+    },
+    {
+      "claim": "Railway's fair-use policy contains no non-commercial restriction on the Hobby plan (unlike Vercel Hobby); it prohibits only abuse classes.",
+      "verdict": "confirmed",
+      "correction": "True as stated for the fair-use page, and the Terms of Service (effective 2026-04-20, https://railway.com/legal/terms) also contain no Hobby clause and say 'You will only use the Services for your own internal, personal, and/or business use'. CAVEAT, the researcher's open question is warranted: Railway staff on Central Station (2024-03-21/28, https://station.railway.com/questions/commercial-usage-using-hobby-plan-7fd8cf69) stated 'if you are running a for-profit, commercial, etc service on railway, thats a pro workload', and the pricing FAQ (https://docs.railway.com/pricing/faqs) says 'If you are supporting a commercial application, we highly recommend you to upgrade to the Pro plan'. Commercial use on Hobby is a support-policy risk, not a written prohibition.",
+      "source_url": "https://railway.com/legal/fair-use"
+    },
+    {
+      "claim": "Fly.io is pure usage pricing: shared-cpu-1x ~$2.02/month at 256 MB, $3.32 at 512 MB, $5.92 at 1 GB (Amsterdam); first 10 single-hostname certs free then $0.10/month; egress $0.02-$0.12/GB; dedicated IPv4 $2/month.",
+      "verdict": "confirmed",
+      "correction": "All figures match ('$0.00000078/second ~$2.02/month', '$0.00000128/s ~$3.32', '$0.00000228/s ~$5.92'; 'first 10 single hostname certificates are free'; egress $0.02 NA/EU, $0.04 APAC/Oceania/South America, $0.12 Africa/India; dedicated IPv4 $2/month). Additional: a shared IPv4 is included at no cost ('Each application receives a shared IPv4 address'), which answers one of the researcher's open questions.",
+      "source_url": "https://fly.io/docs/about/pricing/"
+    },
+    {
+      "claim": "Fly.io does not give one long-lived instance by default: fly launch creates two Machines and writes auto_stop_machines=\"stop\", auto_start_machines=true, min_machines_running=0; a stopped Machine's process has exited; one always-on Machine needs fly launch --ha=false (or fly scale count 1) plus auto_stop_machines=\"off\" or min_machines_running=1.",
+      "verdict": "confirmed",
+      "correction": "App availability: 'creates and starts two Machines for process groups with services, sets automatic start and stop to true and minimum machines running to zero'; 'fly launch --ha=false'. flyctl launch: --ha 'Create spare machines that increases app availability' default true. Autostop guide: default fly.toml auto_stop_machines = \"stop\", auto_start_machines = true, min_machines_running = 0. Config reference: 'off' never stops; min_machines_running default 0. Machine states: stopped = 'Exited, either on its own or explicitly stopped'; suspended machines 'preserve memory and disk state'.",
+      "source_url": "https://fly.io/docs/reference/app-availability/"
+    },
+    {
+      "claim": "Render: Hobby workspace is $0/month; always-on Starter web service (new ID 0.5c-512mb, 0.5 CPU, 512 MB) is $7/month; Free instance (0.1 CPU) spins down after 15 idle minutes, ~1 minute wake, 750 hours/month cap; new plan IDs introduced August 2026 with legacy names still valid.",
+      "verdict": "confirmed",
+      "correction": "Pricing page payload: Hobby \"price\":0; rows 'Starter','$7/month','512 MB','0.5' and '512 MB RAM','0.5c-512mb'; Free '$0/month','512 MB','0.1'. Free docs: 'spins down a Free web service that goes 15 minutes without receiving any inbound traffic', 'about one minute', '750 Free instance hours'. Compute plans (https://render.com/docs/compute-plans): 'Render introduced new compute plan IDs in August 2026', Starter -> 0.5c-512mb, 'The free compute plan provides 0.1 CPU and 512 MB of RAM'. Note the compute-plans URL is /docs/compute-plans (the /docs/compute path 404s).",
+      "source_url": "https://render.com/pricing"
+    },
+    {
+      "claim": "Render Hobby includes 2 custom domains with free automatic TLS; manual scaling on all workspaces, autoscaling Pro+; default instance count not documented; Docker deploys supported (prebuilt images no auto-deploy); PORT defaults to 10000 and app must bind 0.0.0.0; zero-downtime deploys briefly run old and new instances; Astro's Render deploy guide is static-only.",
+      "verdict": "confirmed",
+      "correction": "Custom domains: Hobby 2 / Pro 15 / Scale 25, 'Render automatically creates and renews TLS certificates for all custom domains'. Scaling: 'Manual scaling is available for all Render workspaces', 'Autoscaling requires a Pro plan or higher'; no default count stated. Web services: 'The default value of PORT is 10000', 'must bind to a port on host 0.0.0.0', 'Services deployed from prebuilt images don't support auto-deploys'. Deploys: 'your original instance continues to receive all incoming traffic while the new instance is spinning up' then a 60-second grace period. Astro Render guide creates a 'Static Site' with no adapter; deploy index marks Render 'Static' only.",
+      "source_url": "https://render.com/docs/scaling"
+    },
+    {
+      "claim": "DigitalOcean App Platform: smallest container apps-s-1vcpu-0.5gb is $5.00/month (1 shared vCPU, 512 MiB, 50 GiB outbound, $0.02/GiB overage); instance_count defaults to 1 (min 1, max 250); Dockerfiles incl. multi-stage build automatically; custom domains and Automatic HTTPS included; no idle spin-down for paid containers; no official Astro deploy guide for DigitalOcean.",
+      "verdict": "confirmed",
+      "correction": "Docs pricing: 'apps-s-1vcpu-0.5gb ... 1 shared ... 512 MiB ... $5.00 per month ... 50 GiB', overage '$0.02 per GiB'. App spec: instance_count 'Default 1, Minimum 1, Maximum 250'; http_port 'Default: 8080'. Dockerfile ref: 'defaults to using a Dockerfile if one is present in the root', multi-stage example, /var/run quirk. Pricing page: 'Automatic HTTPS', 'Bring your custom domain'. 'No idle spin-down' is not stated explicitly anywhere; it follows from instance_count minimum 1. Astro deploy index contains no DigitalOcean entry (verified by grep).",
+      "source_url": "https://docs.digitalocean.com/products/app-platform/details/pricing/"
+    },
+    {
+      "claim": "Hetzner CX23 (2 vCPU / 4 GB / 40 GB / 20 TB) costs EUR 5.49/month (USD 6.49) since 15 June 2026 (up from EUR 3.99), plus EUR 0.50/month primary IPv4; CAX11 EUR 5.99; Coolify is free self-hosted, needs 2 cores / 2 GB / 30 GB, uses Traefik by default and auto-issues/renews Let's Encrypt certs; Coolify Cloud is $5/month for 2 servers.",
+      "verdict": "confirmed",
+      "correction": "Price adjustment: 'starting on the 15 June 2026; 8 AM CEST', CX23 EUR 3.99 -> 5.49 / USD 4.99 -> 6.49, CAX11 EUR 4.49 -> 5.99, CPX22 EUR 7.99 -> 19.49. Server overview: 'EUR 0.50/month (excl. VAT) for our Primary IPs of type IPv4'. CX23 specs are now confirmed on Hetzner's own page https://www.hetzner.com/cloud/cost-optimized/ ('2 Intel/AMD' vCPU, '4 GB', '40 GB NVMe', '20 TB') so the third-party caveat can be dropped; however that page showed CX23 as 'currently unavailable' at fetch time and displays prices 'incl. IPv4'. Coolify: 'Self-hosted: Free Forever', 'Cloud $5/month Base price (connect 2 servers)'; install '2 cores', '2 GB', '30 GB'; proxies page 'Coolify supports Traefik (default) and Caddy (experimental)'; domains page 'Certificates are automatically renewed before they expire'.",
+      "source_url": "https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/"
+    },
+    {
+      "claim": "Netlify Free is a hard-capped 300-credit plan with no top-up; when credits run out every project is paused with 'Site not available'; production deploy 15 credits, bandwidth 20/GB, function compute 10/GB-hour, web requests 2/10k; Personal $9 (1,000 credits, top-ups), Pro $20 (3,000).",
+      "verdict": "confirmed",
+      "correction": "Credits page: 'all of your web projects (sites/apps) are paused ... Site not available'; Free 'Hard limit', Personal/Pro can purchase more; table 15 / 20 per GB / 10 per GB-hour / 2 per 10,000. Pricing page: Free '$0' '300 credit limit', Personal '$9/month' '1,000 credits', Pro '$20/month' '3,000 credits'. The arithmetic (10 deploys = 150 + 7.5 GB = 150 credits) checks out. The supporting detail about Aug-Sep 2026 support-forum threads was NOT verified in this session (no URL cited); the core claim stands without it.",
+      "source_url": "https://docs.netlify.com/manage/accounts-and-billing/billing/billing-for-credit-based-plans/how-credits-work/"
+    },
+    {
+      "claim": "Vercel Hobby is explicitly non-commercial ('Advertising the sale of a product or service' is commercial) and requires Pro ($20/month per seat); Fluid compute shares instances across invocations but instances are scaled/recycled, so it is not one long-lived process.",
+      "verdict": "confirmed",
+      "correction": "Fair use (last_updated 2026-07-29): 'Hobby teams are restricted to non-commercial personal use only. All commercial usage of the platform requires either a Pro or Enterprise plan'; examples include 'Advertising the sale of a product or service' and 'Receiving payment to create, update, or host the site'. Pricing: Hobby '$0/mo.', Pro '$20/mo.', 'Our Hobby plan is for personal, non-commercial use'. Fluid compute: 'multiple invocations can share the same physical instance (a global state/process) concurrently', 'automatically optimizes existing resources before scaling up'.",
+      "source_url": "https://vercel.com/docs/limits/fair-use-guidelines"
+    },
+    {
+      "claim": "Cloudflare Workers (Free 100k req/day; Paid $5/month with 10M requests) cannot provide one long-lived process (isolates may be evicted; do not mutate global state); SQLite-backed Durable Objects are on the Free plan and are a globally-unique, strongly consistent coordination point.",
+      "verdict": "confirmed",
+      "correction": "How Workers works: 'isolates are not necessarily long-lived. An isolate may be spun down and evicted'; 'Cloudflare recommends you do not use or mutate global state'. Pricing: Free '100,000 per day', Paid '$5 USD per month', '10 million included per month'. Durable Objects: 'Each Durable Object has a globally-unique name', 'strongly consistent yet fast to access', 'SQLite-backed Durable Objects are now available on the Workers Free plan'.",
+      "source_url": "https://developers.cloudflare.com/workers/reference/how-workers-works/"
+    },
+    {
+      "claim": "Current packages: astro 7.3.1 (node >=22.12.0), @astrojs/node 11.1.5 (peer astro ^7.2.1), @astrojs/netlify 8.2.5, @astrojs/vercel 11.0.10, @astrojs/cloudflare 14.3.0 (peer wrangler ^4.125.0); Node adapter standalone mode starts its own HTTP server from node ./dist/server/entry.mjs configured by HOST and PORT env vars.",
+      "verdict": "confirmed",
+      "correction": "registry.npmjs.org/<pkg>/latest fetched 2026-09-05: astro 7.3.1 engines node '>=22.12.0'; @astrojs/node 11.1.5 peer astro '^7.2.1'; @astrojs/netlify 8.2.5; @astrojs/vercel 11.0.10; @astrojs/cloudflare 14.3.0 peer wrangler '^4.125.0'. Node adapter docs: 'Standalone mode builds a server that automatically starts when the entry module is run', 'HOST=0.0.0.0 PORT=4321 node ./dist/server/entry.mjs'.",
+      "source_url": "https://docs.astro.build/en/guides/integrations-guide/node/"
+    },
+    {
+      "claim": "Node 24 'Krypton' is Active LTS since 2025-10-28, Maintenance from 2026-10-20, EOL 2028-04-30; Node 26 (released 2026-05-05) becomes LTS 2026-10-28; Docker node:lts currently resolves to 24 (24.20.0) and will flip to 26, so pin node:24-bookworm-slim / node:24-alpine.",
+      "verdict": "confirmed",
+      "correction": "nodejs/Release schedule.json: v24 {start 2025-05-06, lts 2025-10-28, maintenance 2026-10-20, end 2028-04-30, codename Krypton}; v26 {start 2026-05-05, lts 2026-10-28, maintenance 2027-10-20, end 2029-04-30}. docker-node repo 24/bookworm-slim/Dockerfile: ENV NODE_VERSION=24.20.0 (26/bookworm-slim: 26.8.1); versions.json marks 26 lts 2026-10-28; Docker Hub shows lts / lts-krypton = 24.20.0. (Docker Hub's rendered tag list mis-parsed the bare '24' tag as 26.x during fetch; the docker-node source confirms 24.x = 24.20.0.)",
+      "source_url": "https://raw.githubusercontent.com/nodejs/Release/main/schedule.json"
+    },
+    {
+      "claim": "Astro 7's built-in memoryCache route cache is documented as suitable only for single-instance deployments; CDN providers (cacheNetlify, cacheVercel, cacheCloudflare) are experimental and manually enabled; Vercel tag invalidation is soft (stale-while-revalidate); invalidate(options: InvalidateOptions) by exact path (no globs) or tags; POST /api/revalidate can call bust() and context.cache.invalidate({ tags }) together with no CDN purge SDK.",
+      "verdict": "confirmed",
+      "correction": "Attribution fix: the caching guide does NOT contain the 'single-instance' sentence; it is on the Cache Provider API reference (https://docs.astro.build/en/reference/cache-provider-reference/): 'Astro includes a built-in in-memory LRU runtime cache provider suitable for single-instance deployments.' Caching guide (stable, 'Added in: astro@7.0.0', config key cache): 'During the experimental phase these providers need to be manually enabled'; Vercel: 'Tag invalidation is a soft invalidation: cached responses are marked as stale and revalidated in the background using stale-while-revalidate'; 'Path-based invalidation is exact-match only (no glob or wildcard patterns)'; InvalidateOptions.path 'No glob or wildcard support'. Note the /reference/experimental-flags/route-caching/ URL now serves the stable guide.",
+      "source_url": "https://docs.astro.build/en/guides/caching/"
+    },
+    {
+      "claim": "Railway Hobby cost estimate: an idle standalone Astro process at ~0.05 vCPU and 200-300 MB RSS costs about $1/month CPU + $2-3/month memory, inside the $5 credit, so the effective bill is the flat $5/month (estimate, not measured).",
+      "verdict": "confirmed",
+      "correction": "Arithmetic verified against live rates: 0.05 vCPU x $0.00000772/s x 2,592,000 s = $1.00; 0.25 GB x $0.00000386/s x 2,592,000 s = $2.50; 1 vCPU-month = $20.01, 1 GB-month = $10.00. Correctly labelled as an unmeasured estimate; medium confidence stands.",
+      "source_url": "https://railway.com/pricing"
+    },
+    {
+      "claim": "[code] Dockerfile presented as 'Astro's official SSR recipe with the base image pinned to 24 instead of the moving lts alias': FROM node:24-bookworm-slim AS runtime / WORKDIR /app / COPY package*.json ./ / RUN npm ci / COPY . . / RUN npm run build / ENV HOST=0.0.0.0 / ENV PORT=4321 / EXPOSE 4321 / CMD [\"node\", \"./dist/server/entry.mjs\"]",
+      "verdict": "refuted",
+      "correction": "The snippet deviates from the cited recipe in more than the base image. Astro's SSR recipe (fetched 2026-09-05) is exactly: FROM node:lts AS runtime / WORKDIR /app / COPY . . / RUN npm install / RUN npm run build / ENV HOST=0.0.0.0 / ENV PORT=4321 / EXPOSE 4321 / CMD [\"node\", \"./dist/server/entry.mjs\"]. The layered 'COPY package*.json ./' + 'RUN npm ci' + 'COPY . .' sequence is an undisclosed rewrite (borrowed from the recipe's NGINX example, which itself uses npm install, not npm ci). The rewrite is functionally sound and arguably better (layer caching, reproducible installs) but requires a committed package-lock.json for npm ci, and the docs explicitly permit customising the image ('You can customize them to your needs'). Present it as a customised Dockerfile, not as the recipe.",
+      "source_url": "https://docs.astro.build/en/recipes/docker/"
+    },
+    {
+      "claim": "[code] astro.config.mjs: import { defineConfig, memoryCache } from 'astro/config'; import node from '@astrojs/node'; defineConfig({ output: 'server', adapter: node({ mode: 'standalone' }), server: { host: '0.0.0.0' }, cache: { provider: memoryCache() } })",
+      "verdict": "confirmed",
+      "correction": "Matches the caching guide example (import { defineConfig, memoryCache } from 'astro/config'; adapter: node({ mode: 'standalone' }); cache: { provider: memoryCache() }). The two extra keys are valid per the configuration reference (https://docs.astro.build/en/reference/configuration-reference/): output 'static' | 'server' (default 'static'); server.host string | boolean (default false). The Node adapter docs only document HOST/PORT env vars for overriding the standalone listener; the Dockerfile's ENV HOST=0.0.0.0 already covers that, so server.host is belt-and-braces per Railway's guide.",
+      "source_url": "https://docs.astro.build/en/guides/caching/"
+    },
+    {
+      "claim": "[code] POST /api/revalidate skeleton: check Authorization against import.meta.env.REVALIDATE_TOKEN, call sheetCache.bust(), then await context.cache.invalidate({ tags: ['sheet'] }), return 204.",
+      "verdict": "confirmed",
+      "correction": "The cache API usage matches the docs (context.cache in API routes; 'cache.invalidate({ tags: [...] })' in a POST endpoint example). Two documented caveats to apply: (1) 'When caching is not configured, ... cache.invalidate() throws an error' and cache.enabled 'is always false when no provider is configured or in development mode' - guard the call with context.cache.enabled or Vitest runs of this route will throw; (2) the env docs describe import.meta.env as 'statically replaced at build time' and document getSecret() from 'astro:env/server' (or process.env with the Node adapter) as the runtime API; they also say 'Astro will first check the server environment for variables' at runtime, so the pattern works on Node, but getSecret('REVALIDATE_TOKEN') is the documented choice and the token must never be present in the Docker build context (.dockerignore .env).",
+      "source_url": "https://docs.astro.build/en/guides/caching/"
+    },
+    {
+      "claim": "[code] fly.toml overrides for one always-on Machine: [http_service] internal_port = 4321, force_https = true, auto_stop_machines = \"off\", auto_start_machines = true, min_machines_running = 1; [[vm]] size = \"shared-cpu-1x\", memory = \"512mb\"; created with fly launch --ha=false.",
+      "verdict": "confirmed",
+      "correction": "Config reference: auto_stop_machines values off / stop / suspend ('off' = never stops); auto_start_machines default true; min_machines_running default 0; internal_port (Fly recommends 8080 but any port is allowed); [[vm]] size accepts 'shared-cpu-1x' and memory accepts '512mb'. The comment 'default written by fly launch is \"stop\"' matches the autostop guide (https://fly.io/docs/launch/autostop-autostart/). Note the config reference's own 'default if not set is off' refers to omitting the key, whereas fly launch explicitly writes 'stop'.",
+      "source_url": "https://fly.io/docs/reference/configuration/"
+    },
+    {
+      "claim": "[code] Railway: package.json scripts build 'astro build', start 'node ./dist/server/entry.mjs'; astro.config server: { host: '0.0.0.0' } (Railway injects PORT; the Node adapter reads it).",
+      "verdict": "confirmed",
+      "correction": "Railway Astro guide: '\"start\": \"node ./dist/server/entry.mjs\"' and server: { host: '0.0.0.0' } verbatim. PORT injection is not on the Astro guide page but is confirmed on Railway's troubleshooting page (https://docs.railway.com/networking/troubleshooting/application-failed-to-respond): 'listen on the port specified by the PORT environment variable, which Railway automatically injects into your application'. The Node adapter reads PORT at runtime (Astro node docs).",
+      "source_url": "https://docs.railway.com/guides/astro"
+    },
+    {
+      "claim": "[package_versions] astro 7.3.1, @astrojs/node 11.1.5, @astrojs/netlify 8.2.5, @astrojs/vercel 11.0.10, @astrojs/cloudflare 14.3.0, Docker node image 24.20.0 with tags 24 / 24-slim / 24-bookworm-slim / 24-alpine and lts = 24.",
+      "verdict": "confirmed",
+      "correction": "All five npm 'latest' tags re-fetched from registry.npmjs.org on 2026-09-05 and identical. Docker: nodejs/docker-node 24/bookworm-slim Dockerfile pins NODE_VERSION=24.20.0; variants include alpine3.23, alpine3.24, bookworm, bookworm-slim, trixie, trixie-slim; Docker Hub lists lts and lts-krypton = 24.20.0.",
+      "source_url": "https://registry.npmjs.org/astro/latest"
+    }
+  ],
+  "additional_findings": [
+    {
+      "claim": "Railway's commercial-use position for Hobby is set by support answers and the FAQ, not by the ToS or fair-use policy: the ToS (effective 2026-04-20) grants 'internal, personal, and/or business use' with no Hobby clause, but Railway staff have said for-profit services are 'a pro workload' and the pricing FAQ 'highly recommend[s]' Pro for commercial applications. Confirm with Railway support before committing, or budget $20/month Pro; the researcher's open question is a real risk, not a formality.",
+      "evidence": "ToS: 'You will only use the Services for your own internal, personal, and/or business use'. Central Station (brody, 2024-03-28): 'if you are running a for-profit, commercial, etc service on railway, thats a pro workload'. FAQ: 'If you are supporting a commercial application, we highly recommend you to upgrade to the Pro plan for higher resource limits and access to priority support.'",
+      "source_url": "https://station.railway.com/questions/commercial-usage-using-hobby-plan-7fd8cf69",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Railway automatically injects the PORT environment variable and requires the app to bind 0.0.0.0 and listen on that port; the Dockerfile's ENV PORT=4321 is only a fallback that the platform-injected value overrides at container start, and the @astrojs/node standalone server reads PORT at runtime, so no code change is needed.",
+      "evidence": "'Your web server should bind to the host 0.0.0.0 and listen on the port specified by the PORT environment variable, which Railway automatically injects into your application.' Astro node docs: 'You can override the host and port the standalone server runs on by passing them as environment variables at runtime: HOST=0.0.0.0 PORT=4321 node ./dist/server/entry.mjs'.",
+      "source_url": "https://docs.railway.com/networking/troubleshooting/application-failed-to-respond",
+      "confidence": "high"
+    },
+    {
+      "claim": "Fly.io includes a shared IPv4 at no cost ('Each application receives a shared IPv4 address'), so the $2/month dedicated IPv4 is optional; egress is tiered $0.02/GB (North America, Europe), $0.04/GB (Asia Pacific, Oceania, South America), $0.12/GB (Africa, India). This closes the researcher's open question about shared IPv4.",
+      "evidence": "Fly pricing page, Network prices section.",
+      "source_url": "https://fly.io/docs/about/pricing/",
+      "confidence": "high"
+    },
+    {
+      "claim": "Render replaced per-seat workspace plans on 2026-04-23: Hobby (free), Pro ($25/month flat, replaces Professional), Scale ($499/month flat, replaces Organization), seat fees removed; legacy workspaces were force-migrated on 2026-08-01. Custom domains included: Hobby 2 / Pro 15 / Scale 25, then $0.25/month each. So the Render total for this project is Hobby $0 + Starter/0.5c-512mb $7 = $7/month with serioludere.com inside the Hobby quota.",
+      "evidence": "Changelog: 'Remove seat fees. Our new Pro and Scale plans move to a flat subscription with unlimited team members included'; 'Custom domains ($0.25/month for each additional domain)'; mandatory migration August 1, 2026. Custom domains doc table: Hobby 2, Pro 15, Scale 25.",
+      "source_url": "https://render.com/changelog/updated-plans-for-render-workspaces",
+      "confidence": "high"
+    },
+    {
+      "claim": "Hetzner's own CX23 listing (2 Intel/AMD vCPU, 4 GB, 40 GB NVMe, 20 TB EU traffic) showed 'This product is currently unavailable. Please check back later.' at fetch time, and hetzner.com displays prices 'incl. IPv4' whereas the docs price the primary IPv4 separately at EUR 0.50. Shared CX stock is intermittent; anyone pricing the Hetzner+Coolify option should check live availability and note which price view is quoted.",
+      "evidence": "hetzner.com/cloud/cost-optimized CX23 row: '2 Intel/AMD', '4 GB', '40 GB NVMe', '20 TB', 'Price incl. IPv4', 'not available'.",
+      "source_url": "https://www.hetzner.com/cloud/cost-optimized/",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Astro's memoryCache is an LRU with a default of 1000 entries (memoryCache({ max }) to change), excludes common tracking query params from the cache key by default (configurable via query.exclude), and emits an X-Astro-Cache: HIT | MISS | STALE response header for observability. cache.invalidate() throws when no provider is configured and cache.enabled is always false in dev mode, so the /api/revalidate route and its Vitest tests must guard on context.cache.enabled.",
+      "evidence": "Cache Provider API reference: 'built-in in-memory LRU runtime cache provider suitable for single-instance deployments', 'Default: { max: 1000 }', X-Astro-Cache HIT/MISS/STALE. Caching guide: 'When caching is not configured, cache.set(), cache.tags, and cache.options log a warning, and cache.invalidate() throws an error ... cache.enabled ... is always false when no provider is configured or in development mode.'",
+      "source_url": "https://docs.astro.build/en/reference/cache-provider-reference/",
+      "confidence": "high"
+    },
+    {
+      "claim": "For the revalidate token and Google credentials, Astro documents getSecret() from 'astro:env/server' (or process.env under the Node adapter) as the runtime secret API; import.meta.env is described as Vite's build-time replacement, with a runtime fallback where 'Astro will first check the server environment for variables, and if they don't exist, Astro will look for them in .env files'. Because the Docker image is built without the secrets, read them at runtime and keep .env out of the build context via .dockerignore.",
+      "evidence": "Environment variables guide sections 'Vite's built-in support', 'Getting environment variables', 'Retrieving secrets dynamically'.",
+      "source_url": "https://docs.astro.build/en/guides/environment-variables/",
+      "confidence": "high"
+    },
+    {
+      "claim": "The Docker 'node:lts' alias flip is now dated by first-party data: nodejs/docker-node versions.json lists 26 with lts '2026-10-28' and 24 with lts '2025-10-28'; the 24/bookworm-slim Dockerfile pins NODE_VERSION=24.20.0 and 26/bookworm-slim pins 26.8.1. Pinning 'node:24-bookworm-slim' (or a digest) is the correct guard.",
+      "evidence": "raw.githubusercontent.com/nodejs/docker-node/main/versions.json and .../24/bookworm-slim/Dockerfile fetched 2026-09-05.",
+      "source_url": "https://raw.githubusercontent.com/nodejs/docker-node/main/versions.json",
+      "confidence": "high"
+    }
+  ],
+  "summary": "22 of 23 items confirmed against live sources on 2026-09-05; 1 refuted; 0 unverifiable. Every price, quota, default and package version in the report is accurate: Railway ($5 Hobby, one deploy by default, opt-in Serverless, auto TLS, official Astro SSR guide), Fly.io (usage pricing, two Machines + autostop by default, --ha=false override), Render ($7 Starter/0.5c-512mb, Free spins down after 15 min, plan IDs renamed Aug 2026), DigitalOcean ($5 apps-s-1vcpu-0.5gb, instance_count default 1), Hetzner (CX23 EUR 5.49 since 15 Jun 2026 + EUR 0.50 IPv4) and Coolify, Netlify (300-credit hard cap pauses sites), Vercel (Hobby non-commercial), Cloudflare (isolates evicted; Durable Objects on Free), Node 24 dates, Astro 7.3.1 / @astrojs/node 11.1.5, and the Astro 7 route-cache facts (memoryCache single-instance, CDN providers experimental, Vercel tag purge soft, exact-path invalidation). The one refuted item is the Dockerfile snippet, which is presented as the official SSR recipe with only the base image pinned but silently replaces 'COPY . . / RUN npm install' with a layered 'COPY package*.json / npm ci / COPY . .' sequence (functionally fine, but not the recipe and dependent on a committed package-lock.json). Caveats attached to confirmed items: Railway's Hobby commercial-use restriction exists in staff answers and the FAQ, not in the ToS or fair-use page, so the open question is a genuine risk; the 'suitable for single-instance deployments' sentence is on the Cache Provider API reference page, not the caching guide; the Netlify support-forum detail was not verified; hetzner.com showed CX23 as currently unavailable. Adjacent facts added: Railway injects PORT automatically; Fly shared IPv4 is free and egress is tiered $0.02/$0.04/$0.12; Render moved to flat $25 Pro / $499 Scale plans on 2026-04-23 (Hobby stays free, 2 custom domains); Astro cache.invalidate() throws with no provider and cache.enabled is false in dev (guard it in the revalidate route and tests); read REVALIDATE_TOKEN via getSecret()/process.env at runtime, not baked into the image. The recommendation (Node standalone in a node:24-bookworm-slim image on Railway Hobby, DigitalOcean $5 as runner-up, reject Netlify Free and Vercel Hobby) is supported by the verified evidence, conditional on Railway confirming Hobby is acceptable for a commercial catalogue; otherwise DigitalOcean App Platform at the same $5 is the cleaner choice because its terms carry no hobby-vs-commercial distinction."
+}

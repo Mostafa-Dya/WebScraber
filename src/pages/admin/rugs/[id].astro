@@ -1,0 +1,80 @@
+---
+// /admin/rugs/[id] — edit one rug (docs/ADMIN_SPEC.md §2.1, §8.3): the shared field grid in edit
+// mode with a hidden version token, Save / Archive / Restore, "Open on site". 404 for an unknown id.
+export const prerender = false;
+
+import AdminLayout from '../../../components/admin/AdminLayout.astro';
+import RugFields from '../../../components/admin/RugFields.astro';
+import { ID_RE } from '../../../lib/admin/dto.ts';
+import {
+  fetchAdminSnapshot,
+  findRugById,
+  type AdminRug,
+  type AdminSnapshot,
+} from '../../../lib/admin/read.ts';
+import { roundStepOf } from '../../../lib/admin/settings.ts';
+import { getClient } from '../../../lib/runtime.ts';
+import { consoleLogger, serializeError } from '../../../lib/sheets/errors.ts';
+import { jsonForScript } from '../../../lib/view.ts';
+
+const id = Astro.params.id ?? '';
+let snapshot: AdminSnapshot | undefined;
+let error: string | undefined;
+let rug: AdminRug | undefined;
+if (ID_RE.test(id)) {
+  try {
+    snapshot = await fetchAdminSnapshot(getClient(), { logger: consoleLogger });
+    rug = findRugById(snapshot, id);
+  } catch (e) {
+    const safe = serializeError(e);
+    consoleLogger.error('admin edit-rug read failed', { error: safe });
+    error = safe.message;
+  }
+}
+if (!rug && !error) Astro.response.status = 404;
+const collections = snapshot?.collections ?? [];
+const tags = snapshot?.tags ?? [];
+const roundStep = snapshot ? roundStepOf(snapshot.settings) : 5;
+const data = rug
+  ? {
+      mode: 'edit',
+      rug,
+      collections: collections.map((c) => ({ id: c.id, slug: c.slug, name: c.name })),
+      tags: tags.map((t) => ({ id: t.id, slug: t.slug, name: t.name, color: t.color ?? '' })),
+      defaultStatus: rug.status === 'draft' ? 'draft' : 'active',
+      roundStep,
+      driveScopeOk: null,
+    }
+  : null;
+---
+
+<AdminLayout title={rug ? `Serio Ludere — ${rug.name}` : 'Serio Ludere — Rug not found'} active="rugs">
+  {error && <div class="msg err on">Could not read the sheet: {error}</div>}
+  {
+    !rug && !error && (
+      <div class="msg err on">
+        No rug with id "{id}". <a href="/admin/rugs">Back to the catalogue</a>
+      </div>
+    )
+  }
+  {
+    rug && (
+      <>
+        <p class="hint">
+          <a href="/admin/rugs">← Catalogue</a> · editing <span class="mono">{rug.id}</span>
+        </p>
+        <RugFields
+          mode="edit"
+          rug={rug}
+          collections={collections}
+          tags={tags}
+          defaultStatus={rug.status === 'draft' ? 'draft' : 'active'}
+          roundStep={roundStep}
+          driveScopeOk={null}
+        />
+        <script is:inline type="application/json" id="admin-data" set:html={jsonForScript(data)} />
+        <script>import {initRugForm} from '../../../scripts/admin/rug-form.ts'; initRugForm();</script>
+      </>
+    )
+  }
+</AdminLayout>

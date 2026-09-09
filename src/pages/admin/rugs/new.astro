@@ -1,0 +1,79 @@
+---
+// /admin/rugs/new — Add rug (docs/ADMIN_SPEC.md §2.1, §8.3): the legacy "Add rug" tab rebuilt on
+// the shared field grid. Supplier previews need the two supplier image hosts in img-src for this
+// page only (§5.3). Initial data reaches the script through a JSON block (jsonForScript, §8.2).
+export const prerender = false;
+
+import AdminLayout from '../../../components/admin/AdminLayout.astro';
+import RugFields from '../../../components/admin/RugFields.astro';
+import { adminRuntime } from '../../../lib/admin/http.ts';
+import { nextRugId } from '../../../lib/admin/ids.ts';
+import { fetchAdminSnapshot, type AdminSnapshot } from '../../../lib/admin/read.ts';
+import { defaultStatusOf, roundStepOf } from '../../../lib/admin/settings.ts';
+import { getClient } from '../../../lib/runtime.ts';
+import { consoleLogger, serializeError } from '../../../lib/sheets/errors.ts';
+import { jsonForScript } from '../../../lib/view.ts';
+import { driveScope, reservedIds } from '../../api/admin/_shared.ts';
+
+Astro.csp?.insertDirective(
+  "img-src 'self' https://lh3.googleusercontent.com https://cdn.shopify.com https://images.ecarpetwholesale.com data:",
+);
+
+let snapshot: AdminSnapshot | undefined;
+let error: string | undefined;
+try {
+  snapshot = await fetchAdminSnapshot(getClient(), { logger: consoleLogger });
+} catch (e) {
+  const safe = serializeError(e);
+  consoleLogger.error('admin add-rug read failed', { error: safe });
+  error = safe.message;
+}
+await driveScope();
+const driveScopeOk = adminRuntime.driveScopeOk ?? null;
+const collections = snapshot?.collections ?? [];
+const tags = snapshot?.tags ?? [];
+const settings = snapshot?.settings;
+const defaultStatus = settings ? defaultStatusOf(settings) : 'active';
+const roundStep = settings ? roundStepOf(settings) : 5;
+const nextId = snapshot
+  ? nextRugId(
+      snapshot.rugs.map((r) => r.id),
+      reservedIds(snapshot),
+    )
+  : '';
+const data = {
+  mode: 'add',
+  collections: collections.map((c) => ({ id: c.id, slug: c.slug, name: c.name })),
+  tags: tags.map((t) => ({ id: t.id, slug: t.slug, name: t.name, color: t.color ?? '' })),
+  nextId,
+  defaultStatus,
+  roundStep,
+  driveScopeOk,
+  adminHeaders: snapshot?.report.adminHeaders ?? 'ok',
+};
+---
+
+<AdminLayout title="Serio Ludere — Add rug" active="add">
+  {error && <div class="msg err on">Could not read the sheet: {error}</div>}
+  {
+    snapshot?.report.adminHeaders === 'missing' && (
+      <div class="msg err on">
+        Rugs W1:Z1 are blank — run <span class="kbd">npm run sheet:init</span> before adding rugs.
+      </div>
+    )
+  }
+  <RugFields
+    mode="add"
+    collections={collections}
+    tags={tags}
+    defaultStatus={defaultStatus}
+    roundStep={roundStep}
+    driveScopeOk={driveScopeOk}
+    nextId={nextId}
+  />
+  <script is:inline type="application/json" id="admin-data" set:html={jsonForScript(data)} />
+  <script>
+    import { initRugForm } from '../../../scripts/admin/rug-form.ts';
+    initRugForm();
+  </script>
+</AdminLayout>

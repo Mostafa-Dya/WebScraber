@@ -1,0 +1,84 @@
+/* Design tokens — moved verbatim from reference/catalogue.html lines 11-16. Do not edit values. */
+:root {
+  --paper: #fffdf2;
+  --paper-deep: #f6f0dc;
+  --ink: #000;
+  --ink-soft: #6b645c;
+  --rule: #e3d9c2;
+  --accent: #bb3e03;
+  --green: #2f6b3a;
+  --body: 'Inter', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+/* ---- Design pass (docs/DESIGN.md §2): additive tokens. The palette above is unchanged. ---- */
+:root {
+  /* radii: the brand is square; 2px only softens plate corners against the paper */
+  --radius-1: 2px;
+  --radius-pill: 999px;
+
+  /* shadows */
+  --shadow-plate: 0 10px 22px rgba(0, 0, 0, 0.18); /* the reference's drop-shadow, now named */
+  --shadow-pill: 0 1px 2px rgba(0, 0, 0, 0.06), 0 6px 16px rgba(0, 0, 0, 0.06);
+  --shadow-contact: radial-gradient(50% 50% at 50% 50%, rgba(0, 0, 0, 0.16), transparent 70%);
+
+  /* easing */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-inout: cubic-bezier(0.76, 0, 0.24, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* durations */
+  --dur-1: 120ms;
+  --dur-2: 240ms;
+  --dur-3: 420ms;
+  --dur-4: 560ms;
+  --dur-vt: 480ms;
+  --stagger: 45ms;
+
+  /* skeleton */
+  --sk-base: var(--paper-deep);
+  --sk-sheen: rgba(255, 253, 242, 0.75);
+  --sk-edge: var(--rule);
+
+  /* plate ratio system (overridden per element by [data-ar] and .lead) */
+  --plate: 3 / 4;
+  --plate-n: 0.75; /* width ÷ height of --plate, as a number */
+
+  /* surfaces derived from the palette (alpha only, no new hue) */
+  --paper-90: rgba(255, 253, 242, 0.92);
+
+  /* layout */
+  --nav-h: 46px; /* measured into the same property by transitions.ts (CSSOM) */
+  --measure: 46ch;
+  --focus: 2px solid var(--accent);
+}
+
+/* Ratio buckets: view.ts plateRatio() picks the bucket, the CSS turns it into a ratio and its decimal. */
+[data-ar='1-2'] {
+  --plate: 1 / 2;
+  --plate-n: 0.5;
+}
+[data-ar='2-3'] {
+  --plate: 2 / 3;
+  --plate-n: 0.6667;
+}
+[data-ar='3-4'] {
+  --plate: 3 / 4;
+  --plate-n: 0.75;
+}
+[data-ar='1-1'] {
+  --plate: 1 / 1;
+  --plate-n: 1;
+}
+[data-ar='4-3'] {
+  --plate: 4 / 3;
+  --plate-n: 1.3333;
+}
+[data-ar='3-2'] {
+  --plate: 3 / 2;
+  --plate-n: 1.5;
+}
+[data-ar='2-1'] {
+  --plate: 2 / 1;
+  --plate-n: 2;
+}

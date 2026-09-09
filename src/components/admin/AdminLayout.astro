@@ -1,0 +1,70 @@
+---
+// Admin shell (docs/ADMIN_SPEC.md §8.1): the legacy page's head and header, tabs as LINKS
+// (native keyboard navigation), a logout form, then the page. No rates JSON, no pre-paint script,
+// no inline handlers or style attributes (hash CSP). Every admin route is on-demand and no-store.
+import '../../styles/tokens.css';
+import '../../styles/modes.css';
+import '../../styles/admin.css';
+
+export type AdminTab = 'dashboard' | 'add' | 'rugs' | 'collections' | 'clients' | 'audit' | 'google';
+
+interface Props {
+  title: string;
+  active?: AdminTab;
+  /** false on the login page (no session yet). */
+  nav?: boolean;
+  /** Shown under the wordmark instead of "Admin — private". */
+  sub?: string;
+}
+const { title, active, nav = true, sub = 'Admin — private' } = Astro.props;
+
+const tabs: Array<{ key: AdminTab; href: string; label: string }> = [
+  { key: 'add', href: '/admin/rugs/new', label: 'Add rug' },
+  { key: 'rugs', href: '/admin/rugs', label: 'Catalogue' },
+  { key: 'collections', href: '/admin/collections', label: 'Collections' },
+  { key: 'clients', href: '/admin/clients', label: 'Clients' },
+  { key: 'audit', href: '/admin/audit', label: 'Audit log' },
+  { key: 'google', href: '/admin/google', label: 'Google' },
+];
+---
+
+<html lang="en" data-mode="admin">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <h1><a href="/admin">Serio Ludere</a></h1>
+    <p class="sub">{sub}</p>
+    {
+      nav && (
+        <nav class="tabs" aria-label="Admin">
+          {tabs.map((t) => (
+            <a
+              href={t.href}
+              class:list={[{ on: t.key === active }]}
+              aria-current={t.key === active ? 'page' : undefined}
+            >
+              {t.label}
+            </a>
+          ))}
+          <form method="post" action="/admin/logout" class="logout">
+            <button class="chip" type="submit">
+              Log out
+            </button>
+          </form>
+        </nav>
+      )
+    }
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>

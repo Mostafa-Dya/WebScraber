@@ -1,0 +1,132 @@
+---
+// Product Card / Preview (Figma 53:62 and the 358-wide mobile variant).
+//
+// 300 × 457 on desktop: a 4:5 image box on the surface with the like control pinned to its top
+// right, then a 12px gap, then three lines 4px apart — title, size, price. No rating line, no meta
+// list, no collection label: the design strips the card back to what a buyer scanning a grid needs.
+//
+// The photo is `contain`, not `cover`, even though the aspect box is described as a crop. What the
+// frame actually draws is a rug floating clear of the box edges on the surface colour, and a rug is
+// judged on its border — cropping one to fill a box cuts off the thing the buyer is looking at. The
+// 4:5 box is the crop; the artwork inside it is never trimmed.
+import { money, type RateTable } from '../../lib/currency.ts';
+import { dims, PREVIEW_SEP } from '../../lib/units.ts';
+import type { CardView } from '../../lib/view.ts';
+import Reactions from './Reactions.astro';
+
+interface Props {
+  card: CardView;
+  rates: RateTable;
+  /** Base currency for the server-rendered price; prefs.ts re-renders in the visitor's choice. */
+  baseCurrency: string;
+  href: string;
+  /** The first cards of the grid load eagerly; the very first also gets fetchpriority=high. */
+  eager?: boolean;
+  priority?: boolean;
+}
+const { card, rates, baseCurrency, href, eager = false, priority = false } = Astro.props;
+const sizeText = dims(card.widthCm, card.lengthCm, 'cm', PREVIEW_SEP);
+const priceText = money(card.priceUsd, baseCurrency, rates, 'en-US');
+---
+
+<article class="pv-card">
+  <div class="pv-card-image">
+    {
+      card.photoUrl ? (
+        <img
+          src={card.photoUrl}
+          alt={card.name}
+          loading={eager ? 'eager' : 'lazy'}
+          fetchpriority={priority ? 'high' : undefined}
+          decoding="async"
+        />
+      ) : (
+        <span class="pv-card-empty">Photo to come</span>
+      )
+    }
+    <a class="pv-card-hit" href={href} tabindex="-1" aria-hidden="true"></a>
+    <div class="pv-card-react">
+      <Reactions rugId={card.id} mode="card" />
+    </div>
+  </div>
+
+  <div class="pv-card-text">
+    <p class="pv-card-name"><a href={href}>{card.name}</a></p>
+    <p
+      class="pv-card-size"
+      data-dims
+      data-w={card.widthCm ?? ''}
+      data-l={card.lengthCm ?? ''}
+      data-sep={PREVIEW_SEP}
+      hidden={!sizeText}
+    >
+      {sizeText}
+    </p>
+    <p class="pv-card-price" data-price data-usd={card.priceUsd ?? ''} hidden={!priceText}>
+      {priceText}
+    </p>
+  </div>
+</article>
+
+<style>
+  .pv-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tight);
+  }
+
+  .pv-card-image {
+    position: relative;
+    aspect-ratio: 4 / 5;
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .pv-card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 12%;
+  }
+  .pv-card-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
+  }
+
+  /* An invisible link over the photo, under the reaction control, so the whole image is clickable
+     without wrapping the buttons in an anchor. */
+  .pv-card-hit {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+  .pv-card-react {
+    position: absolute;
+    top: var(--tight);
+    right: var(--tight);
+    z-index: 2;
+  }
+
+  .pv-card-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-xs);
+  }
+  .pv-card-name a {
+    text-decoration: none;
+  }
+  .pv-card-name a:hover {
+    color: var(--brand);
+  }
+  .pv-card-size {
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+  }
+  .pv-card-price {
+    font-size: var(--text-base);
+    color: var(--ink);
+  }
+</style>

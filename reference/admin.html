@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Serio Ludere — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FFFDF2; --paper-deep:#F6F0DC; --ink:#000; --ink-soft:#6B645C;
+    --rule:#E3D9C2; --accent:#BB3E03; --green:#2F6B3A; --red:#A32020;
+    --body:'Inter',system-ui,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;padding:32px 5vw 80px}
+  h1{font-size:20px;font-weight:600;letter-spacing:-.01em}
+  .sub{font-family:var(--mono);font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--accent);margin-top:6px}
+  .tabs{display:flex;gap:4px;margin:28px 0 20px;border-bottom:1px solid var(--rule)}
+  .tabs button{background:none;border:0;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink-soft);padding:10px 14px;cursor:pointer;border-bottom:2px solid transparent}
+  .tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+  .panel{display:none} .panel.on{display:block}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  input,select,textarea{font-family:var(--body);font-size:14px;padding:10px 12px;border:1px solid var(--rule);
+    background:#fff;color:var(--ink);border-radius:2px;width:100%}
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:-2px}
+  .grow{flex:1;min-width:260px}
+  button.go{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    background:var(--ink);color:var(--paper);border:0;padding:11px 18px;cursor:pointer;border-radius:2px}
+  button.go:disabled{opacity:.45;cursor:default}
+  button.alt{background:transparent;color:var(--ink);border:1px solid var(--rule)}
+  .hint{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:8px;letter-spacing:.02em}
+  .msg{font-family:var(--mono);font-size:12px;padding:10px 12px;border-radius:2px;margin-top:14px;display:none}
+  .msg.on{display:block}
+  .msg.ok{background:rgba(47,107,58,.08);color:var(--green);border:1px solid rgba(47,107,58,.25)}
+  .msg.err{background:rgba(163,32,32,.07);color:var(--red);border:1px solid rgba(163,32,32,.25)}
+  .msg.busy{background:var(--paper-deep);color:var(--ink-soft);border:1px solid var(--rule)}
+  .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:20px}
+  .f label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:5px}
+  .preview{display:none;margin-top:24px;padding-top:20px;border-top:1px solid var(--rule)}
+  .preview.on{display:block}
+  .thumb{max-width:200px;border:1px solid var(--rule);margin-top:14px;display:none}
+  .thumb.on{display:block}
+  .actions{display:flex;gap:8px;margin-top:20px;flex-wrap:wrap;align-items:center}
+  label.chk{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+  label.chk input{width:auto}
+  table{width:100%;border-collapse:collapse;margin-top:16px;font-size:13px}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);
+    text-align:left;padding:8px 10px;border-bottom:1px solid var(--rule)}
+  td{padding:8px 10px;border-bottom:1px solid var(--rule)}
+  td.n{font-family:var(--mono);text-align:right;color:var(--accent);font-weight:600}
+  .stack{margin-top:26px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:22px;margin-top:20px}
+  .card{display:flex;flex-direction:column;gap:9px}
+  .card .ph{position:relative;aspect-ratio:3/4;background:var(--paper-deep);border:1px solid var(--rule);
+    display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .card .ph img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 8px 18px rgba(0,0,0,.18))}
+  .card .ph img.rot{position:absolute;top:50%;left:50%;width:133.333%;height:75%;
+    transform:translate(-50%,-50%) rotate(90deg);transform-origin:center}
+  .card .ph span{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+  .card .nm{font-size:14px;font-weight:500;line-height:1.25}
+  .card .mt{font-family:var(--mono);font-size:11px;color:var(--ink-soft);line-height:1.7}
+  .card .pr{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--green)}
+  .card .cnt{position:absolute;top:6px;right:6px;background:var(--ink);color:var(--paper);
+    font-family:var(--mono);font-size:9px;padding:2px 6px}
+  .chip{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:6px 11px;border:1px solid var(--rule);background:transparent;cursor:pointer;color:var(--ink-soft)}
+  .chip.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  .stack h3{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px}
+</style>
+</head>
+<body>
+
+<h1>Serio Ludere</h1>
+<p class="sub">Admin — private</p>
+
+<div class="tabs">
+  <button class="on" onclick="tab('add',this)">Add rug</button>
+  <button onclick="tab('cat',this)">Catalogue</button>
+  <button onclick="tab('saves',this)">Client saves</button>
+</div>
+
+<!-- ─────────────────────────── ADD RUG ─────────────────────────── -->
+<section id="add" class="panel on">
+  <div class="row">
+    <div class="grow"><input id="yourName" placeholder="Your name for this rug — e.g. Khal Mohammadi"></div>
+    <div style="min-width:200px">
+      <select id="f_collection">
+        <option value="">Catalogue tab…</option>
+        <option>Classics</option><option>Gabbeh</option><option>Modern</option>
+        <option>Kilims</option><option>Tulu</option><option>Wabi Sabi</option>
+        <option>Signed</option><option>More</option>
+      </select>
+    </div>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <div class="grow"><input id="f_tags" placeholder="Tags (optional) — e.g. Afghan, Geometric, Red"></div>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <div class="grow"><input id="url" placeholder="Product link"></div>
+    <button class="go" id="btnFetch" onclick="fetchUrl()">Fetch</button>
+  </div>
+  <p class="hint">Your name is what clients see. The link only supplies size, material, age and price.</p>
+  <p class="hint" id="supplierTitle" style="display:none"></p>
+  <div id="m1" class="msg"></div>
+
+  <div id="preview" class="preview">
+    <div class="fields">
+      <div class="f"><label>Rug number (id)</label><input id="f_number"></div>
+      <div class="f"><label>Name (what clients see)</label><input id="f_name"></div>
+      <div class="f"><label>Permanent collection (optional)</label><input id="f_permanent" placeholder="e.g. Kilims, Modern"></div>
+      <div class="f"><label>Launch collection (optional)</label><input id="f_launch" placeholder="e.g. Portals of Color"></div>
+      <div class="f"><label>Width (cm)</label><input id="f_width" inputmode="numeric"></div>
+      <div class="f"><label>Length (cm)</label><input id="f_length" inputmode="numeric"></div>
+      <div class="f"><label>Material</label><input id="f_material"></div>
+      <div class="f"><label>Method</label><input id="f_method"></div>
+      <div class="f"><label>Age</label><input id="f_age"></div>
+      <div class="f"><label>Origin</label><input id="f_origin"></div>
+      <div class="f"><label>Retail price (USD)</label><input id="f_price_usd"></div>
+      <div class="f"><label>Cost (optional — blank by default)</label><input id="f_cost" placeholder="leave empty for now"></div>
+      <div class="f"><label>Provider</label><input id="f_provider"></div>
+    </div>
+
+    <p class="hint" id="ftHint" style="display:none"></p>
+    <p class="hint" id="priceHint" style="display:none"></p>
+    <p class="hint" id="tagHint" style="display:none"></p>
+    <img id="thumb" class="thumb" alt="">
+
+    <div class="actions">
+      <label class="chk"><input type="checkbox" id="savePhoto" checked> Save photos to Drive</label>
+      <button class="go" id="btnAdd" onclick="commit()">Add to sheet</button>
+      <button class="go alt" onclick="reset()">Clear</button>
+    </div>
+    <div id="m2" class="msg"></div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── CATALOGUE ─────────────────────────── -->
+<section id="cat" class="panel">
+  <div class="row">
+    <div style="min-width:200px">
+      <select id="catTab">
+        <option value="External Inventory">External Inventory (sourced)</option>
+        <option value="Products">Products (owned)</option>
+      </select>
+    </div>
+    <button class="go" onclick="loadCatalogue()">Load</button>
+  </div>
+  <div id="m4" class="msg"></div>
+  <div id="catFilters" class="row" style="margin-top:16px;gap:6px"></div>
+  <div id="catGrid" class="grid"></div>
+</section>
+
+<!-- ─────────────────────────── SAVES ─────────────────────────── -->
+<section id="saves" class="panel">
+  <button class="go" onclick="loadSaves()">Refresh</button>
+  <div id="m3" class="msg"></div>
+  <div id="savesOut"></div>
+</section>
+
+<script>
+const API    = "https://script.google.com/macros/s/REDACTED-LEGACY-DEPLOYMENT/exec";
+const SECRET = "REDACTED-LEGACY-SECRET"; /* the shipped secret is compromised and was rotated; see docs/ADR.md D9 */
+
+const FIELDS = ["number","name","collection","tags","permanent","launch","width","length","material",
+                "method","age","origin","price_usd","cost","provider"];
+let parsed = null;
+
+/* JSONP: works cross-origin with Apps Script without any CORS setup */
+function call(params){
+  return new Promise((resolve,reject)=>{
+    const cb = "cb_" + Math.random().toString(36).slice(2);
+    const timer = setTimeout(()=>{ cleanup(); reject(new Error("timed out — check the API URL and that the script is deployed")); }, 45000);
+    function cleanup(){ clearTimeout(timer); delete window[cb]; if(s.parentNode) s.parentNode.removeChild(s); }
+    window[cb] = d => { cleanup(); resolve(d); };
+    const q = Object.keys(params).map(k=>encodeURIComponent(k)+"="+encodeURIComponent(
+      typeof params[k]==="object" ? JSON.stringify(params[k]) : params[k])).join("&");
+    const s = document.createElement("script");
+    s.src = API + "?" + q + "&callback=" + cb;
+    s.onerror = ()=>{ cleanup(); reject(new Error("could not reach the script")); };
+    document.body.appendChild(s);
+  });
+}
+
+function msg(id, text, kind){
+  const el = document.getElementById(id);
+  el.className = "msg on " + kind;
+  el.textContent = text;
+}
+function hide(id){ document.getElementById(id).className = "msg"; }
+
+function tab(name, btn){
+  document.querySelectorAll(".panel").forEach(p=>p.classList.remove("on"));
+  document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("on"));
+  document.getElementById(name).classList.add("on");
+  btn.classList.add("on");
+}
+
+async function fetchUrl(){
+  const url = document.getElementById("url").value.trim();
+  if(!url){ msg("m1","Paste a link first.","err"); return; }
+  document.getElementById("btnFetch").disabled = true;
+  msg("m1","Reading the supplier page…","busy");
+  try{
+    const r = await call({action:"preview_url", secret:SECRET, url:url});
+    if(!r.ok){
+      msg("m1", (r.error || "could not read that page") +
+        "  |  <a href='#' style='color:var(--accent)' onclick='manualEntry(event)'>Enter manually</a>", "err");
+      document.getElementById("m1").innerHTML = document.getElementById("m1").textContent
+        .replace("Enter manually","") + " <a href='#' style='color:var(--accent)' onclick='manualEntry(event)'>Enter manually</a>";
+      return;
+    }
+    parsed = r.data;
+    FIELDS.forEach(f=>{
+      if(f === "collection" || f === "tags") return;   // yours, never overwritten
+      const el = document.getElementById("f_"+f);
+      if(el) el.value = parsed[f] != null ? parsed[f] : "";
+    });
+    /* your name always wins; the supplier title is reference only */
+    const supplied = parsed.name || "";
+    const mine = document.getElementById("yourName").value.trim();
+    if(mine) document.getElementById("f_name").value = mine;
+    const th = document.getElementById("tagHint");
+    if(parsed.tags_suggested && !document.getElementById("f_tags").value.trim()){
+      th.innerHTML = 'Suggested tags: ' + esc(parsed.tags_suggested) +
+        ' &nbsp;<a href="#" style="color:var(--accent)" onclick="useTags(event)">use these</a>';
+      th.dataset.tags = parsed.tags_suggested;
+      th.style.display = "block";
+    } else { th.style.display = "none"; }
+    const ph = document.getElementById("priceHint");
+    if(parsed.seen_price){
+      ph.textContent = "Supplier price $" + parsed.seen_price +
+                       "  \u2192  retail $" + (parsed.price_usd || "—") + "   (cost column left blank)";
+      ph.style.display = "block";
+    } else { ph.style.display = "none"; }
+    const fh = document.getElementById("ftHint");
+    if(parsed.size_ft){ fh.textContent = "Supplier measurement: " + parsed.size_ft; fh.style.display="block"; }
+    else { fh.style.display="none"; }
+    const st = document.getElementById("supplierTitle");
+    if(supplied){
+      st.textContent = "Supplier calls it: " + supplied;
+      st.style.display = "block";
+    } else { st.style.display = "none"; }
+    const t = document.getElementById("thumb");
+    if(parsed.image_url){ t.src = parsed.image_url; t.className = "thumb on"; }
+    const n = parsed.image_count || 0;
+    if(n) msg("m1","Found it \u2014 " + n + " photo" + (n>1?"s":"") + " on the page. Check the fields, then add.","ok");
+    else { t.className = "thumb"; }
+    document.getElementById("preview").className = "preview on";
+    msg("m1","Found it — check the fields, then add.","ok");
+  }catch(e){
+    msg("m1", e.message, "err");
+  }finally{
+    document.getElementById("btnFetch").disabled = false;
+  }
+}
+
+async function commit(){
+  if(!parsed && !manualMode){ return; }
+  if(!document.getElementById("f_collection").value){
+    msg("m2","Pick a catalogue tab first — without it the rug won't appear anywhere.","err");
+    return;
+  }
+  const fields = {};
+  FIELDS.forEach(f=>{
+    const el = document.getElementById("f_"+f);
+    if(el && el.value.trim()) fields[f] = el.value.trim();
+  });
+  document.getElementById("btnAdd").disabled = true;
+  msg("m2","Writing row and saving photo…","busy");
+  try{
+    const r = await call(manualMode ? {
+      action:"add_rug", secret:SECRET, fields: fields
+    } : {
+      action:"add_from_url", secret:SECRET,
+      url: document.getElementById("url").value.trim(),
+      fields: fields,
+      save_photo: document.getElementById("savePhoto").checked ? "true" : "false"
+    });
+    if(!r.ok){ msg("m2", r.error, "err"); return; }
+    let s = "Added to row " + r.row + " of External Inventory";
+    if(r.wrote && r.wrote.length) s += " (" + r.wrote.length + " fields).";  else s += ".";
+    if(r.photo && r.photo.ok){
+      s += " " + r.photo.count + " photo" + (r.photo.count>1?"s":"") + " saved to \"" + r.photo.folder + "\".";
+      if(r.photo.failed && r.photo.failed.length) s += " " + r.photo.failed.length + " failed.";
+    } else if(r.photo && !r.photo.skipped){
+      s += " Photos failed: " + ((r.photo.failed||[]).join("; ") || r.photo.error || "unknown") + ".";
+    }
+    msg("m2", s, "ok");
+  }catch(e){
+    msg("m2", e.message, "err");
+  }finally{
+    document.getElementById("btnAdd").disabled = false;
+  }
+}
+
+let manualMode = false;
+
+function manualEntry(e){
+  if(e) e.preventDefault();
+  manualMode = true;
+  parsed = {};
+  FIELDS.forEach(f=>{
+    if(f==="collection"||f==="tags") return;
+    const el=document.getElementById("f_"+f); if(el) el.value="";
+  });
+  const num = (document.getElementById("url").value.match(/(\d{4,})/)||[])[1] || "";
+  document.getElementById("f_number").value = num;
+  const u = document.getElementById("url").value;
+  document.getElementById("f_provider").value =
+    /ecarpetgallery/i.test(u) ? "ECG" : /karavanrug/i.test(u) ? "KV" : "";
+  document.getElementById("preview").className = "preview on";
+  document.getElementById("thumb").className = "thumb";
+  msg("m1","Manual entry — fill what you need, then Add. No photos will be saved.","busy");
+}
+
+function reset(){
+  parsed = null;
+  manualMode = false;
+  document.getElementById("url").value = "";
+  document.getElementById("yourName").value = "";
+  document.getElementById("f_collection").value = "";
+  document.getElementById("f_tags").value = "";
+  document.getElementById("tagHint").style.display = "none";
+  document.getElementById("supplierTitle").style.display = "none";
+  FIELDS.forEach(f=>{ const el=document.getElementById("f_"+f); if(el) el.value=""; });
+  document.getElementById("preview").className = "preview";
+  document.getElementById("thumb").className = "thumb";
+  hide("m1"); hide("m2");
+}
+
+async function loadSaves(){
+  msg("m3","Loading…","busy");
+  try{
+    const r = await call({action:"list_saves", secret:SECRET});
+    if(!r.ok){ msg("m3", r.error, "err"); return; }
+    const rows = r.rows || [];
+    if(!rows.length){ msg("m3","No saves logged yet.","busy"); document.getElementById("savesOut").innerHTML=""; return; }
+
+    /* net state per client+rug: a save then unsave cancels out */
+    const net = {}, byClient = {}, byRug = {};
+    rows.forEach(x=>{ net[x.client+"||"+x.rug] = x.action === "save"; });
+    Object.keys(net).forEach(k=>{
+      if(!net[k]) return;
+      const [c,rug] = k.split("||");
+      (byClient[c] = byClient[c] || []).push(rug);
+      byRug[rug] = (byRug[rug] || 0) + 1;
+    });
+
+    let html = '<div class="stack"><h3>Most saved</h3><table><tr><th>Rug</th><th>Saves</th></tr>';
+    Object.entries(byRug).sort((a,b)=>b[1]-a[1]).forEach(([rug,n])=>{
+      html += "<tr><td>"+esc(rug)+'</td><td class="n">'+n+"</td></tr>";
+    });
+    html += "</table></div>";
+
+    Object.keys(byClient).sort().forEach(c=>{
+      html += '<div class="stack"><h3>'+esc(c)+" — "+byClient[c].length+" saved</h3><table>";
+      byClient[c].forEach(rug=>{ html += "<tr><td>"+esc(rug)+"</td></tr>"; });
+      html += "</table></div>";
+    });
+
+    document.getElementById("savesOut").innerHTML = html;
+    hide("m3");
+  }catch(e){ msg("m3", e.message, "err"); }
+}
+
+function useTags(e){
+  e.preventDefault();
+  const th = document.getElementById("tagHint");
+  document.getElementById("f_tags").value = th.dataset.tags || "";
+}
+
+let catRugs = [], catFilter = "";
+
+async function loadCatalogue(){
+  const tabName = document.getElementById("catTab").value;
+  msg("m4","Reading " + tabName + "…","busy");
+  try{
+    const r = await call({action:"list_rugs", secret:SECRET, tab:tabName});
+    if(!r.ok){ msg("m4", r.error, "err"); return; }
+    catRugs = r.rugs || [];
+    if(!catRugs.length){ msg("m4","No rugs with a name on that tab yet.","busy");
+      document.getElementById("catGrid").innerHTML=""; document.getElementById("catFilters").innerHTML=""; return; }
+    catFilter = "";
+    renderFilters(); renderCatalogue();
+    const withPhotos = catRugs.filter(x=>x.photos && x.photos.length).length;
+    msg("m4", catRugs.length + " rugs \u2014 " + withPhotos + " with photos.", "ok");
+  }catch(e){ msg("m4", e.message, "err"); }
+}
+
+function renderFilters(){
+  const cols = [...new Set(catRugs.map(r=>r.collection).filter(Boolean))].sort();
+  let html = '<button class="chip' + (catFilter===""?" on":"") + '" onclick="setFilter(\'\')">All ' + catRugs.length + '</button>';
+  cols.forEach(c=>{
+    const n = catRugs.filter(r=>r.collection===c).length;
+    html += '<button class="chip' + (catFilter===c?" on":"") + '" onclick="setFilter(\'' + esc(c) + '\')">' + esc(c) + ' ' + n + '</button>';
+  });
+  const none = catRugs.filter(r=>!r.collection).length;
+  if(none) html += '<button class="chip' + (catFilter==="__none"?" on":"") + '" onclick="setFilter(\'__none\')">No tab ' + none + '</button>';
+  document.getElementById("catFilters").innerHTML = html;
+}
+
+function setFilter(c){ catFilter = c; renderFilters(); renderCatalogue(); }
+
+function renderCatalogue(){
+  const list = catRugs.filter(r =>
+    catFilter === "" ? true : catFilter === "__none" ? !r.collection : r.collection === catFilter);
+
+  document.getElementById("catGrid").innerHTML = list.map(r=>{
+    const dims = (r.width && r.length) ? r.width + " \u00D7 " + r.length + " cm" : "";
+    const meta = [dims, r.material, r.age, r.origin].filter(Boolean).join("<br>");
+    const price = r.price ? ("$" + Number(String(r.price).replace(/[^0-9.]/g,"")).toLocaleString()) : "";
+    const photo = (r.photos && r.photos.length)
+      ? '<img src="' + r.photos[0] + '" loading="lazy" data-rot="' +
+        (r.rotate === "force" ? "force" : (r.rotate ? 1 : 0)) +
+        '" onload="onPhoto(this)" onerror="this.remove()">' +
+        (r.photos.length>1 ? '<span class="cnt">' + r.photos.length + '</span>' : '')
+      : '<span>no photo</span>';
+    return '<div class="card"><div class="ph">' + photo + '</div>' +
+           '<div class="nm">' + esc(r.name) + '</div>' +
+           (meta ? '<div class="mt">' + meta + '</div>' : '') +
+           (price ? '<div class="pr">' + price + '</div>' : '') +
+           '</div>';
+  }).join("");
+}
+
+function onPhoto(img){
+  const r = img.dataset.rot;
+  if(r === "force" || (r === "1" && img.naturalWidth > img.naturalHeight)) img.classList.add("rot");
+}
+
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+document.getElementById("url").addEventListener("keydown", e=>{ if(e.key==="Enter") fetchUrl(); });
+document.getElementById("yourName").addEventListener("keydown", e=>{ if(e.key==="Enter") document.getElementById("url").focus(); });
+</script>
+</body>
+</html>

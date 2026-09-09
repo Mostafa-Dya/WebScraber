@@ -1,0 +1,44 @@
+---
+// Catalogue card for the admin list (docs/ADMIN_SPEC.md §8.3, legacy renderCatalogue()): photo with
+// the rotate logic (`data-rot`, class added on load by rug-list.ts), count badge, name, meta, price,
+// status chip. The whole card links to the edit page. Filtering keys on the data attributes.
+import type { AdminRug } from '../../lib/admin/read.ts';
+import { driveImageUrl } from '../../lib/images.ts';
+import { dataRot } from '../../lib/rotate.ts';
+import { dims } from '../../lib/units.ts';
+import { collectionSlug } from '../../lib/text.ts';
+import type { Collection } from '../../lib/sheets/types.ts';
+
+interface Props {
+  rug: AdminRug;
+  collections: readonly Collection[];
+}
+const { rug, collections } = Astro.props;
+const photo = rug.photos[0] ? driveImageUrl(rug.photos[0], 800) : undefined;
+const meta = [dims(rug.widthCm, rug.lengthCm, 'cm'), rug.material, rug.age, rug.origin].filter(Boolean);
+const price = rug.priceUsd ? `$${rug.priceUsd.toLocaleString('en-US')}` : '';
+const slug = rug.collection.trim() ? collectionSlug(rug.collection, collections) : '';
+const search = [rug.name, rug.id, rug.supplierRef, rug.slug].join(' ').toLowerCase().replace(/[<>]/g, ' '); // a haystack, never markup
+---
+
+<a
+  href={`/admin/rugs/${encodeURIComponent(rug.id)}`}
+  class:list={['card', `status-${rug.status}`]}
+  data-card
+  data-id={rug.id}
+  data-collection={slug}
+  data-status={rug.status}
+  data-search={search}
+>
+  <div class="ph">
+    {photo ? <img src={photo} alt="" loading="lazy" data-rot={dataRot(rug.rotate)} /> : <span>no photo</span>}
+    {rug.photos.length > 1 && <span class="cnt">{rug.photos.length}</span>}
+  </div>
+  <div class="nm">{rug.name}</div>
+  <div class="mt">
+    <span class="mono">{rug.id}</span>
+    {meta.map((m) => <span class="line">{m}</span>)}
+  </div>
+  {price && <div class="pr">{price}</div>}
+  <div class:list={['status', rug.status]}>{rug.status}</div>
+</a>

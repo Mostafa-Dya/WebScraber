@@ -1,0 +1,34 @@
+---
+// A chip group (docs/ADMIN_SPEC.md §8.1, §8.3): buttons with aria-pressed, wired by
+// src/scripts/admin/chips.ts (toggle, roving arrow-key focus). Text only; no inline handlers.
+export interface Chip {
+  value: string;
+  label: string;
+  count?: number;
+  pressed?: boolean;
+}
+
+interface Props {
+  id: string;
+  label: string;
+  chips: Chip[];
+  multi?: boolean;
+}
+const { id, label, chips, multi = false } = Astro.props;
+---
+
+<div class="chips" id={id} role="group" aria-label={label} data-multi={multi ? 'true' : 'false'}>
+  {
+    chips.map((c) => (
+      <button
+        type="button"
+        class:list={['chip', { on: c.pressed === true }]}
+        data-value={c.value}
+        aria-pressed={c.pressed ? 'true' : 'false'}
+      >
+        {c.label}
+        {c.count !== undefined && ` ${c.count}`}
+      </button>
+    ))
+  }
+</div>

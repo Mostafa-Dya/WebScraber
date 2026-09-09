@@ -1,0 +1,328 @@
+/* The customer preview's design system — Figma "05 · Customer Preview", file Zzv9aXvSad5NTZc9rFRFxx.
+ *
+ * This is a separate stylesheet on purpose. `catalogue.css` is the byte-for-byte parity record of the
+ * original public catalogue page and `editorial.css` is the design pass layered over it; the private
+ * preview is a different product with a different design, so it gets its own sheet rather than a pile
+ * of overrides. The public catalogue is untouched by anything in here.
+ *
+ * Values come from the Figma file's own variables (see src/styles/modes.css, which holds them as
+ * tokens) and from measuring the frames. Nothing here is eyeballed from a screenshot.
+ *
+ * Layout facts worth stating once, because every screen repeats them:
+ *   - page gutter 48 desktop / 16 at 390;
+ *   - 64px between every top-level section, and 64 again from the header and to the footer;
+ *   - headings are Inter 700 UPPERCASE with 1.2 leading; body is Inter 400 with 1.65;
+ *   - nothing is rounded except the reaction circles and the chips.
+ */
+
+/* The body's own 8px UA margin has to go, or every gutter becomes 56 instead of 48 and the
+   full-bleed bands — the hero, the header rule, the footer — stop short of the viewport edges. */
+.pv {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.pv *,
+.pv *::before,
+.pv *::after {
+  box-sizing: border-box;
+}
+
+.pv h1,
+.pv h2,
+.pv h3,
+.pv p,
+.pv ul,
+.pv ol,
+.pv figure {
+  margin: 0;
+}
+
+.pv ul,
+.pv ol {
+  list-style: none;
+  padding: 0;
+}
+
+.pv img {
+  display: block;
+  max-width: 100%;
+}
+
+.pv a {
+  color: inherit;
+}
+
+/* The focus ring is ink, never the brand red: red next to a destructive action reads as an error. */
+.pv :focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+/* ---------- shared primitives ---------- */
+
+.pv-wrap {
+  width: 100%;
+  padding-inline: var(--gutter);
+}
+
+.pv-h1 {
+  font-size: var(--h1);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.pv-h3 {
+  font-size: var(--h3);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  text-transform: uppercase;
+}
+
+.pv-h4 {
+  font-size: var(--h4);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  text-transform: uppercase;
+}
+
+/* The label style: Inter 700 / 12 / uppercase. Used on buttons, spec keys and footer headings. */
+.pv-label {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: var(--leading-body);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.pv-lede {
+  font-size: var(--text-lg);
+  color: var(--ink-soft);
+}
+
+.pv-muted {
+  color: var(--ink-muted);
+}
+
+/* A flex spacer. The Figma frames use a 1px-tall stretched box for this; in CSS it is one line. */
+.pv-spacer {
+  flex: 1 1 auto;
+  min-width: var(--stack-md);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- controls ---------- */
+
+/* Input: bg/surface on a hairline, padding 10.4 / 12.8, both deliberately off the 4pt grid.
+   Focus takes the brand red because the storefront has no other focus colour for form fields. */
+.pv-input {
+  width: 100%;
+  background: var(--surface);
+  border: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--input-y) var(--input-x);
+  font: inherit;
+  font-size: var(--text-base);
+  color: var(--ink);
+}
+
+.pv-input::placeholder {
+  color: var(--ink-muted);
+}
+
+.pv-input:focus-visible {
+  border-color: var(--brand);
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+/* Button: Inter 700 / 12 / uppercase / square. Hover is the storefront's own primary hover, the
+   brand red, not a tint of black. */
+.pv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--tight);
+  width: 100%;
+  padding: var(--input-y) var(--control-x);
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--surface);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: var(--leading-body);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background-color var(--motion-transition, 150ms) ease;
+}
+
+.pv-btn:hover {
+  background: var(--brand);
+}
+
+.pv-btn[aria-busy='true'] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* ---------- header ---------- */
+
+/* 152 tall on desktop: 64 above the wordmark, the wordmark's own 24, 64 below, then the hairline. */
+.pv-header {
+  display: flex;
+  align-items: center;
+  gap: var(--stack-md);
+  padding: var(--section-gap) var(--gutter);
+  border-bottom: var(--rule-width) solid var(--rule);
+}
+
+.pv-header .pv-wordmark {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.pv-header .pv-who {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* ---------- page rhythm ---------- */
+
+/* 64 above and between sections; 112 below the last one, which is the brief's section spacing and
+   is what puts the footer 176 clear of the final row of cards. */
+.pv-main {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+  padding-top: var(--section-gap);
+}
+
+/* ---------- footer ---------- */
+
+/* The footer sits on the surface, not the page ground, with a hairline above it. */
+.pv-footer {
+  background: var(--surface);
+  border-top: var(--rule-width) solid var(--rule);
+  padding: var(--section-gap) var(--gutter);
+  margin-top: var(--section-gap);
+}
+
+.pv-footer-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--stack-lg);
+}
+
+.pv-footer-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--stack-xs);
+}
+
+.pv-footer-col p {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
+.pv-footer-fine {
+  margin-left: auto;
+  text-align: right;
+}
+
+.pv-footer-fine p {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+.pv-footer a {
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.pv-footer a:hover {
+  color: var(--brand);
+}
+
+/* ---------- section heads ---------- */
+
+.pv-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--stack-sm);
+}
+
+.pv-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--stack-md);
+}
+
+/* ---------- 390 ----------
+   The mobile frames are not a squeeze of the desktop: the gutter halves to 16, the header shrinks to
+   52 with the wordmark one step down the scale, and the section rhythm tightens. */
+@media (max-width: 767px) {
+  .pv-wrap {
+    padding-inline: var(--stack-lg);
+  }
+
+  .pv-header {
+    padding: var(--stack-lg);
+  }
+
+  .pv-header .pv-wordmark {
+    font-size: var(--h4);
+  }
+
+  .pv-main {
+    gap: 40px;
+    padding-top: 40px;
+  }
+
+  .pv-footer {
+    padding: var(--section-gap) var(--stack-lg);
+  }
+
+  .pv-footer-row {
+    flex-direction: column;
+    gap: var(--stack-lg);
+  }
+
+  .pv-footer-fine {
+    margin-left: 0;
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

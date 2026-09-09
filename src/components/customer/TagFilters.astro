@@ -1,0 +1,93 @@
+---
+// The filter strip (Figma 53:42).
+//
+// Square chips, 36 tall, 8px apart, wrapping. The selected one is filled with ink; the rest sit on
+// `action/subtle`. They are square, not pills — a 1:1 render of the strip settles it, and only the
+// reaction circles are round in this system.
+//
+// The design filters by rug **type** rather than by collection, which is what a buyer actually scans
+// for, and closes the row with a "Liked" chip that narrows the grid to their own shortlist. That
+// count is rendered as a placeholder and corrected on load from the visitor's own stored reactions,
+// because it is per-visitor and the page is cached.
+interface Props {
+  tags: Array<{ slug: string; name: string; count: number }>;
+}
+const { tags } = Astro.props;
+---
+
+<nav class="pv-filters" aria-label="Filter rugs">
+  <button type="button" class="pv-chip is-on" data-filter="all" aria-pressed="true">All</button>
+  {
+    tags.map((t) => (
+      <button type="button" class="pv-chip" data-filter={t.slug} aria-pressed="false">
+        {t.name}
+      </button>
+    ))
+  }
+  <button type="button" class="pv-chip pv-chip-liked" data-filter="liked" aria-pressed="false">
+    <span class="pv-chip-heart" aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="12" height="12" fill="none">
+        <path
+          d="M8 13.4C8 13.4 2.6 10.2 2.6 6.6C2.40109 5.88392 2.49479 5.11814 2.86048 4.47114C3.22618 3.82414 3.83392 3.34891 4.55 3.15C5.26608 2.95109 6.03186 3.04479 6.67886 3.41048C7.32586 3.77618 7.80109 4.38392 8 5.1C8.19891 4.38392 8.67414 3.77618 9.32114 3.41048C9.96814 3.04479 10.7339 2.95109 11.45 3.15C12.1661 3.34891 12.7738 3.82414 13.1395 4.47114C13.5052 5.11814 13.5989 5.88392 13.4 6.6C13.4 10.2 8 13.4 8 13.4Z"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
+      </svg>
+    </span>
+    Liked <span class="pv-chip-count" data-liked-count>0</span>
+  </button>
+</nav>
+
+<style>
+  .pv-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--stack-sm);
+  }
+
+  /* The label is Body S: Inter 400, sentence case, 12/1.65. Not the Label style — a tag reads as a
+     caption, and shouting "KILIM — FLATWEAVE" would lose the spaced em dash the design sets. The
+     36px height is hugged from 8 + 20 + 8 rather than fixed. */
+  .pv-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--stack-sm);
+    padding: var(--stack-sm) var(--stack-lg);
+    border: 0;
+    border-radius: var(--radius);
+    background: var(--subtle);
+    color: var(--ink);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    font-weight: 400;
+    line-height: var(--leading-body);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .pv-chip.is-on,
+  .pv-chip[aria-pressed='true'] {
+    background: var(--ink);
+    color: var(--surface);
+  }
+
+  .pv-chip-heart {
+    display: block;
+    width: 12px;
+    height: 12px;
+  }
+  .pv-chip-count {
+    color: inherit;
+    opacity: 0.65;
+  }
+
+  /* A chip with nothing behind it is noise; filters.ts hides those rather than offering a dead end. */
+  .pv-chip[hidden] {
+    display: none;
+  }
+</style>
+
+<script>
+  import { initFilters } from '../../scripts/filters.ts';
+  initFilters();
+</script>

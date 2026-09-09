@@ -1,0 +1,32 @@
+---
+// The signed-in preview header (brief §7): the wordmark links to the buyer's own catalog rather
+// than to `/`, the eyebrow carries their name, and the unit/currency controls are the shared ones.
+import type { RateTable } from '../../lib/currency.ts';
+import Controls from '../Controls.astro';
+import Wordmark from '../Wordmark.astro';
+
+interface Props {
+  slug: string;
+  displayName: string;
+  rates: RateTable;
+  /** Overrides the eyebrow on the detail page (the collection name). */
+  eyebrow?: string;
+}
+const { slug, displayName, rates, eyebrow } = Astro.props;
+---
+
+<header>
+  <div class="masthead">
+    <a href={`/${slug}`} class="home" aria-label={`${displayName}'s preview`}><Wordmark /></a>
+    <p class="eyebrow">{eyebrow ?? `Welcome, ${displayName}.`}</p>
+  </div>
+  <Controls rates={rates} />
+</header>
+
+<style>
+  .home {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+  }
+</style>

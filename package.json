@@ -1,0 +1,59 @@
+{
+  "name": "serio-ludere-catalogue",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Serio Ludere rug catalogue: Astro 7 site with a Google Sheet as CMS and vote store",
+  "engines": {
+    "node": ">=24.16.0 <25"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro check && astro build",
+    "preview": "astro preview",
+    "start": "node --env-file-if-exists=.env ./dist/server/entry.mjs",
+    "typecheck": "astro check",
+    "lint": "eslint \"src/**/*.{ts,astro}\" \"scripts/**/*.ts\" \"tests/**/*.ts\" astro.config.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "google:auth": "node scripts/google-auth.ts",
+    "admin:password": "node scripts/admin-password.ts",
+    "sheet:init": "node --env-file=.env scripts/init-sheet.ts",
+    "sheet:roundtrip": "node --env-file=.env scripts/roundtrip.ts",
+    "check:photos": "node --env-file=.env scripts/check-photos.ts",
+    "shots": "node scripts/screenshots.ts",
+    "qa": "node scripts/qa.ts",
+    "reactions:compact": "node scripts/compact-reactions.ts"
+  },
+  "dependencies": {
+    "@astrojs/node": "11.1.5",
+    "astro": "7.3.1",
+    "cheerio": "^1.2.0",
+    "google-auth-library": "11.0.2",
+    "gsap": "^3.15.0",
+    "impit": "^0.14.4",
+    "undici": "^8.10.2",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
+    "@vitest/coverage-v8": "5.0.0",
+    "eslint": "10.10.0",
+    "eslint-plugin-astro": "3.1.0",
+    "happy-dom": "^20.14.0",
+    "playwright": "^1.63.0",
+    "prettier": "3.9.6",
+    "prettier-plugin-astro": "0.14.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.69.0",
+    "vitest": "5.0.0"
+  },
+  "overrides": {
+    "sharp": ">=0.35.4"
+  }
+}

@@ -1,0 +1,183 @@
+{
+ "topic": "Google Sheets as vote store: concurrent spreadsheets.values.append safety, read-after-append COUNTIFS freshness, and whether likes/dislikes should be code-written or formula-owned",
+ "findings": [
+  {
+   "claim": "The official values.append reference contains NO statement about concurrency, atomicity, or simultaneous requests. It only says: \"The input range is used to search for existing data and find a 'table' within that range. Values will be appended to the next row of the table, starting with the first column of the table.\" insertDataOption OVERWRITE (default): \"The new data overwrites existing data in the areas it is written. (Note: adding data to the end of the sheet will still insert new rows or columns so the data can be written.)\"; INSERT_ROWS: \"Rows are inserted for the new data.\" Response has tableRange (\"the table that values are being appended to (before the values were appended)\") and updates.",
+   "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/append",
+   "confidence": "high",
+   "evidence": "Fetched 2026-09-05; page checked specifically for 'concurrency/atomicity/race' wording - none present. URL pattern: POST https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}/values/{range}:append"
+  },
+  {
+   "claim": "The underlying batch request that append maps to, AppendCellsRequest, is documented as: \"Adds new cells after the last row with data in a sheet, inserting new rows into the sheet if necessary.\" i.e. it writes into existing empty cells below the data and only inserts grid rows when the grid is full - which is the mechanism that lets two concurrent appends target the same cells.",
+   "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/request",
+   "confidence": "high",
+   "evidence": "Verbatim from the Request reference. Also verbatim: InsertDimensionRequest \"Inserts rows or columns in a sheet at a particular index\" (range: \"Both the start and end indexes must be bounded\"); UpdateCellsRequest \"Updates all cells in a range with new data\"; InsertRangeRequest \"Inserts cells into a range, shifting the existing cells over or down.\""
+  },
+  {
+   "claim": "The ONLY official atomicity guarantee in the Sheets API is for spreadsheets.batchUpdate: \"Each request is validated before being applied. If any request is not valid then the entire request will fail and nothing will be applied.\" and \"Due to the collaborative nature of spreadsheets, it is not guaranteed that the spreadsheet will reflect exactly your changes after this completes, however it is guaranteed that the updates in the request will be applied together atomically.\" The second sentence is also the closest thing to an official statement that read-after-write is not guaranteed.",
+   "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/batchUpdate",
+   "confidence": "high",
+   "evidence": "Verbatim quotes fetched 2026-09-05. POST https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}:batchUpdate"
+  },
+  {
+   "claim": "Google (Eric Koleda, then Google Workspace DevRel, posting 'via Google Spreadsheets API' group, 6 Oct 2016) confirmed concurrent appends lose rows: \"Unfortunately this is a know limitation of the append requests\"; they \"place data into existing cells, rather than create new cells. Because of this, two requests can target the same existing cells and overwrite each other.\" Workarounds given: (1) \"Implement locking in your application to ensure that only one process is writing to the spreadsheet at a given moment\"; (2) \"Instead of using the appendCells request, send an insertDimension and updateCells request in a single batch. This will add a new row for the new data and write to it in one atomic unit.\" The reporter's reproduction: 4 simultaneous 1-row appends produced 3 rows.",
+   "source_url": "https://www.mail-archive.com/google-spreadsheets-api@googlegroups.com/msg02682.html",
+   "confidence": "high",
+   "evidence": "Mail-archive copy of the Google Group thread 'Concurrent rows appending in Google Sheets API v4'. Koleda's Google affiliation corroborated by AppsScriptPulse/Totally Unscripted profiles (https://pulse.appsscript.info/p/author/erickoleda/) describing him as 'former Google Workspace Developer Relations Engineer'. This is a 2016 forum answer, not a docs page; Google has never put it in the reference."
+  },
+  {
+   "claim": "No official Google documentation and no controlled, published 2024-2026 benchmark of concurrent values.append was found. What exists for 2024-2026 is anecdotal field reports, all consistent with Koleda's 2016 explanation: n8n community 23 Jan 2026 - ~100 simultaneous webhook POSTs each doing a Google Sheets append, all executions 'successful', but only ~56 or ~63 rows landed; fix was to stop appending (pre-created rows + update by key).",
+   "source_url": "https://community.n8n.io/t/google-sheets-append-row-drops-rows-under-high-webhook-concurrency/254786",
+   "confidence": "medium",
+   "evidence": "Post date and counts quoted from the thread. Caveat (see next finding): n8n's default append path is not values.append."
+  },
+  {
+   "claim": "CAVEAT on the n8n evidence: n8n's Google Sheets node 'Append' with the default option 'Minimise API Calls' (name useAppend, default: false) does NOT call values.append; it reads the sheet (getData, UNFORMATTED_VALUE), computes lastRowWithData = length + 1, then PUTs values.update at that row. That is a client-side read-then-write race that would lose rows regardless of Google's behaviour. Only with useAppend=true does it POST to .../values/{range}:append. So the 2023/2026 n8n threads are weak evidence about values.append specifically.",
+   "source_url": "https://raw.githubusercontent.com/n8n-io/n8n/master/packages/nodes-base/nodes/Google/Sheet/v2/helpers/GoogleSheet.ts",
+   "confidence": "high",
+   "evidence": "Source fetched 2026-09-05: appendData() -> `const lastRowWithData = lastRow || ((await this.getData(range,'UNFORMATTED_VALUE'))||[]).length + 1;` then updateRows() does `if (useAppend) { POST .../values/${range}:append } else { PUT .../values/${range} }`. commonDescription.ts: useAppendOption { name: 'useAppend', default: false, description: 'Whether to use append instead of update(default)...' } (https://raw.githubusercontent.com/n8n-io/n8n/master/packages/nodes-base/nodes/Google/Sheet/v2/actions/sheet/commonDescription.ts)."
+  },
+  {
+   "claim": "Other recent anecdotes: n8n 18 May 2026 - bulk simultaneous webhook triggers, 'Google Sheets only logs a few rows and misses the rest', executions all show success; resolution was queueing through Postgres then appending sequentially. n8n 18 Jul 2023 - concurrent webhook appends 'overwrite the second row' rather than adding rows. Google developer forum 31 Mar 2026 - append issued milliseconds after deleteDimension lands at the wrong row ('some rows are skipped and the inserted data becomes offset'), i.e. successive structural writes are not read-your-writes consistent at millisecond spacing.",
+   "source_url": "https://community.n8n.io/t/google-sheets-missing-rows-race-condition-during-bulk-webhook-triggers/295991",
+   "confidence": "medium",
+   "evidence": "Also https://community.n8n.io/t/google-sheet-operation-append-doesnt-append-but-overwrite-data-in-row-when-multiple-requests-come-to-a-webhook/28227 and https://discuss.google.dev/t/row-offsets-occur-when-append-requests-run-immediately-after-deletedimension-suggesting-the-delete-isn-t-fully-applied-yet/345218 (no Google staff reply visible). None is a controlled test; none states which insertDataOption was used."
+  },
+  {
+   "claim": "Oldest library-level report: node-google-spreadsheet issue #131 (8 Aug 2016) - 'there seemed to be race conditions with google when adding 600 at the same time'; adding one row at a time was reliable. The current library (v5) implements addRows() as values.append on range `{sheet}!A{headerRow}:append` with `insertDataOption: options.insert ? 'INSERT_ROWS' : 'OVERWRITE'`, so it inherits whatever values.append does.",
+   "source_url": "https://github.com/theoephraim/node-google-spreadsheet/issues/131",
+   "confidence": "medium",
+   "evidence": "Issue fetched; implementation verified in https://raw.githubusercontent.com/theoephraim/node-google-spreadsheet/main/src/lib/GoogleSpreadsheetWorksheet.ts lines 454-458."
+  },
+  {
+   "claim": "Whether insertDataOption=INSERT_ROWS alone makes concurrent values.append safe is UNVERIFIED: the docs only say \"Rows are inserted for the new data\"; Koleda's 2016 answer did not offer it as a fix, and no test in this session's sources isolates it. Treat as unknown; use the explicit insertDimension+updateCells batch instead.",
+   "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/append",
+   "confidence": "low",
+   "evidence": "Absence of evidence in all fetched sources; flagged as an open question."
+  },
+  {
+   "claim": "Apps Script Sheet.appendRow is documented today only as \"Appends a row to the bottom of the current data region in the sheet. If a cell's content begins with =, it's interpreted as a formula.\" The current Sheet and Spreadsheet reference pages contain ZERO occurrences of 'atomic' or 'intervening' - the oft-quoted 'this operation is atomic; it prevents issues where a user asks for the last row...' sentence is not in current docs, so do not rely on appendRow being atomic without LockService.",
+   "source_url": "https://developers.google.com/apps-script/reference/spreadsheet/sheet",
+   "confidence": "high",
+   "evidence": "curl of both pages 2026-09-05 (887,763 and 871,359 bytes) then `grep -o -i 'atomic' | wc -l` = 0 and 'intervening' = 0 on each; appendRow description and example extracted verbatim."
+  },
+  {
+   "claim": "Apps Script LockService is the officially documented mutual-exclusion primitive: \"Prevents concurrent access to sections of code. This can be useful when you have multiple users or processes modifying a shared resource and want to prevent collisions.\" getScriptLock(): \"Gets a lock that prevents any user from concurrently running a section of code.\" waitLock(ms) \"Attempts to acquire the lock, timing out with an exception after the provided number of milliseconds\"; tryLock(ms) returns false on timeout. \"The lock is automatically released when the script terminates, but for efficiency it is best to release it as soon as you no longer need exclusive access.\" No maximum hold time is documented.",
+   "source_url": "https://developers.google.com/apps-script/reference/lock/lock",
+   "confidence": "high",
+   "evidence": "Verbatim from Lock and LockService (https://developers.google.com/apps-script/reference/lock/lock-service) reference pages fetched 2026-09-05. The documented example uses PropertiesService counters, not appendRow."
+  },
+  {
+   "claim": "CRITICAL for the revalidate design: Apps Script triggers do NOT fire for API writes. Simple triggers: \"Script executions and API requests don't cause triggers to run. For example, calling Range.setValue() to edit a cell does not cause the spreadsheet's onEdit trigger to run.\" Installable: \"Script executions and API requests don't cause triggers to run.\" An installable edit trigger \"runs when a user modifies a value in a spreadsheet.\" Therefore vote rows appended by the Astro server via the Sheets API will NOT invoke the onEdit -> POST /api/revalidate path; the server must invalidate its own cache after writing.",
+   "source_url": "https://developers.google.com/apps-script/guides/triggers/installable",
+   "confidence": "high",
+   "evidence": "Verbatim from installable triggers guide and simple triggers guide (https://developers.google.com/apps-script/guides/triggers). Also: \"Installable triggers always run under the account of the person who created them\"; simple triggers \"can't run for longer than 30 seconds\"."
+  },
+  {
+   "claim": "Reads via values.get return calculated formula results: ValueRenderOption FORMATTED_VALUE = \"Values will be calculated & formatted in the response according to the cell's formatting\" (example: A1=1.23, A2==A1 currency -> \"$1.23\"); UNFORMATTED_VALUE = \"Values will be calculated, but not formatted\" (-> 1.23); FORMULA = \"Values will not be calculated\" (-> \"=A1\"). The values.get reference contains no statement about caching, staleness, recalculation timing or consistency.",
+   "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/ValueRenderOption",
+   "confidence": "high",
+   "evidence": "Verbatim; values.get page (https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/get) checked for consistency wording - none. Use UNFORMATTED_VALUE for COUNTIFS so counts come back as numbers."
+  },
+  {
+   "claim": "The only empirical data on read-after-write recalculation is James Dobson's 25 Jan 2017 experiment: polling a cell containing =NOW() via the API, \"the API usually doesn't return the latest value\" (median staleness ~70 min, range 1-1006 min); but after any write via the API \"all the formulae are recalculated\" server-side, and a browser edit also refreshes. No 2024-2026 reproduction was found. Note this tested a VOLATILE function; COUNTIFS is non-volatile and its inputs change only when a row is written, which is exactly the event that triggers server recalculation in Dobson's data.",
+   "source_url": "https://jamesdobson.name/post/sheets-api-and-formula-calculation/",
+   "confidence": "medium",
+   "evidence": "Blog post, dated Wed, Jan 25, 2017. Corroborating 2023 anecdote (MIT App Inventor forum, Aug 2023): reading formula results while a write was still in flight returned pre-recalc values; fix was to sequence the read strictly after the write completed (https://community.appinventor.mit.edu/t/slow-app-execution-to-allow-google-sheet-time-to-recalculate/91270). Neither is an official guarantee."
+  },
+  {
+   "claim": "Sheets' Recalculation setting (File > Settings > Calculation) \"Sets how often certain formulas are updated\" and concerns volatile functions \"TODAY, NOW, RAND, and RANDBETWEEN\"; it does not govern COUNTIFS, which recalculates on change of its inputs. So a COUNTIFS over the Votes tab updates as part of the write that adds the vote row, not on a timer.",
+   "source_url": "https://support.google.com/docs/answer/58515",
+   "confidence": "medium",
+   "evidence": "Verbatim scope statement from the support page; the inference that COUNTIFS is outside that setting follows from the page limiting it to 'certain formulas' (volatile ones)."
+  },
+  {
+   "claim": "Sheets API quotas (page updated 2026-07-31): reads 300/min/project and 60/min/user/project; writes 300/min/project and 60/min/user/project; exceeding returns \"429: Too many requests\"; \"you should use an exponential backoff algorithm\" (truncated exponential backoff, min(((2^n)+random_ms), maximum_backoff)); \"Provided that you stay within the per-minute quotas, there's no limit to the number of requests that you can make per day.\" A service account counts as one user, so a studio catalogue writing one batchUpdate per vote has a hard ceiling of 60 votes/min before backoff.",
+   "source_url": "https://developers.google.com/workspace/sheets/api/limits",
+   "confidence": "high",
+   "evidence": "Verbatim numbers and quotes fetched 2026-09-05."
+  },
+  {
+   "claim": "Apps Script limits (page updated 2026-07-22) relevant to a LockService/doPost design: script runtime 6 min/execution; simultaneous executions 30/user and 1,000/script; triggers total runtime 90 min/day (consumer) or 6 hr/day (Workspace); URL Fetch 20,000/day (consumer) or 100,000/day (Workspace); no lock-specific quota row. A web app deployed 'Execute as me' runs every request as the owner, so the 30 simultaneous-executions/user cap applies to all visitors combined.",
+   "source_url": "https://developers.google.com/apps-script/guides/services/quotas",
+   "confidence": "high",
+   "evidence": "Verbatim table values. Web app requirements from https://developers.google.com/apps-script/guides/web: must contain doGet/doPost returning HtmlOutput or TextOutput; e.postData.contents = \"The content text of the POST body\"; production URL ends in /exec; 'Execute the app as me' vs 'as user accessing the web app'."
+  },
+  {
+   "claim": "Sheets 'Tables' are now API-manageable (AddTableRequest/UpdateTableRequest/DeleteTableRequest exist in the Request union; announced ~29 Apr-7 May 2025). Appending to a table uses AppendCellsRequest with tableId: \"This appends the values to the first free row and is aware of full rows and footers. If there are no empty rows, this inserts rows to the end of the table and before any footer.\" This is still 'first free row' semantics, so there is no reason to expect it to fix the concurrent-append race; unverified either way.",
+   "source_url": "https://developers.google.com/workspace/sheets/api/guides/tables",
+   "confidence": "medium",
+   "evidence": "Tables guide (updated 2026-07-22) and Request reference confirm addTable/updateTable/deleteTable and AppendCellsRequest.tableId (\"The data will be only appended to the table body\"). Date from https://pulse.appsscript.info/p/2025/05/simplify-google-sheets-table-management-with-new-api-support/ (7 May 2025)."
+  },
+  {
+   "claim": "Reasoned (not documented) explanation of why insertDimension+updateCells at a FIXED index (e.g. directly under the header) is safe under concurrency while append is not: each batch is applied atomically and batches are serialised server-side; every batch creates its own fresh row at index 1 and writes into it, so a second concurrent batch shifts the first's row to index 2 rather than overwriting it. No 'find the last row' step exists, so nothing can be stale. The cost is that the Votes log is newest-first, which COUNTIFS does not care about.",
+   "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/batchUpdate",
+   "confidence": "medium",
+   "evidence": "Inference combining the batchUpdate atomicity guarantee with Koleda's 2016 statement that this pattern writes 'in one atomic unit'. Not independently load-tested in this session - see open questions."
+  },
+  {
+   "claim": "Current package versions (npm registry, 2026-09-05): googleapis 178.0.0; @googleapis/sheets 14.0.0; google-spreadsheet 5.3.0; google-auth-library 11.0.2.",
+   "source_url": "https://registry.npmjs.org/googleapis/latest",
+   "confidence": "high",
+   "evidence": "curl of https://registry.npmjs.org/<pkg>/latest for each; tarball names googleapis-178.0.0.tgz, sheets-14.0.0.tgz, google-spreadsheet-5.3.0.tgz, google-auth-library-11.0.2.tgz."
+  }
+ ],
+ "recommendation": "Decision: make `likes` and `dislikes` formula-owned (COUNTIFS over the Votes tab), exactly like `rating`, and have the site write ONLY an insert-only vote row. This removes the read-modify-write on counters entirely, which was the sole argument for an Apps Script LockService hop; Sheets has no atomic increment, and the current Apps Script docs no longer claim appendRow is atomic, so that path would add latency, a 30-simultaneous-executions cap and an extra deployment for no gain.\n\nWrite path: do NOT use spreadsheets.values.append (Google's own engineer confirmed in 2016 that concurrent appends overwrite each other; 2023-2026 field reports match; nothing since contradicts it, and there is no official 2024-2026 test). Use one spreadsheets.batchUpdate containing insertDimension (ROWS, startIndex 1, endIndex 2, inheritFromBefore false) followed by updateCells at row index 1 of the Votes sheet - the pattern Google described as 'one atomic unit' and the only write path with a documented atomicity guarantee. Newest-first order is harmless for COUNTIFS. Budget: 60 writes/min per service-account user; wrap with exponential backoff on 429. Because this needs no process-local mutex, it works identically on Vercel/Netlify/Cloudflare/Node; only if you insisted on values.append + an in-memory mutex would a single-instance Node host be required.\n\nRead path / freshness: do not make the vote response depend on reading the COUNTIFS cell back. Apps Script triggers do not fire for API writes, so the onEdit->/api/revalidate hook will NOT run for votes; after a successful batchUpdate the server should itself bump the cached counters for that rug (optimistic, +1) and mark the rugs cache stale so the next read within the 1-minute TTL refetches. Read counters with valueRenderOption=UNFORMATTED_VALUE. Read-after-write recalculation is undocumented; the only data (2017) shows API writes trigger server recalculation and COUNTIFS is non-volatile, so a subsequent read is very likely fresh, but treat it as eventually consistent (seconds), not guaranteed.\n\nVerify yourself before shipping: add an opt-in Vitest integration test against a scratch spreadsheet that fires N=25 concurrent vote writes via Promise.all and asserts exactly N new Votes rows and COUNTIFS==N after a short poll; run it once for the batchUpdate path (expect pass) and once for values.append (expect occasional loss) to document the choice. Keep the Apps Script LockService+appendRow design only as a fallback if that test ever fails.",
+ "code_snippets": [
+  {
+   "purpose": "Official Node.js sample for values.append (googleapis) - shown for reference; NOT recommended for concurrent vote writes",
+   "code": "async function appendValues(spreadsheetId, range, valueInputOption, _values) {\n  const auth = new GoogleAuth({\n    scopes: 'https://www.googleapis.com/auth/spreadsheets',\n  });\n\n  const service = google.sheets({version: 'v4', auth});\n\n  let values = [\n    [\n      // Cell values ...\n    ],\n    // Additional rows ...\n  ];\n\n  const resource = {\n    values,\n  };\n\n  const result = await service.spreadsheets.values.append({\n    spreadsheetId,\n    range,\n    valueInputOption,\n    resource,\n  });\n\n  console.log(`${result.data.updates.updatedCells} cells appended.`);\n  return result;\n}",
+   "source_url": "https://developers.google.com/workspace/sheets/api/guides/values"
+  },
+  {
+   "purpose": "Recommended atomic vote write: one batchUpdate with insertDimension + updateCells at a fixed index (row 2, under the header) - adapted from Google's 2016 workaround and the Request/batchUpdate reference; Node googleapis 178.x",
+   "code": "// Adapted from: Koleda (Google) 2016 'send an insertDimension and updateCells request in a single batch'\n// + AppendCells/InsertDimension/UpdateCells field docs. Runs server-side only.\nimport { google } from 'googleapis';\n\nexport async function writeVote(sheets, spreadsheetId, votesSheetId, vote) {\n  const { rugId, value, visitorHash, ts } = vote; // value: 'like' | 'dislike'\n  const cell = (v) =>\n    typeof v === 'number'\n      ? { userEnteredValue: { numberValue: v } }\n      : { userEnteredValue: { stringValue: String(v) } };\n\n  await sheets.spreadsheets.batchUpdate({\n    spreadsheetId,\n    requestBody: {\n      requests: [\n        {\n          insertDimension: {\n            // \"Inserts rows or columns in a sheet at a particular index\"; both indexes must be bounded\n            range: { sheetId: votesSheetId, dimension: 'ROWS', startIndex: 1, endIndex: 2 },\n            inheritFromBefore: false,\n          },\n        },\n        {\n          updateCells: {\n            // \"Updates all cells in a range with new data\"\n            start: { sheetId: votesSheetId, rowIndex: 1, columnIndex: 0 },\n            rows: [{ values: [cell(ts), cell(rugId), cell(value), cell(visitorHash)] }],\n            fields: 'userEnteredValue',\n          },\n        },\n      ],\n    },\n  });\n  // batchUpdate doc: \"it is guaranteed that the updates in the request will be applied together atomically\"\n}",
+   "source_url": "https://www.mail-archive.com/google-spreadsheets-api@googlegroups.com/msg02682.html"
+  },
+  {
+   "purpose": "Read the formula-owned counters as numbers (UNFORMATTED_VALUE = 'Values will be calculated, but not formatted')",
+   "code": "const res = await sheets.spreadsheets.values.get({\n  spreadsheetId,\n  range: 'Rugs!A2:F',\n  valueRenderOption: 'UNFORMATTED_VALUE',\n});\nconst rows = res.data.values ?? [];",
+   "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/ValueRenderOption"
+  },
+  {
+   "purpose": "Sheet-side formula for owner-visible counters (standard COUNTIFS; Rugs!A2 = rug id, Votes!B = rug id, Votes!C = 'like'/'dislike'). Not fetched from docs - standard Sheets syntax.",
+   "code": "=COUNTIFS(Votes!$B:$B, $A2, Votes!$C:$C, \"like\")\n=COUNTIFS(Votes!$B:$B, $A2, Votes!$C:$C, \"dislike\")",
+   "source_url": "https://support.google.com/docs/answer/58515"
+  },
+  {
+   "purpose": "Fallback only: Apps Script web app that serialises appends with LockService (adapted from the official Lock.waitLock and Sheet.appendRow examples)",
+   "code": "function doPost(e) {\n  const body = JSON.parse(e.postData.contents); // e.postData.contents = \"The content text of the POST body\"\n  const lock = LockService.getScriptLock();       // \"prevents any user from concurrently running a section of code\"\n  try {\n    lock.waitLock(10000);                         // throws after 10 s\n  } catch (err) {\n    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'busy' }))\n      .setMimeType(ContentService.MimeType.JSON);\n  }\n  try {\n    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Votes');\n    sheet.appendRow([new Date(), body.rugId, body.value, body.visitorHash]);\n    SpreadsheetApp.flush();                       // \"Applies all pending Spreadsheet changes.\"\n  } finally {\n    lock.releaseLock();\n  }\n  return ContentService.createTextOutput(JSON.stringify({ ok: true }))\n    .setMimeType(ContentService.MimeType.JSON);\n}",
+   "source_url": "https://developers.google.com/apps-script/reference/lock/lock"
+  }
+ ],
+ "open_questions": [
+  "No official Google documentation and no controlled, reproducible 2024-2026 benchmark of concurrent values.append exists in any source fetched this session; the authoritative statement remains a 2016 forum answer by a Googler plus recent anecdotes (several of which, via n8n, actually exercised a client-side read-then-update rather than values.append). Run your own N-concurrent test against a scratch sheet before finalising.",
+  "Whether values.append with insertDataOption=INSERT_ROWS is itself race-free is unverified; docs say only 'Rows are inserted for the new data' and Google's 2016 workaround did not mention it.",
+  "Read-after-write freshness of COUNTIFS via values.get is undocumented. The only measurement (2017, volatile =NOW()) showed API writes trigger server recalculation; no 2024-2026 reproduction found. Treat as eventually consistent within seconds and design the UI optimistically.",
+  "Whether AppendCellsRequest with tableId (Sheets Tables, API support since ~May 2025) behaves differently under concurrency is untested; its documented semantics ('first free row') suggest the same race.",
+  "The Apps Script web-app 302-redirect behaviour on POST (relevant only to the fallback LockService path) was not captured from the fetched page and remains unverified this session.",
+  "The Sheets API release-notes URL (developers.google.com/workspace/sheets/api/release-notes) returned 404 on 2026-09-05, so no 2024-2026 change to append semantics could be confirmed or ruled out from an official changelog."
+ ],
+ "package_versions": [
+  {
+   "name": "googleapis",
+   "latest_version": "178.0.0",
+   "checked_url": "https://registry.npmjs.org/googleapis/latest"
+  },
+  {
+   "name": "@googleapis/sheets",
+   "latest_version": "14.0.0",
+   "checked_url": "https://registry.npmjs.org/@googleapis/sheets/latest"
+  },
+  {
+   "name": "google-spreadsheet",
+   "latest_version": "5.3.0",
+   "checked_url": "https://registry.npmjs.org/google-spreadsheet/latest"
+  },
+  {
+   "name": "google-auth-library",
+   "latest_version": "11.0.2",
+   "checked_url": "https://registry.npmjs.org/google-auth-library/latest"
+  }
+ ]
+}

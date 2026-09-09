@@ -1,0 +1,28 @@
+---
+// Reference lines 71-85.
+import type { RateTable } from '../lib/currency.ts';
+import Controls from './Controls.astro';
+import Wordmark from './Wordmark.astro';
+
+interface Props {
+  eyebrow?: string;
+  rates: RateTable;
+}
+const { eyebrow = 'Catalogue', rates } = Astro.props;
+---
+
+<header>
+  <div class="masthead">
+    <a href="/" class="home" aria-label="Serio Ludere catalogue"><Wordmark /></a>
+    <p class="eyebrow">{eyebrow}</p>
+  </div>
+  <Controls rates={rates} />
+</header>
+
+<style>
+  .home {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+  }
+</style>

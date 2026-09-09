@@ -1,0 +1,30 @@
+---
+// Unit toggle + currency select, markup from reference lines 75-84; the option list comes from the
+// Rates tab (USD first, then sheet order; the reference's six codes when the tab is empty), and the
+// active unit is exposed with aria-pressed. Behaviour in src/scripts/prefs.ts.
+import { SUPPORTED_CURRENCIES, type RateTable } from '../lib/currency.ts';
+
+interface Props {
+  rates: RateTable;
+}
+const { rates } = Astro.props;
+const fromSheet = Object.keys(rates.rates).filter((c) => c in rates.symbols);
+const currencies = fromSheet.length
+  ? ['USD', ...fromSheet.filter((c) => c !== 'USD')]
+  : [...SUPPORTED_CURRENCIES];
+---
+
+<div class="controls">
+  <div class="toggle" id="unitTog" role="group" aria-label="Units">
+    <button type="button" data-u="cm" class="on" aria-pressed="true">cm</button>
+    <button type="button" data-u="ft" aria-pressed="false">ft</button>
+  </div>
+  <select class="cur" id="cur" aria-label="Currency">
+    {currencies.map((c) => <option>{c}</option>)}
+  </select>
+</div>
+
+<script>
+  import { initPrefs } from '../scripts/prefs.ts';
+  initPrefs();
+</script>

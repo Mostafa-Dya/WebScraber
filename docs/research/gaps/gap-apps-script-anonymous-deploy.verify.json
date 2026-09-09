@@ -1,0 +1,170 @@
+{
+  "topic": "Apps Script write path viability on the owner's Workspace account: which Google Workspace Admin console settings (2025-2026) can prevent deploying a web app with access 'Anyone' (anonymous execution), what the deploy dialog shows when they apply, what the June 2026 core-service change means, and how reliable/fast an execute-as-owner doPost endpoint is for vote writes.",
+  "verdicts": [
+    {
+      "claim": "[F1] One Admin console switch blocks Apps Script web apps outright: Apps > Google Workspace > Drive and Docs > Google Apps Script (on/off). ON by default for all users and guests. OFF blocks web apps, custom functions, Sheets macros, simple and installable triggers. No granular sub-settings; applies per OU or access group.",
+      "verdict": "confirmed",
+      "correction": "Verified verbatim on 2026-09-05: path 'Menu > Apps > Google Workspace > Drive and Docs > Google Apps Script'; 'By default, Apps Script is turned on for all users and guests in your organization'; blocked items include 'Web apps, custom functions, and macros recorded in Sheets' and 'Simple triggers and installable triggers'; scoping is org-wide / OU / access group only. support.google.com/a/answer/15100049 returns 301 to this page (confirmed). Adjacent: the page also says that if Apps Script is ON but Drive and Docs is OFF, 'users can't open Apps Script to view, create, or edit scripts. Existing scripts will still execute.'",
+      "source_url": "https://knowledge.workspace.google.com/admin/users/access/turn-apps-script-on-or-off-for-users"
+    },
+    {
+      "claim": "[F2] Apps Script became a Workspace core service on 22-23 June 2026 (GA, Rapid and Scheduled release); adds data protection, admin on/off control and standard support; introduces no new restriction on web apps, anonymous access, sharing or deployments; already-enabled orgs need no action.",
+      "verdict": "confirmed",
+      "correction": "Blog post 'Google Apps Script is now a Google Workspace core service with enterprise-grade data protection' dated June 23, 2026; release note dated June 22, 2026 ('Generally Available: Apps Script is generally available as a core service in Google Workspace...'). Neither mentions web apps, 'Anyone' access or deployment restrictions; the blog says organisations already using Apps Script need 'no action' and that orgs that had disabled it can now re-enable it. Minor inaccuracy: the report's parenthetical list of 2025-2026 release notes ('only granular OAuth Jan 2025, core service Jun 2026, Gemini side panel Aug 2026') is incomplete - the live page also lists Feb 20 2025 (Rhino deprecation, V8 migration deadline Jan 31 2026), Apr 8 2025 (Forms publishing), Apr 23 2025 (OAuth logging fix), Jun 4 2025 (Analytics API deprecation), Jan 7 and Jan 12 2026 (samples gallery, Vertex AI), Mar 5 and Mar 12 2026 (Maps auth, AddOnsResponseService). None concern web apps, deployments or quotas, so the substantive claim stands.",
+      "source_url": "https://workspaceupdates.googleblog.com/2026/06/google-apps-script-workspace-core-service.html"
+    },
+    {
+      "claim": "[F3] Google's official admin-control page for Apps Script lists only Drive audit log events, usage reports, the URL Fetch allowlist (Business Plus / Enterprise / Education), the org-wide on/off toggle and deleting the Cloud project; no official page documents a setting that removes 'Anyone' from the deploy dialog.",
+      "verdict": "confirmed",
+      "correction": "Page last updated 2026-07-22 enumerates exactly those five controls ('control which external domains your users can access through Apps Script' requires Business Plus, Enterprise or Education) and contains no text about web-app access levels, 'Anyone' or anonymous execution. The web-app guide (developers.google.com/apps-script/guides/web) also contains no admin-restriction mechanism beyond 'Embedded web apps are still subject to access permissions'.",
+      "source_url": "https://developers.google.com/apps-script/guides/admin/monitor-use"
+    },
+    {
+      "claim": "[F4] The 'Anyone' (ANYONE_ANONYMOUS) option is gated by the Drive external-sharing policy (Drive and Docs > Sharing settings > 'Sharing outside of your organization' = On plus the publish-on-the-web / visible-to-anyone-with-the-link sub-option); turning external sharing OFF or unticking that option removes 'Anyone' from the deploy dialog.",
+      "verdict": "unverifiable",
+      "correction": "Every cited piece of evidence checks out verbatim: the official Access Checker page says the least-restrictive level 'is available only if external sharing is turned on for your organization and you allow users to publish files on the web'; labnol (Sep 7, 2017) says 'If you are unable to publish your web app for anonymous usage, it is likely that your Google Apps admin has disabled the option for the organization' and names the checkbox 'Allow users in organization to publish files on the web or make them visible to the world as public or unlisted files'; the 2023 community reply says 'Sometimes an administrator may have disabled the ability to deploy a webapp to anyone.' However, no official Google page links any Drive sharing setting to the Apps Script deploy dialog, and the current official 'Manage external sharing for your organization' page (updated 2026-08-26) does not contain the phrases 'publish', 'public', 'unlisted', 'anyone with the link' or 'published web content' at all, so the exact current checkbox wording is unconfirmed. Treat the mechanism as plausible-but-undocumented (confidence low-medium, not medium) and keep the throwaway-tenant test in the plan.",
+      "source_url": "https://knowledge.workspace.google.com/admin/drive/restrict-the-access-users-can-give-to-files"
+    },
+    {
+      "claim": "[F5] When the restriction applies the symptom is a missing 'Anyone' option, not an error; no official dialog error text exists; the current UI label is 'Anyone' (the older 'Anyone, even anonymous' wording is gone), per the Feb 2023 community thread.",
+      "verdict": "unverifiable",
+      "correction": "The current label 'Anyone' is confirmed (thread: 'Anyone is correct. I could have sworn the option was \"Everyone\"'; tanaikech's Web Apps README lists 'Only myself / Anyone with Google account / Anyone'). The report misquotes the thread: the responder never wrote that the option 'is actually labeled Anyone rather than Anyone, even anonymous' - he first wrote 'The option you are referring to is now called \"Everyone\"' and then corrected himself. The poster's resolution (personal Gmail account, multiple simultaneous deployments) is confirmed. Nothing in the thread or any official page describes what the deploy dialog shows when a Workspace policy applies (hidden vs greyed vs error), so the 'missing option, not an error' part cannot be confirmed; it remains an open question requiring a tenant test.",
+      "source_url": "https://groups.google.com/g/google-apps-script-community/c/owFeX5fTcyo"
+    },
+    {
+      "claim": "[F6] Manifest 'webapp' resource: access = MYSELF | DOMAIN | ANYONE | ANYONE_ANONYMOUS, executeAs = USER_ACCESSING | USER_DEPLOYING, with the quoted descriptions; UI mapping 'Anyone' = ANYONE_ANONYMOUS, 'Anyone with Google account' = ANYONE, 'Anyone within <org>' = DOMAIN, 'Execute as: Me' = USER_DEPLOYING.",
+      "verdict": "confirmed",
+      "correction": "Enum values and descriptions verified verbatim on the manifest reference ('MYSELF: Only the deploying user can run the app.', 'DOMAIN: Only users in the same domain as the deployer can run it.', 'ANYONE: Any logged-in user.', 'ANYONE_ANONYMOUS: Any user, even if not logged in.', 'USER_ACCESSING: The web app runs as the user accessing it.', 'USER_DEPLOYING: The web app runs as the user who deployed it.'). UI labels 'Me / User accessing the web app' and 'Only myself / Anyone with Google account / Anyone' verified in tanaikech's README. Caveat: the exact label string 'Anyone within <org>' for DOMAIN could not be found verbatim in any official page or in the README; official docs do not print the dialog labels at all. Treat that one label as unverified wording.",
+      "source_url": "https://developers.google.com/apps-script/manifest/web-app-api-executable"
+    },
+    {
+      "claim": "[F7] Fallback: deploy Execute as Me + 'Anyone with Google account' (ANYONE) and call with an OAuth bearer; a service-account token works for GET and POST if it carries at least one Drive scope (e.g. drive.readonly). The Apps Script API scripts.run is not an alternative because 'The Apps Script API doesn't work with service accounts'.",
+      "verdict": "confirmed",
+      "correction": "tanaikech gist 'Executing Google Apps Script with Service Account' (last updated Oct 22, 2025) requires 'Me' for 'Execute as' and 'Anyone with Google account' for 'Who has access', uses https://www.googleapis.com/auth/drive.readonly, and shows both GET and POST. README: 'At least one Drive API scope must be included in the access token. Examples include: drive.readonly, drive.files, drive'. Official Apps Script API 'Execute functions' page, Requirements section: 'The Apps Script API doesn't work with service accounts.' Note: the gist's Node sample uses the https module / google library, not global fetch, so it does not demonstrate Node fetch's redirect behaviour (see additional finding on Authorization stripping).",
+      "source_url": "https://gist.github.com/tanaikech/304fea821ca36b8e9ccebe9814eaed82"
+    },
+    {
+      "claim": "[F8] Every /exec request is answered with a 302 to https://script.googleusercontent.com/macros/echo?user_content_key=...; the redirect must be followed with GET (POST yields 405); the Fetch Standard already switches POST to GET on 302 so Node fetch with redirect:'follow' works; doPost processes the body during the first request.",
+      "verdict": "confirmed",
+      "correction": "Gist 'Understanding Flow of Request to Web Apps Created by Google Apps Script' (Jul 25, 2023): 'The status code 302 is returned', redirect target 'https://script.googleusercontent.com/macros/echo?user_content_key=###id1###&lib=###id2###', 'it is required to request with the GET method to the redirect URL for both doGet and doPost', otherwise 'Page Not Found (status code 405)', and the POST payload 'have already been sent to the Web Apps' on the first request. MDN 302: 'In the Fetch Standard, when a user agent receives a 302 in response to a POST request, it uses the GET method in the subsequent redirection request'. Node docs: global fetch is undici-based and stable since v21.",
+      "source_url": "https://gist.github.com/tanaikech/131ba814a1f6012fd6a5ffe11789971f"
+    },
+    {
+      "claim": "[F9] No measured doPost/doGet benchmark exists; the '400-1500 ms' figure is a Nov 2024 community estimate for google.script.run (poster measured 800-3000 ms); a 2018 tanaikech benchmark shows about 1.1 s per Web App request when fetched in parallel; budget roughly 1-2 s per write.",
+      "verdict": "refuted",
+      "correction": "The community-thread part is accurate (Nov 21 - Dec 11, 2024; 'expect latency to range between 400-1500ms for each google.script.run call'; poster 800-3000 ms; 'Published web apps generally run faster'; nobody measured doPost). The 2018 benchmark figure is misread: in that benchmark the server-side doGet deliberately calls 'Utilities.sleep(5000); // Waiting for 5 seconds', so 5 parallel fetchAll requests finishing in 5.502 s means each request took about 5.5 s wall time (5 s sleep + ~0.5 s overhead), and the sequential loop took 27.011 s (~5.4 s each). The benchmark therefore implies roughly 0.4-0.5 s of Web App round-trip overhead per call (Apps Script to Apps Script, 2018), not '~1.1 s per request'. The 1-2 s planning budget may still be prudent, but it is not supported by that source; measure in the Phase-0 spike as the report already recommends.",
+      "source_url": "https://gist.github.com/tanaikech/c0f383034045ab63c19604139ecb0728"
+    },
+    {
+      "claim": "[F10] Quotas (page updated July 22, 2026) for Workspace accounts: 100,000 URL Fetch calls/day, 6 h/day trigger runtime, 30 simultaneous executions per user, 1,000 simultaneous executions per script, 6 min per execution; quotas are per user and reset 24 h after the first request; no separate web-app/doPost quota.",
+      "verdict": "confirmed",
+      "correction": "All five values and the 'Quotas are per user and reset 24 hours after the first request' sentence verified verbatim on the live page (last updated 2026-07-22 UTC). No web-app-specific quota exists on the page.",
+      "source_url": "https://developers.google.com/apps-script/guides/services/quotas"
+    },
+    {
+      "claim": "[F11] Admin console > Apps > Google Workspace > Drive and Docs > Features and Applications > 'Importing and fetching from URLs' allowlists up to 1,000 URLs (one wildcard, e.g. https://*.example.com); default allows any URL; blocked calls fail with 'Admin has not allowed imports from: [URL]. Contact your Admin if you'd like to allow access'; available only on Frontline Plus, Business Plus, Enterprise Standard/Plus, Education Standard/Plus, Enterprise Essentials Plus.",
+      "verdict": "confirmed",
+      "correction": "Every detail verified verbatim on the live page; support.google.com/a/answer/13686736 returns 301 to it (confirmed).",
+      "source_url": "https://knowledge.workspace.google.com/admin/drive/allow-only-certain-external-connections-for-apps-script-and-sheets"
+    },
+    {
+      "claim": "[F12] An execute-as-Me / Anyone web app can return an HTML '500 - Google Docs encountered an error' page to POST with doPost never executing and no execution log (Nov 28 - Dec 6, 2025 thread); community suggested form-encoded/multipart content types; unresolved, no Google staff reply.",
+      "verdict": "confirmed",
+      "correction": "Thread verified: Execute as Me + Anyone, /exec, 500 with 'Google Docs encountered an error' HTML, doPost never runs, no execution-log entries, doGet works; one community reply suggested Content-Type application/x-www-form-urlencoded or multipart/form-data; no resolution and no Google staff response. Single anecdote, as the report says.",
+      "source_url": "https://discuss.google.dev/t/apps-script-web-app-post-requests-fail-with-500-docs-error-and-dopost-never-runs/292239"
+    },
+    {
+      "claim": "[F13] Web apps stop working if ownership moves to a shared drive or a different domain; Apps Script rate-limits new-user authorisation only for web apps that execute as the accessing user.",
+      "verdict": "confirmed",
+      "correction": "Verified verbatim: 'Web apps deployed in one domain cease to function if their ownership changes to a shared drive or account in a different domain' (fix: redeploy in the new domain or move back) and 'To prevent abuse, Apps Script imposes limits on the rate at which new users can authorize a web app that executes as the user.'",
+      "source_url": "https://developers.google.com/apps-script/guides/web"
+    },
+    {
+      "claim": "[F14] Official text 'Script executions and API requests don't cause triggers to run' is contradicted by tanaikech's Nov 10, 2022 demonstration that an installable onChange trigger does fire on Sheets API edits made by a service account (event object lacks the editor's email).",
+      "verdict": "confirmed",
+      "correction": "Official Installable Triggers 'Restrictions' text verified verbatim. The gist 'Workaround: Detecting to Edit Google Spreadsheet using Sheets API with Service Account' (Nov 10, 2022) states the OnChange trigger fires but 'the email of the service account is not included in the event object of the OnChange event'. The report omitted the gist URL; it is https://gist.github.com/tanaikech/5388797761cb92cf1fe325e939c10b25.",
+      "source_url": "https://developers.google.com/apps-script/guides/triggers/installable"
+    },
+    {
+      "claim": "[F15] Security > Access and data control > API controls > 'Trust internal apps' could not be confirmed to affect Apps Script's own OAuth grant; the official page only says the checkbox allows internal apps to access restricted Workspace APIs and does not mention Apps Script.",
+      "verdict": "confirmed",
+      "correction": "Verified: path 'Menu > Security > Access and data control > API controls' > Settings; text 'To allow API access for all internal apps, check the Trust internal apps box'; the page contains no reference to Apps Script.",
+      "source_url": "https://knowledge.workspace.google.com/admin/apps/control-which-apps-access-google-workspace-data"
+    },
+    {
+      "claim": "[S1] appsscript.json manifest with runtimeVersion V8, webapp.access ANYONE_ANONYMOUS, webapp.executeAs USER_DEPLOYING, oauthScopes spreadsheets + script.external_request pins the vote web app to execute-as-owner + anonymous access.",
+      "verdict": "confirmed",
+      "correction": "Top-level fields runtimeVersion (valid values STABLE, V8, DEPRECATED_ES5), webapp ('used if the project is deployed as a web app') and oauthScopes all exist on the manifest reference; access/executeAs values match the enum. Adjacent: per the Feb 20, 2025 release note, Rhino is deprecated with a V8 migration deadline of Jan 31, 2026, so 'V8' is effectively mandatory (the manifest page's description of STABLE as 'currently Rhino' is stale).",
+      "source_url": "https://developers.google.com/apps-script/manifest"
+    },
+    {
+      "claim": "[S2] doPost handler using PropertiesService secret check, LockService.getScriptLock().waitLock(10000) (throws on timeout), idempotency scan by voteId, sheet.appendRow, ContentService.createTextOutput(...).setMimeType(ContentService.MimeType.JSON); Apps Script cannot set an HTTP status code.",
+      "verdict": "confirmed",
+      "correction": "Lock reference: waitLock(timeoutInMillis) 'Attempts to acquire the lock, timing out with an exception after the provided number of milliseconds'; releaseLock() documented. Web guide documents e.postData.contents ('The content text of the POST body') and e.postData.type. TextOutput exposes only append, clear, downloadAsFile, getContent, getFileName, getMimeType, setContent, setMimeType - no status-code or header setter, which confirms the 'cannot set HTTP status' statement. Column indexing is consistent (voteId is the 5th appended column and the scan reads column 5). Note the idempotency scan reads the whole column on every vote (O(rows)); fine at low traffic.",
+      "source_url": "https://developers.google.com/apps-script/reference/lock/lock"
+    },
+    {
+      "claim": "[S3] Node 24 server-side fetch(EXEC_URL, { method: 'POST', redirect: 'follow', headers: text/plain, body JSON, signal: AbortSignal.timeout(10_000) }) with one retry; fetch follows the 302 and re-issues it as GET.",
+      "verdict": "confirmed",
+      "correction": "Fetch Standard behaviour (POST -> GET on 302) confirmed via MDN; Node docs confirm global fetch is undici-based (added v17.5/v16.15, stable v21) and AbortSignal.timeout() exists since v17.3/v16.14, so the snippet is valid on Node 24. No Authorization header is sent, so undici's cross-origin header stripping does not affect this path.",
+      "source_url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/302"
+    },
+    {
+      "claim": "[S4] Fallback snippet: new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/drive.readonly'] }); auth.getClient(); const { token } = await client.getAccessToken(); then fetch(EXEC_URL, { method: 'POST', redirect: 'follow', headers: { authorization: `Bearer ${token}` ... } }).",
+      "verdict": "confirmed",
+      "correction": "API shapes verified: google-auth-library authclient.ts defines 'GetAccessTokenResponse { token?: string | null; res?: GaxiosResponse | null }' and 'abstract getAccessToken(): Promise<{ token?: string | null; res?: ... }>', so destructuring { token } is correct; latest google-auth-library is 11.0.2 (engines node >=22, fine on Node 24). Behavioural caveat the snippet itself flags: Node's undici fetch removes the Authorization header on the cross-origin 302 to script.googleusercontent.com (Fetch Standard, whatwg/fetch PR #1544 merged Nov 25, 2022; undici advisory GHSA-3787-6prv-h9w3 states 'Undici already cleared Authorization headers on cross-origin redirects'). doPost runs on the first hop where the bearer is present; whether the echo GET needs it is undocumented (tanaikech's flow gist does not address it), so the spike test remains required.",
+      "source_url": "https://raw.githubusercontent.com/googleapis/google-auth-library-nodejs/main/src/auth/authclient.ts"
+    },
+    {
+      "claim": "[PKG] @google/clasp latest version is 3.4.1.",
+      "verdict": "confirmed",
+      "correction": "registry.npmjs.org/@google/clasp/latest reports version 3.4.1, engines node >=20.0.0 (fetched 2026-09-05).",
+      "source_url": "https://registry.npmjs.org/@google/clasp/latest"
+    }
+  ],
+  "additional_findings": [
+    {
+      "claim": "Node's fetch (undici) strips the Authorization header when following a redirect to a different origin, so in the service-account fallback the bearer reaches script.google.com (first hop, where doPost runs) but not script.googleusercontent.com (echo hop).",
+      "evidence": "Fetch Standard defines 'CORS non-wildcard request-header name' as a byte-case-insensitive match for 'Authorization' and, since whatwg/fetch PR #1544 ('Remove Authorization header upon cross-origin redirect', merged Nov 25, 2022), HTTP-redirect fetch deletes it on cross-origin redirects. undici advisory GHSA-3787-6prv-h9w3: 'Undici already cleared Authorization headers on cross-origin redirects, but did not clear Proxy-Authorization headers' (patched 5.28.3 / 6.6.1). Whether the echo URL (user_content_key) requires auth is undocumented; tanaikech's flow gist only says an 'Anyone' deployment 'can be accessed without the access token'. The Phase-0 spike must test the ANYONE fallback with Node fetch specifically (his Node sample uses the https module).",
+      "source_url": "https://github.com/nodejs/undici/security/advisories/GHSA-3787-6prv-h9w3",
+      "confidence": "high"
+    },
+    {
+      "claim": "The Rhino runtime is deprecated with a migration deadline of January 31, 2026; new and existing scripts must run on V8, so 'runtimeVersion': 'V8' in the manifest is required rather than optional.",
+      "evidence": "Apps Script release note dated February 20, 2025: Rhino runtime deprecated; scripts must migrate to V8 before January 31, 2026. The manifest reference still describes STABLE as 'Default runtime, currently Rhino', which is stale relative to the release note.",
+      "source_url": "https://developers.google.com/apps-script/releases",
+      "confidence": "high"
+    },
+    {
+      "claim": "The 2018 tanaikech benchmark implies about 0.4-0.5 s of Apps Script Web App round-trip overhead per call (script-to-script via UrlFetchApp), which is the only quantitative Web App timing found; it is not a doPost-from-Node measurement.",
+      "evidence": "Server doGet contained 'Utilities.sleep(5000)'; 5 sequential fetch() calls took 27.011 s (~5.4 s each, i.e. ~0.4 s over the sleep) and 5 parallel fetchAll() calls took 5.502 s. Dated April 19, 2018, so only a rough prior for the spike measurement.",
+      "source_url": "https://gist.github.com/tanaikech/c0f383034045ab63c19604139ecb0728",
+      "confidence": "medium"
+    },
+    {
+      "claim": "The current official 'Manage external sharing for your organization' admin page (updated 2026-08-26) does not surface a 'publish files on the web' / 'anyone with the link' checkbox in its text; the only official reference to such a permission is the Access Checker page's condition 'you allow users to publish files on the web'. The runbook should not quote the 2017 checkbox label as current wording.",
+      "evidence": "Targeted search of the live page for 'publish', 'public', 'unlisted', 'anyone with the link', 'published web content' and 'visible to the world' returned no matches; the page lists only On / Off / Allowlisted domains plus warning and highlight options. The labnol wording ('Allow users in organization to publish files on the web or make them visible to the world as public or unlisted files') dates from Sep 7, 2017.",
+      "source_url": "https://knowledge.workspace.google.com/admin/drive/manage-external-sharing-for-your-organization",
+      "confidence": "medium"
+    },
+    {
+      "claim": "If an admin turns Drive and Docs OFF while leaving Apps Script ON, users cannot open the Apps Script editor but existing scripts (including deployed web apps and triggers) keep executing - a runbook edge case distinct from the Apps Script toggle.",
+      "evidence": "'Turn Apps Script on or off for users' page: 'users can't open Apps Script to view, create, or edit scripts. Existing scripts will still execute.'",
+      "source_url": "https://knowledge.workspace.google.com/admin/users/access/turn-apps-script-on-or-off-for-users",
+      "confidence": "high"
+    },
+    {
+      "claim": "Official Apps Script documentation does not print the 'Who has access' dialog labels anywhere; the labels 'Only myself / Anyone with Google account / Anyone' and 'Execute as: Me / User accessing the web app' are sourced only from tanaikech's README and community threads.",
+      "evidence": "developers.google.com/apps-script/guides/web (steps: Deploy > New deployment > Web app > Deployment configuration > Deploy) and developers.google.com/apps-script/concepts/deployments (updated 2026-07-22) describe the flow without listing the option labels. tanaikech README lists the labels verbatim.",
+      "source_url": "https://raw.githubusercontent.com/tanaikech/taking-advantage-of-Web-Apps-with-google-apps-script/master/README.md",
+      "confidence": "high"
+    },
+    {
+      "claim": "google-auth-library latest is 11.0.2 and requires Node >=22; @google/clasp 3.4.1 requires Node >=20 - both compatible with the planned Node 24 runtime.",
+      "evidence": "registry.npmjs.org/google-auth-library/latest: version 11.0.2, engines node >=22. registry.npmjs.org/@google/clasp/latest: version 3.4.1, engines node >=20.0.0.",
+      "source_url": "https://registry.npmjs.org/google-auth-library/latest",
+      "confidence": "high"
+    }
+  ],
+  "summary": "20 items checked against live sources on 2026-09-05: 17 confirmed, 1 refuted, 2 unverifiable. All official Google pages cited (Apps Script on/off toggle, June 2026 core-service announcement and release note, admin monitor-use page, quotas page dated 2026-07-22, URL Fetch allowlist page, manifest reference, web-app guide, installable-trigger restrictions, API-controls page, Lock/ContentService references) say exactly what the report claims, and the tanaikech gists, MDN, the 2024/2025 community threads and the clasp version check out. Refuted: the '~1.1 s per Web App request' reading of the 2018 benchmark - that server slept 5 s per request, so the benchmark implies ~0.4-0.5 s overhead, not 1.1 s. Unverifiable: (a) the causal link between the Drive external-sharing / publish-on-the-web setting and the 'Anyone' deploy option - every cited source is accurately represented, but no official page documents the link and the current external-sharing admin page no longer contains the 2017 checkbox wording; (b) the 'option is hidden, not an error' symptom - the 2023 thread confirms the label 'Anyone' but says nothing about dialog behaviour under policy, and the report's quotation of the responder is a paraphrase. Additional facts: undici strips Authorization on the cross-origin 302 (relevant to the service-account fallback), V8 runtime is mandatory since the Jan 31 2026 Rhino deadline, and official docs never print the deploy-dialog labels. The report's recommendation (keep the execute-as-owner / Anyone web app, harden with secret + idempotent voteId + LockService + retry, plan the ANYONE + service-account fallback, measure latency in the spike) survives verification; only the latency evidence and the Drive-sharing mechanism confidence need adjusting."
+}

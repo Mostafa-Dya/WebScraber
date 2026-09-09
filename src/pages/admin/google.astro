@@ -1,0 +1,197 @@
+---
+// /admin/google — connect the studio's Google account from the browser.
+//
+// This replaces `npm run google:auth` for everyday use. That script still works and is still the
+// right tool on a laptop during first setup, but it needs a terminal beside the file that holds
+// `.env`, which a deployed container does not have. Here the owner clicks Connect, consents, and the
+// site stores the refresh token itself and starts using it on the next request.
+//
+// The page is deliberately explicit about *how long a connection lasts*, because the usual reason
+// one dies is a setting in the Google Cloud console rather than anything in this codebase.
+export const prerender = false;
+
+import { GOOGLE_AUTH_MODE, GOOGLE_OAUTH_CLIENT_ID } from 'astro:env/server';
+import AdminLayout from '../../components/admin/AdminLayout.astro';
+import { adminRuntime } from '../../lib/admin/http.ts';
+import { googleAuthAdvice, missingScopes, redirectUriFor } from '../../lib/google/oauth.ts';
+import { getGoogleConnection, getGoogleStore } from '../../lib/runtime.ts';
+
+const mode = GOOGLE_AUTH_MODE;
+const connection = getGoogleConnection();
+const health = connection?.health();
+const store = getGoogleStore();
+const redirectUri = redirectUriFor(adminRuntime.siteUrl);
+const configured = Boolean(GOOGLE_OAUTH_CLIENT_ID);
+// Scopes are only known for a token this site stored itself. One inherited from the environment
+// was granted somewhere else, so claiming its permissions are "missing" would be a guess, and a
+// wrong one — the CLI grants the same two.
+const scopesKnown = health?.source === 'stored';
+const missing = scopesKnown ? missingScopes(health.scopes) : [];
+const advice = health?.connected ? googleAuthAdvice(health.scopes, { scopesKnown }) : [];
+
+const outcome = Astro.url.searchParams.get('google');
+const detail = (Astro.url.searchParams.get('detail') ?? '').slice(0, 200);
+const MESSAGES: Record<string, string> = {
+  connected: 'Connected. The site will keep itself signed in from here.',
+  denied: 'You cancelled, or Google refused the request.',
+  expired: 'That authorisation took too long or was already used.',
+  bad_state: 'The reply did not match the request, so it was rejected.',
+  no_code: 'Google sent no authorisation code.',
+  not_configured: 'The OAuth client id and secret are not set.',
+  failed: 'The exchange with Google failed.',
+};
+const message = outcome ? (MESSAGES[outcome] ?? 'Something went wrong.') : undefined;
+---
+
+<AdminLayout title="Serio Ludere — Google" active="google">
+  {
+    message && (
+      <div class:list={['msg', 'on', outcome === 'connected' ? 'ok' : 'err']}>
+        {message} {detail}
+      </div>
+    )
+  }
+
+  <section class="stack" aria-labelledby="h-google">
+    <h3 id="h-google">Google account</h3>
+
+    {
+      mode === 'service_account' ? (
+        <p class="hint">
+          This deployment authenticates with a service-account key, so there is no account to connect. Switch{' '}
+          <span class="mono">GOOGLE_AUTH_MODE</span> to <span class="mono">oauth_refresh</span> to use a
+          Google account instead.
+        </p>
+      ) : !configured ? (
+        <p class="hint">
+          Set <span class="mono">GOOGLE_OAUTH_CLIENT_ID</span> and{' '}
+          <span class="mono">GOOGLE_OAUTH_CLIENT_SECRET</span> before connecting.
+        </p>
+      ) : (
+        <>
+          <dl class="kv">
+            <div>
+              <dt>Status</dt>
+              <dd class:list={['status', health?.connected ? 'active' : 'revoked']}>
+                {health?.connected ? 'connected' : 'not connected'}
+              </dd>
+            </div>
+            {health?.account && (
+              <div>
+                <dt>Account</dt>
+                <dd class="mono">{health.account}</dd>
+              </div>
+            )}
+            <div>
+              <dt>Permissions</dt>
+              <dd class="mono">
+                {health?.scopes.length
+                  ? health.scopes.join(' ')
+                  : scopesKnown
+                    ? '—'
+                    : 'not recorded for a token from the environment'}
+              </dd>
+            </div>
+            <div>
+              <dt>Connected</dt>
+              <dd class="mono">{health?.connectedAt ?? '—'}</dd>
+            </div>
+            <div>
+              <dt>Last used</dt>
+              <dd class="mono">{health?.lastRefreshAt ?? 'never'}</dd>
+            </div>
+            <div>
+              <dt>Token from</dt>
+              <dd class="mono">{health?.source}</dd>
+            </div>
+          </dl>
+
+          {health?.lastError && <div class="msg err on">Last failure: {health.lastError}</div>}
+
+          {missing.length > 0 && (
+            <div class="msg err on">
+              Missing permission{missing.length === 1 ? '' : 's'}: {missing.join(' ')}. Connect again and
+              approve both.
+            </div>
+          )}
+
+          {health?.connected && !scopesKnown && (
+            <p class="hint">
+              This connection comes from <span class="mono">GOOGLE_OAUTH_REFRESH_TOKEN</span>, so the site did
+              not record which permissions it carries. Press Reconnect to authorise from here instead; the
+              stored authorisation then takes precedence and this page can show its state.
+            </p>
+          )}
+
+          {!store.durable && (
+            <div class="msg busy on">
+              <span class="mono">DATA_DIR</span> is not set, so this connection is held in memory only and
+              will be lost when the server restarts. Set it to a writable directory to keep it.
+            </div>
+          )}
+
+          <div class="actions">
+            <a class="go" href="/api/admin/google/start?next=/admin/google">
+              {health?.connected ? 'Reconnect' : 'Connect Google account'}
+            </a>
+            {health?.connected && (
+              <button class="go alt" id="btnDisconnect" type="button">
+                Disconnect
+              </button>
+            )}
+          </div>
+          <div id="m12" class="msg" />
+
+          <h4>How long it lasts</h4>
+          <ul class="hint">
+            {(advice.length ? advice : googleAuthAdvice([], { scopesKnown: false })).map((line) => (
+              <li>{line}</li>
+            ))}
+          </ul>
+
+          <h4>Before the first connection</h4>
+          <p class="hint">
+            This exact address has to be listed as an authorised redirect URI on the OAuth client in the
+            Google Cloud console, or Google will refuse with <span class="mono">redirect_uri_mismatch</span>:
+          </p>
+          <div class="row">
+            <div class="grow">
+              <input id="redirectUri" readonly value={redirectUri} aria-label="Authorised redirect URI" />
+            </div>
+            <button class="go alt" id="btnCopyRedirect" type="button">
+              Copy
+            </button>
+          </div>
+        </>
+      )
+    }
+  </section>
+
+  <script>
+    import { initGoogle } from '../../scripts/admin/google.ts';
+    initGoogle();
+  </script>
+</AdminLayout>
+
+<style is:global>
+  .kv {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+  }
+  .kv > div {
+    display: flex;
+    gap: 12px;
+  }
+  .kv dt {
+    flex: 0 0 140px;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    padding-top: 2px;
+  }
+  .kv dd {
+    margin: 0;
+  }
+</style>

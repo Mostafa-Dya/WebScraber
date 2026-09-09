@@ -1,0 +1,109 @@
+---
+// /admin/login (docs/ADMIN_SPEC.md §2.1, §8.3, §9.3): a plain form POST that works without JS.
+// Order on POST: throttle check (before scrypt) → verifyPassword → cookie → 303 to `next`.
+// Failures share one generic message; Retry-After is both a header and the "Try again in n s." hint.
+// The admin gate (src/middleware.ts) already answered 404 when the panel is not configured.
+export const prerender = false;
+
+import AdminLayout from '../../components/admin/AdminLayout.astro';
+import { requestIpHash } from '../../lib/api.ts';
+import { newSession, setSessionCookie, verifyPassword } from '../../lib/admin/auth.ts';
+import { adminRuntime, recordAuditEvent } from '../../lib/admin/http.ts';
+import { sanitiseNext } from '../../lib/admin/login.ts';
+
+const { request, cookies, locals, url } = Astro;
+if (!adminRuntime.configured) {
+  return new Response('Not found', { status: 404, headers: { 'cache-control': 'no-store' } });
+}
+
+let next = sanitiseNext(url.searchParams.get('next'));
+if (locals.admin) return Astro.redirect(next, 303);
+
+let message = '';
+let retryAfter = 0;
+let status = 200;
+
+if (request.method === 'POST') {
+  let form: FormData | undefined;
+  try {
+    form = await request.formData();
+  } catch {
+    form = undefined;
+  }
+  const password = String(form?.get('password') ?? '');
+  next = sanitiseNext(form?.get('next') ?? next);
+  const ipHash = requestIpHash(request);
+  const requestId = locals.requestId ?? 'none';
+  const check = adminRuntime.throttle.check(ipHash);
+  if (!check.ok) {
+    status = 429;
+    retryAfter = check.retryAfterSec;
+    if (check.auditLockout) {
+      await recordAuditEvent({
+        action: 'auth.lockout',
+        targetTab: '-',
+        targetId: check.scope,
+        ipHash,
+        requestId,
+        note: `${check.scope} lockout; retry after ${retryAfter} s`,
+      });
+    }
+  } else if (verifyPassword(adminRuntime.passwordHash, password)) {
+    adminRuntime.throttle.succeed(ipHash);
+    const now = Date.now();
+    const session = newSession(adminRuntime.user, now);
+    setSessionCookie(cookies, session, adminRuntime.secret!, adminRuntime.isSecureSite, now);
+    await recordAuditEvent({
+      action: 'auth.login',
+      targetTab: '-',
+      targetId: adminRuntime.user,
+      ipHash,
+      requestId,
+      after: { user: adminRuntime.user, absoluteExpiry: new Date(session.abs).toISOString() },
+    });
+    return Astro.redirect(next, 303);
+  } else {
+    const fail = adminRuntime.throttle.fail(ipHash);
+    status = 401;
+    retryAfter = fail.retryAfterSec;
+    if (fail.auditLockout) {
+      await recordAuditEvent({
+        action: 'auth.lockout',
+        targetTab: '-',
+        targetId: fail.scope,
+        ipHash,
+        requestId,
+        note: `${fail.scope} lockout after ${fail.failures} failures; retry after ${retryAfter} s`,
+      });
+    }
+  }
+  message = retryAfter > 0 ? `Login failed. Try again in ${retryAfter} s.` : 'Login failed.';
+}
+
+Astro.response.status = status;
+if (retryAfter > 0) Astro.response.headers.set('retry-after', String(retryAfter));
+---
+
+<AdminLayout title="Serio Ludere — Admin login" nav={false} sub="Admin — sign in">
+  <form method="post" action="/admin/login" class="login">
+    <input type="hidden" name="next" value={next} />
+    <div class="fields">
+      <div class="f">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          autofocus
+        />
+      </div>
+    </div>
+    <div class="actions">
+      <button class="go" type="submit">Log in</button>
+    </div>
+    <div id="m1" class:list={['msg', 'err', { on: message !== '' }]} role="alert">{message}</div>
+    <p class="hint">Private. Sessions expire after 12 hours idle and 7 days at most.</p>
+  </form>
+</AdminLayout>

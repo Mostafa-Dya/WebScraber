@@ -1,0 +1,46 @@
+---
+// The private preview's document shell (Figma "05 · Customer Preview").
+//
+// Deliberately separate from src/components/Layout.astro: that one is the public catalogue's shell
+// and carries catalogue.css, which is the byte-for-byte parity record of the original page. The
+// preview is a different product with its own design, so it gets its own shell and its own
+// stylesheet, and neither can drift into the other.
+//
+// Shared with the public shell: the pre-paint step (the visitor's saved reactions and their
+// unit/currency choice are correct before first paint) and the rates JSON block that drives it. The
+// pre-paint script is the one inline script the hash-based CSP allows; its hash is registered in
+// astro.config.mjs and recomputed from the file at build.
+import '../../styles/tokens.css';
+import '../../styles/modes.css';
+import '../../styles/preview.css';
+import prepaint from '../../scripts/prepaint.js?raw';
+import type { RateTable } from '../../lib/currency.ts';
+import { jsonForScript } from '../../lib/view.ts';
+
+interface Props {
+  title: string;
+  rates: RateTable;
+  /** The signed-in customer slug; published so a reaction batch can name its realm. */
+  customer?: string;
+}
+const { title, rates, customer } = Astro.props;
+---
+
+<html lang="en" data-mode="preview" data-customer={customer}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet" />
+    <link rel="expect" href="#pv-ready" blocking="render" />
+    <script is:inline type="application/json" id="sl-rates" set:html={jsonForScript(rates)} />
+  </head>
+  <body class="pv">
+    <slot />
+    <script is:inline set:html={prepaint} />
+    <span id="pv-ready" hidden></span>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+# Build output and tool caches
+dist/
+.astro/
+.vitest/
+coverage/
+node_modules/
+scratchpad/
+package-lock.json
+# The reference page and its live JSON are kept byte-for-byte; the stylesheets are the reference CSS verbatim (ADR D12)
+reference/
+src/styles/
+# Research data dumps and screenshots
+docs/research/gaps/
+docs/screenshots/
+# Scraper fixtures are supplier pages saved byte-for-byte; formatting them would invalidate the parsers under test
+tests/fixtures/scrape/

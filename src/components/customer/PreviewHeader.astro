@@ -1,0 +1,53 @@
+---
+// The preview header (Figma 53:35 catalog, 57:226 detail).
+//
+// One row, 152 tall on desktop: the wordmark or a back link on the left, the buyer's name or the
+// wordmark on the right, and a flexible gap between them. The 1142×1 box sitting between them in the
+// Figma frame is a spacer, not a rule — a zoomed render of the header shows no line there. The only
+// rule is the hairline along the bottom.
+interface Props {
+  /** Where the wordmark links. Inside a realm this is the buyer's own catalog, never `/`. */
+  home: string;
+  /** Shown on the right of the catalog header. */
+  displayName?: string;
+  /** Replaces the wordmark on the left; the wordmark then moves to the right (the detail header). */
+  back?: { href: string; label: string };
+}
+const { home, displayName, back } = Astro.props;
+---
+
+<header class="pv-header">
+  {
+    back ? (
+      <>
+        <a class="pv-back" href={back.href}>
+          <span aria-hidden="true">←</span> {back.label}
+        </a>
+        <span class="pv-spacer" aria-hidden="true" />
+        <a class="pv-wordmark pv-h3" href={home}>
+          Serio Ludere
+        </a>
+      </>
+    ) : (
+      <>
+        <a class="pv-wordmark pv-h3" href={home}>
+          Serio Ludere
+        </a>
+        <span class="pv-spacer" aria-hidden="true" />
+        {displayName && <span class="pv-who">{displayName}</span>}
+      </>
+    )
+  }
+</header>
+
+<style>
+  .pv-back {
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .pv-back:hover {
+    color: var(--brand);
+  }
+</style>

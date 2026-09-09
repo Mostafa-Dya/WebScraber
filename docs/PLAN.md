@@ -1,0 +1,152 @@
+# PLAN — Serio Ludere catalogue → Astro + Google Sheets
+
+Living document. Updated at the start of every phase and whenever a decision changes.
+
+## Phase 1 — Read reference · inspect live data · research · ADR (IN PROGRESS → checkpoint)
+
+Goal: no code yet. Understand the reference exactly, learn the real sheet shape, verify
+every library/API/hosting fact against live docs, and record decisions in `docs/ADR.md`.
+
+Steps
+
+1. Read `reference/catalogue.html` end to end; list every behaviour that must be preserved. ✅
+2. Inspect the live data: call the existing Apps Script `list_catalogue` once (read-only) and
+   record the actual field names, types and quirks (comma-separated tags, `method` column,
+   `Wabi-sabi` vs `Wabi Sabi`, untrimmed strings, empty photos). ✅ (ADR §3)
+3. Locate the source Google Sheet via the Drive connector; read the real headers. ✅
+   (private "Stock" workbook = legacy source; new empty "Catalog Database" = proposed target)
+4. Research: 7 topics × (researcher + fact-checker + breakage-hunter) = 21 agents ✅;
+   completeness critic ✅ (8 gaps, 12 contradictions); gap round: 8 researches ✅,
+   8 fact-checks (3 ✅, 5 ⏳). Consolidated briefs in `docs/research/<topic>.md` ✅.
+   (A session restart killed the first run mid-way; 25 finished results were recovered from
+   the run journal and only the unfinished agents were re-run.)
+5. ADR decisions D1–D11 written from the briefs ✅ → gaps brief `docs/research/gaps.md` ✅ (raw
+   reports copied to `docs/research/gaps/`) → adversarial ADR review, 4 lenses × (reviewer + judge):
+   57 findings; all four judges done ✅ (facts/security re-run after a session-limit failure) →
+   **ADR revision 2 written** applying every confirmed/partial finding plus the judges' surviving
+   missed items ✅ (cookie identity, host-specific client-IP header, standalone alert/backup script,
+   immediate secret rotation, no bust per vote, bounded Votes read, archive-safe formulas, text ids,
+   USER_ENTERED formula install, failure policy + /api/health + owner alerts, revalidate hardening,
+   least-privilege Apps Script scopes, tab protections, log redaction, input validation, page contract D12).
+6. ⏸ **Checkpoint 1 reached (2026-09-06)** — waiting for "go". Owner decisions listed in ADR §6:
+   sheet ID, host, Google auth mode, legacy secret rotation / old page, rates auto-refresh.
+
+## Phase 2 — Scaffold (IN PROGRESS, started 2026-09-06 on the owner's "development OAuth client, keep the
+
+## sheet local" instruction; remaining ADR §6 answers deferred to checkpoint 2)
+
+Done: package.json (pinned D11 versions, installed), astro.config.mjs (server output, Node standalone,
+memoryCache, astro:env schema with validateSecrets), tsconfig/eslint/prettier/vitest configs, .env
+(dev OAuth client, random secrets; gitignored), scripts/google-auth.ts (local consent helper),
+src/lib/sheets/{contract,types,errors,client,parse,read,write,cache,config}.ts, src/lib/{text,images,units,
+currency,rotate}.ts, scripts/{init-sheet,roundtrip}.ts + scripts/lib/{seed,env}.ts, 8 unit test files +
+1 mocked integration test, docs/SHEET_SETUP.md. Adversarial code review (correctness · sheets-api ·
+security · tests, each with a judge; 51 findings) applied: header validation on empty tabs,
+order-independent vote-state rebuild, warnings split from drops + per-tab 10 % rule, cache failure
+cooldown / bust-while-in-flight / delta replay / validated raw-range persistence (no vote data on
+disk), stricter parsing (no comma coercion, whitespace blanks, duplicate ids, contract-only rotate and
+featured, allow-listed cover URLs, bounded vote cells), stronger log scrubber, token errors fail fast,
+non-replayed spreadsheet creation, PKCE + state hygiene in the consent helper, check-photos script,
+route-cache key `include: []`, live round-trip proves literal "=1+1" storage and can probe containment.
+87 tests, typecheck/lint/build green. Waiting on: owner consent (redirect URI registration + consent
+click) → sheet:init → roundtrip → checkpoint 2.
+Original plan:
+astro 7.3.1 + @astrojs/node 11.1.5 (standalone) + Node 24; astro:env schema; `src/lib/sheets/{client,read,write,cache}.ts`
+(google-auth-library JWT or refresh-token + native fetch + own 429/503 retry); Zod schemas + header contract;
+`scripts/init-sheet.ts` (create tabs, header array formulas for likes/dislikes/rating, seed Rates, import the 20
+live rugs); Vitest 5 smoke test; ESLint 10 flat config. Round-trip demo = batchGet all tabs → insert one Votes row
+via atomic batchUpdate → read counts back.
+
+## Phase 3 — Port the reference page 1:1 (code complete 2026-09-06; screenshot comparison in the final test pass)
+
+`src/styles/{tokens,catalogue}.css` verbatim; components Layout/Header/Wordmark/Controls/CollectionNav/RugGrid/RugCard/
+RugPhoto/VoteButtons/Footer; client modules `src/scripts/{prefs,tabs,photos,votes}.ts` (localStorage `sl-unit`/`sl-cur`,
+`?collection=` tab state, rotate/placeholder, toggle votes with `sl-saved`); `src/lib/view.ts` pure view helpers;
+`src/lib/runtime.ts` singletons from astro:env; `/` renders on demand from the cached snapshot, route cache tag `sheet`.
+Owner instruction 2026-09-06: run Phases 3–6 without checkpoint pauses; all testing (live Google, screenshots) at the end.
+
+## Phase 4 — Detail page, tags, rating (code complete 2026-09-06)
+
+`/rugs/[slug]` (gallery, description, dims, meta incl. method, price, rating "4.6 · 23 votes", tags, votes; 404 for
+draft/archived/unknown; 503 when no snapshot), `/tags/[slug]`, rating line on cards, `GET /api/catalogue` DTO, `GET /api/health`.
+
+## Phase 5 — Voting API, rate limit, revalidation (code complete 2026-09-06)
+
+`POST /api/vote` (JSON-only + Sec-Fetch-Site posture, `__Host-sl_v` cookie identity hashed with VOTE_SALT, host-specific
+client-IP header, per-visitor/ip/rug/global limits, synchronous in-flight guard, toggle/flip semantics, optimistic
+in-memory delta with revert on write failure), `POST /api/revalidate` (constant-time bearer check, 10 s coalescing, per-IP
+failure cap, data + route cache bust), `google-apps-script/{onEdit.gs,appsscript.json,monitor.gs}` (notifier with 15 s
+throttle + trailing trigger, optional Frankfurter refresh, standalone health alerts + weekly backup). The three-writer
+concurrency test needs the live sheet → final test pass.
+
+## Phase 6 — Tests, hardening, docs, final summary (code complete 2026-09-06; final test pass pending consent)
+
+Done: Dockerfile + .dockerignore (build verified without .env using the placeholder secrets; Docker daemon is not
+running on this machine, so the image itself is unbuilt), `scripts/archive-votes.ts` (archives only superseded rows),
+`scripts/screenshots.ts` (Playwright + Chromium installed), SHEET_SETUP §5 (Apps Script install), README,
+component render tests (Astro container API), client-script tests (happy-dom), smoke test of the built server
+(pages, API posture, CSP + security headers) without a sheet, env schema switched to runtime-read variables (Astro
+inlines `public` ones at build), hash-based CSP, `bodySizeLimit`, `SITE_URL` required, `CLIENT_IP_HEADER` default empty.
+Adversarial review of Phases 3–5 (2026-09-06) applied in full — see ADR §7; the review also surfaced a client-side
+replay loop in `votes.ts` (a failed request re-sent its own intent forever), caught by the new happy-dom test.
+Gates: 139 tests, typecheck, lint, prettier, build green.
+Live pass 2026-09-06 (owner consent landed with a new dev OAuth client, project `poised-beach-484215-e5`):
+`sheet:init` created "Serio Ludere — Catalog Database (dev)" (id in `.env`), seeded 20 rugs / 8 collections / 30 tags / 6 rates,
+formulas OK; `sheet:roundtrip --check-containment` OK (atomic insert 751 ms, recount 416 ms, `=1+1` literal, undo OK;
+`updateCells` on Rugs allowed because the dev sheet is unprotected and owned by the same account); `test:live` 1/1;
+built server against the sheet: pages 200/404, route cache MISS→HIT, CSP header, 19 active cards (draft row hidden),
+vote flow through `/api/vote` (add, idempotent add, flip, remove) + `/api/revalidate` reconciled with the sheet
+(8 rows, formulas back to 0/0/0); screenshots `docs/screenshots/{reference,site,site-kilims}.png` refreshed.
+Owner's `astro dev`, running during `sheet:init`, reloaded `.env` the moment the id was written and answered 503
+(contract error on the still-empty Rates headers) for a few seconds, then recovered; `sheet:init` now writes the id last.
+Multi-agent parity + evidence review (67 agents): 17 findings confirmed, 4 refuted; the four should-fix items (slug-keyed tab
+counts/order, clicks during an in-flight vote, unit/currency pre-paint on every page, metadata-read failure keeping the breaker
+armed) plus the cheap notes were applied the same evening — details in ADR §7.
+
+## Design pass (2026-09-07, complete)
+
+Owner request: better visuals for the detail page and images, skeleton loaders, animations, page transitions (GSAP ok),
+same layout language. Design round: docs/DESIGN.md (3 directions, 3 judges, "Folio" won). Shipped per ADR D13:
+editorial.css + motion.css layers, plate ratio system, proportion-diagram placeholders, plate state machine, sticky tabs
+with ink bar + standfirst, lead cards, price/rating row, Gallery/Specs/Pager/RelatedRugs, native lightbox, GSAP Flip tab
+reflow (lazy), cross-document view transitions with the card→hero morph (no ClientRouter: unsupported under the CSP),
+navigation progress bar, ghost grid on 503. Verified with `npm run qa` on the built server (CSP clean, CLS 0.00,
+reduced-motion path, keyboard reach) and fresh screenshots (site, kilims, detail, mobile). Gates: 165 tests green.
+
+## Admin panel (2026-09-07, spec ready — docs/ADMIN_SPEC.md, phases 7–11 pending)
+
+Owner request: rebuild reference/admin.html as an authenticated /admin route (scraper-assisted add rug, product CRUD,
+collections tab, unique client links + audit log, round-up-to-5 prices). Research verified: ecarpetgallery.com is
+Magento/Hyvä behind Cloudflare (Node fetch blocked, impit/curl pass, Jina Reader fallback), karavanrug.com is Shopify
+with JSON-LD + /products/<handle>.js. `src/lib/price.ts` (roundUpTo5) already in. Owner decisions listed in
+ADMIN_SPEC §11.
+
+## Admin panel build (2026-09-08)
+
+Phases 7–11 of docs/ADMIN_SPEC.md are implemented: scraper library (src/lib/scrape, supplier adapters
+
+- SSRF guard + fixtures), Drive client (src/lib/drive), admin foundations (auth/session/audit/lock/
+  row-addressed writes), admin pages and JSON API under /admin and /api/admin, vanilla-TS admin scripts.
+  The build's integrator agent was cut off by a session limit, so the tree was left red; repaired here:
+  3 typecheck errors, 4 lint errors and 8 failing tests (three test expectations contradicted the shared
+  fixture defaults, one needed a table wrapper, one needed a per-test limiter reset, and rug-form.test.ts
+  had to move to the node environment because Astro's container cannot resolve .astro under happy-dom —
+  see tests/helpers/dom.ts). Gates: 503 tests, typecheck, lint, prettier, build all green.
+
+## Brief reconciliation (2026-09-08)
+
+`brief-astro-developer.pdf` v0.5 arrived and supersedes the original brief for data, auth, scraping and
+storage; the Figma file is the source of truth for UI. Full gap analysis in **docs/BRIEF_GAP.md**.
+Headline: three pillars missing (per-customer gated preview `/{slug}`, Shopify-CSV `Products` tab,
+Figma design system) and two built to a different shape (admin IA, Drive commit pipeline). The Figma
+file itself is blocking input for anything visual.
+
+## Decision log
+
+- 2026-09-05: `reference/catalogue.html` is a copy of the root `catalogue.html` (kept untouched).
+- 2026-09-05: Host = Node standalone container (DigitalOcean App Platform $5 recommended; Railway Hobby dropped after
+  Railway staff called commercial use a Pro workload); likes/dislikes formula-owned;
+  votes = atomic batchUpdate insert at row 2; plain `<img>` + lh3 in Phase 3, image mirror in Phase 5/6;
+  both service-account-key and OAuth-refresh auth modes. See ADR D1–D11.
+- 2026-09-05: The shared `SECRET` shipped in the reference (`SL-view-9f3c81`) is treated as compromised;
+  the legacy web app is archived once the new site is live.

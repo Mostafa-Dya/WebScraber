@@ -1,0 +1,399 @@
+{
+  "topic": "Durable key-value stores with conditional (compare-and-set) writes per candidate host (Netlify Blobs, Vercel Blob / Marketplace Redis, Cloudflare KV/DO/D1, node:sqlite on Node 24) for vote dedupe, rate limiting and last-good catalogue snapshot",
+  "verified_on": "2026-09-05",
+  "verdicts": [
+    {
+      "claim": "[F1] Netlify Blobs set() supports onlyIfMatch and onlyIfNew; resolves to { modified: boolean, etag?: string }; a failed precondition returns modified:false rather than throwing; options are mutually exclusive in @netlify/blobs@11.0.3 typings.",
+      "verdict": "confirmed",
+      "correction": "Docs fetched 2026-09-05: `await store.set(key, value, { metadata, onlyIfMatch, onlyIfNew })`; onlyIfMatch: 'the write will only succeed if the entry exists and has an ETag matching this value'; onlyIfNew: 'the write will only succeed if the entry does not exist'; returns modified (boolean) and etag (string, 'if the operation has generated a new entry; if not, this property will be omitted'). Tarball @netlify/blobs-11.0.3 dist/main.d.ts lines 40/42 and 143-158 show `onlyIfNew?: boolean` / `onlyIfMatch?: string` with the other typed `never`.",
+      "source_url": "https://docs.netlify.com/build/data-and-storage/netlify-blobs/"
+    },
+    {
+      "claim": "[F2] Netlify Blobs default consistency is eventual (single region + edge cache, propagation within 60 seconds); strong consistency is opt-in per store or per read at the cost of slower reads; Netlify CLI always uses strong consistency.",
+      "verdict": "confirmed",
+      "correction": "Verbatim on the page: 'By default, the Netlify Blobs API uses an eventual consistency model, where data is stored in a single region and cached at the edge ... Updates and deletions are guaranteed to be propagated to all edge locations within 60 seconds.' ... 'Netlify CLI always uses strong consistency.' ... 'strong consistency, which comes with the cost of slower reads'. get() signature documented as `await store.get(key, { consistency, type })`; getStore accepts `consistency` (d.ts line 47/57).",
+      "source_url": "https://docs.netlify.com/build/data-and-storage/netlify-blobs/"
+    },
+    {
+      "claim": "[F3] The same Netlify Blobs page also states 'Last write wins ... Netlify Blobs does not include a concurrency control mechanism', which sits alongside the onlyIfMatch/onlyIfNew section.",
+      "verdict": "confirmed",
+      "correction": "Both passages are live on the page: 'Last write wins. If two overlapping calls try to write the same object, the last write wins. Netlify Blobs does not include a concurrency control mechanism. To manage the potential for race conditions, you can build an object-locking mechanism into your application.' The page never states the ETag compare is server-side atomic; only the KB article uses the word 'atomic'.",
+      "source_url": "https://docs.netlify.com/build/data-and-storage/netlify-blobs/"
+    },
+    {
+      "claim": "[F4] Netlify KB describes the conditional writes as 'conditional atomic writes', says strong mode makes a write 'visible globally the moment it returns', store region 'Follows your site's functions region automatically', and publishes no ms latency figure.",
+      "verdict": "confirmed",
+      "correction": "All four quotes present verbatim; the only timing figure on the KB page is 'updates and deletes propagate within 60 seconds'.",
+      "source_url": "https://www.netlify.com/knowledge-base/netlify-blobs-vs-vercel-blob/"
+    },
+    {
+      "claim": "[F5] Netlify Blobs limits: object <= 5 GB, key <= 600 bytes, store name <= 64 bytes, metadata <= 2 KB; getWithMetadata(key, { etag }) returns data:null when unchanged; Go functions cannot use Blobs; local dev uses a sandboxed store.",
+      "verdict": "confirmed",
+      "correction": "Verbatim: 'An individual object's total size cannot exceed 5 GB.' 'Object keys cannot exceed 600 bytes.' 'Store names cannot exceed 64 bytes.' 'An individual object's metadata size cannot exceed 2 KB.' 'data: ... or null if the etag property is the same as the etag parameter'. 'Functions written in Go cannot access Netlify Blobs.' 'Local development with Netlify Dev uses a sandboxed local store ... You cannot read production data during local development.'",
+      "source_url": "https://docs.netlify.com/build/data-and-storage/netlify-blobs/"
+    },
+    {
+      "claim": "[F6] Netlify Blobs is included on every plan and draws from the credit pool (300 Free / 1,000 Personal / 3,000 Pro); Netlify publishes no per-operation or per-GB credit line for Blobs; the credit table lists compute 10 credits/GB-hour, web requests 2 credits/10k, bandwidth 20 credits/GB, deploys 15 credits; Free is a hard 300-credit limit with no recharge.",
+      "verdict": "confirmed",
+      "correction": "Credit docs table: Functions compute 1 GB-hour = 10 credits; Web Requests 10,000 = 2 credits; Web Bandwidth 1 GB = 20 credits; Production Deployments 1 = 15 credits; Free '300 credits/month with credit hard limit', 'Hard limit so no recharge option'. Storage table shows 'Netlify Blobs (Beta)' ticked for Free/Personal/Pro with no credit unit. netlify.com/pricing Free card: '300 credit limit', 'Store files & images with Blob storage'. KB confirms '300 credits on Free, 1,000 on Personal, 3,000 on Pro' and 'included on every plan'. Note the docs table label 'Netlify Blobs (Beta)' (see additional findings).",
+      "source_url": "https://docs.netlify.com/manage/accounts-and-billing/billing/billing-for-credit-based-plans/credit-based-pricing-plans/"
+    },
+    {
+      "claim": "[F7] @netlify/blobs latest is 11.0.3, engines node >=22.12.0; conditional (ETag) requests added in v3.3.0 (2023-10-23); consistency option added in v6.5.0 (2024-02-08).",
+      "verdict": "confirmed",
+      "correction": "registry.npmjs.org/@netlify/blobs/latest -> 11.0.3, engines {node: '>=22.12.0'} (fetched 2026-09-05). GitHub releases API: v3.3.0 published 2023-10-23T15:58:45Z 'add support for conditional requests (#76)'; v6.5.0 published 2024-02-08T11:06:50Z 'add `consistency` configuration property (#143)'.",
+      "source_url": "https://api.github.com/repos/netlify/blobs/releases/tags/v6.5.0"
+    },
+    {
+      "claim": "[F8] @astrojs/netlify 8.2.5 auto-configures Netlify Blobs for sessions; local testing of Blobs requires `netlify dev` rather than `astro dev`; session:false keeps Blobs out of the bundle.",
+      "verdict": "refuted",
+      "correction": "The version (v8.2.5), the auto-configuration sentence and the `session: false` behaviour are confirmed, but the 'requires netlify dev rather than astro dev' part is wrong. The adapter guide says the opposite: 'When running `astro dev`, the adapter enables several Netlify platform features to ensure the environment matches production as closely as possible. These include: ... A local Netlify Blobs server. This is used for sessions by default'. `netlify dev` is only recommended as a fallback when edge-function emulation fails ('set `edgeFunctions` to `false` to disable edge function emulation and use `netlify dev` instead'). Caveat: the guide only promises the local Blobs server is used for sessions; whether hand-written getStore() calls also hit it under `astro dev` is not stated, and Netlify's own docs say 'Local development with Netlify Dev uses a sandboxed local store' - verify in the spike.",
+      "source_url": "https://docs.astro.build/en/guides/integrations-guide/netlify/"
+    },
+    {
+      "claim": "[F9] Vercel Blob supports conditional writes via ifMatch on put(), copy(), del() (and rename/putImage); mismatch throws BlobPreconditionFailedError (HTTP 412); ETag support landed in 2.1.0; since 2.3.2 ifMatch implies allowOverwrite:true.",
+      "verdict": "confirmed",
+      "correction": "Docs 'Conditional writes': 'If another process modified the blob in between, the ETag won't match and the SDK throws a BlobPreconditionFailedError ... available on put(), copy(), and del()'. SDK reference tables list `ifMatch` under put(), putImage(), del() ('Only works with a single URL (not arrays)'), copy() and rename(). CHANGELOG 2.1.0: 'Accept `ifMatch` option in put/copy/createMultipartUpload ... Add `BlobPreconditionFailedError` for ETag mismatch (HTTP 412)'; 2.3.2: 'Make `ifMatch` imply `allowOverwrite: true` on `put()`'.",
+      "source_url": "https://vercel.com/docs/vercel-blob/using-blob-sdk"
+    },
+    {
+      "claim": "[F10] Vercel Blob has no onlyIfNew option; put() without allowOverwrite throws when the pathname exists; server-side atomicity of that check is undocumented.",
+      "verdict": "confirmed",
+      "correction": "SDK put() options: 'allowOverwrite ... By default an error will be thrown if you try to overwrite a blob by using the same `pathname` for multiple blobs.' No ifNoneMatch/onlyIfNew write option exists (ifNoneMatch exists only on get() for conditional reads). No statement on atomicity of the existence check on any fetched page.",
+      "source_url": "https://vercel.com/docs/vercel-blob/using-blob-sdk"
+    },
+    {
+      "claim": "[F11] Vercel Blob reads are CDN-cached (up to 1 month; overwrites take up to 60 s to propagate); consistent reads only for private stores via get(pathname, { access:'private', useCache:false }); useCache deprecated in 2.5.0 and restored in 2.6.0.",
+      "verdict": "confirmed",
+      "correction": "Docs: 'caches all blobs (private and public) for up to 1 month by default'; 'changes may take up to 60 seconds to propagate through our cache'; private-storage 'Consistent reads': 'This serves the read directly from origin storage and guarantees the latest content. These reads are slower and incur Fast Origin Transfer on each request.' CHANGELOG 2.5.0 'Deprecate the `useCache` option on `get()`'; 2.6.0 'Restore the `useCache` option on `get()`'.",
+      "source_url": "https://vercel.com/docs/vercel-blob/private-storage"
+    },
+    {
+      "claim": "[F12] Vercel Blob Hobby: 1 GB storage, 10K simple ops, 2K advanced ops (put() is advanced), 10 GB data transfer; exceeding blocks Blob for 30 days; rate limits Hobby 1,200 simple/900 advanced per min, Pro 7,200/4,500.",
+      "verdict": "confirmed",
+      "correction": "vercel.com/pricing: Hobby '1 GB / month included', '10K / month included', '2K / month included', '10 GB / month included'. Usage-and-pricing: 'you will not be able to access Vercel Blob if limits are exceeded ... wait until 30 days have passed'; rate-limit table Hobby '1,200/min (20/s)' / '900/min (15/s)', Pro '7,200/min (120/s)' / '4,500/min (75/s)'; 'Advanced Operations: Counts when using put(), copy(), or list()'. Note del() is free for billing but counts as an advanced op for rate limits.",
+      "source_url": "https://vercel.com/docs/vercel-blob/usage-and-pricing"
+    },
+    {
+      "claim": "[F13] Vercel Hobby is restricted to non-commercial personal use; commercial includes 'Receiving payment to create, update, or host the site' and 'Advertising the sale of a product or service'.",
+      "verdict": "confirmed",
+      "correction": "Verbatim: 'Hobby teams are restricted to non-commercial personal use only. All commercial usage of the platform requires either a Pro or Enterprise plan.' Bullets include both quoted examples plus 'Any method of requesting or processing payment from visitors of the site'.",
+      "source_url": "https://vercel.com/docs/limits/fair-use-guidelines"
+    },
+    {
+      "claim": "[F14] Vercel KV is no longer available (stores moved to Upstash Redis in December 2024); @vercel/kv 3.0.0 carries a deprecation notice.",
+      "verdict": "confirmed",
+      "correction": "Docs note verbatim; registry deprecation text: 'Vercel KV is deprecated. If you had an existing KV store, it should have moved to Upstash Redis which you will see under Vercel Integrations. For new projects, install a Redis integration from Vercel Marketplace'.",
+      "source_url": "https://vercel.com/docs/redis"
+    },
+    {
+      "claim": "[F15] Marketplace KV option is Upstash Redis; Global Config writes propagate 'Up to 10 seconds globally', Hobby max 1 store of 1 MB, docs say avoid for frequently updated data; reads <1 ms typical, 99% under 10 ms.",
+      "verdict": "confirmed",
+      "correction": "marketplace-storage: 'For KV (key-value stores), you can use Upstash Redis.' Global Config limits table: Hobby 'Maximum store size 1 MB', 'Maximum number of stores (total) 1', 'Write propagation Up to 10 seconds globally'; 'You should avoid using Global Configs for frequently updated data'. Storage overview: 'Most lookups return in less than 1ms, and 99% of reads will return under 10ms.'",
+      "source_url": "https://vercel.com/docs/global-config/global-config-limits"
+    },
+    {
+      "claim": "[F16] Vercel Fluid compute shares one instance across concurrent invocations and stops the process after uncaught exceptions; in-memory state is not durable.",
+      "verdict": "confirmed",
+      "correction": "Verbatim: 'multiple invocations can share the same physical instance (a global state/process) concurrently'; 'Fluid compute logs the error and lets current requests finish before stopping the process'. Fluid is on by default for new projects since 2025-04-23.",
+      "source_url": "https://vercel.com/docs/fluid-compute"
+    },
+    {
+      "claim": "[F17] Upstash Redis free tier: 256 MB, 500K commands/month, 10 GB bandwidth/month, 10 MB max request, 1 free DB; PAYG $0.2 per 100K commands, $0.25/GB storage after first GB; @upstash/redis 1.38.4, @upstash/ratelimit 2.0.8.",
+      "verdict": "confirmed",
+      "correction": "Pricing page: Data Size 256 MB, Monthly Bandwidth 10 GB, Monthly Commands 500K, Max request size 10 MB, '1 Free DB'; '$0.2 per 100K commands'; '$0.25 per GB' storage with first 1 GB free. Registry: @upstash/redis 1.38.4, @upstash/ratelimit 2.0.8.",
+      "source_url": "https://upstash.com/docs/redis/overall/pricing"
+    },
+    {
+      "claim": "[F18] Upstash consistency: per-key leader for writes, reads from any replica, eventual consistency across clients, read-your-writes via sync token (automatic in @upstash/redis >= 1.34.0, cross-client via readYourWritesSyncToken); strong consistency mode deprecated.",
+      "verdict": "confirmed",
+      "correction": "Verbatim: 'Each key is assigned to a leader replica, which is responsible for handling write operations on that key'; 'Reads can be performed from any replica'; 'can provide only Eventual Consistency'; strong mode dropped because 'its effect on latency started to conflict with the performance expectations of Redis use cases'. RYW page: TypeScript SDK from v1.34.0 manages sync tokens; property `readYourWritesSyncToken`.",
+      "source_url": "https://upstash.com/docs/redis/features/consistency"
+    },
+    {
+      "claim": "[F19] Redis SET NX returns null when the key exists; IFEQ/IFNE are new in Redis 8.4.0; @upstash/redis set(key, value, { nx:true, ex:60 }) returns 'OK' or null; Upstash support for IFEQ is unverified.",
+      "verdict": "confirmed",
+      "correction": "redis.io SET: NX 'Only set the key if it does not already exist'; IFEQ/IFNE/IFDEQ/IFDNE all marked since 8.4.0; Null reply when 'The key exists, and NX was specified or a specified IFEQ/IFNE/IFDEQ/IFDNE condition is false.' @upstash/redis 1.38.4 typings (error-*.d.ts line 4636): `set: <TData>(key, value, opts?: SetCommandOptions) => Promise<\"OK\" | TData | null>`; SetCommandOptions exposes only nx/xx conditions (no IFEQ), so the caveat stands. Note the Upstash docs page for SET documents only an 'OK' response; the null return is proven by the SDK types and Redis semantics.",
+      "source_url": "https://redis.io/docs/latest/commands/set/"
+    },
+    {
+      "claim": "[F20] Cloudflare Workers KV is eventually consistent (up to 60 seconds or more), caches negative lookups, allows 1 write/second/key, is 'not ideal for applications where you need support for atomic operations'; Free: 100,000 reads/day, 1,000 writes/day, 1 GB.",
+      "verdict": "confirmed",
+      "correction": "how-kv-works: 'Changes may take up to 60 seconds or more to be visible in other global network locations'; 'Negative lookups indicating that the key does not exist are also cached'; 'KV is not ideal for applications where you need support for atomic operations'. Limits page: 'Writes to same key: 1 per second'. Pricing: Free 'Keys read 100,000 / day', 'Keys written 1,000 / day', 'Stored data 1 GB'.",
+      "source_url": "https://developers.cloudflare.com/kv/platform/limits/"
+    },
+    {
+      "claim": "[F21] Durable Objects give true CAS: transactional and strongly consistent storage, each method implicitly wrapped in a transaction, requests serialized via input/output gates, synchronous ctx.storage.sql.exec(); SQLite-backed DOs on Workers Free: 100,000 req/day, 13,000 GB-s/day, 5M rows read/day, 100K rows written/day, 5 GB.",
+      "verdict": "confirmed",
+      "correction": "Storage API: 'transactional and strongly consistent storage'; 'Each method is implicitly wrapped inside a transaction, such that its results are atomic and isolated'; 'The Durable Objects runtime uses a combination of input gates and output gates to avoid this type of concurrency bug when performing storage operations'; `exec(query: string, ...bindings: any[]): SqlStorageCursor` is synchronous. Concepts page: 'Durable Objects are single-threaded and cooperatively multi-tasked'. Pricing: 'Workers Free plan: Only Durable Objects with SQLite storage backend are available'; Requests 100,000/day, Duration 13,000 GB-s/day, Rows read 5 million/day, Rows written 100,000/day, Stored data 5 GB (total). Best-practices page: 'Cloudflare recommends all new Durable Object namespaces use the SQLite storage backend.' Note the storage page has moved to /durable-objects/api/sqlite-storage-api/ (old URL still resolves).",
+      "source_url": "https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/"
+    },
+    {
+      "claim": "[F22] Cloudflare D1: without read replication all queries go to the primary instance; with replication the Sessions API gives sequential consistency incl. read-my-own-writes; Free 5M rows read/day, 100K rows written/day, 5 GB; SQLite so INSERT ... ON CONFLICT DO NOTHING works.",
+      "verdict": "confirmed",
+      "correction": "Verbatim: 'When using D1 without read replication, D1 routes all queries (both read and write) to a specific database instance in one location in the world, known as the primary database instance.' 'Sessions API ensures sequential consistency for all queries in a session' with read-my-own-writes. Read replication is off by default (must be enabled in dashboard or via read_replication.mode: auto). Pricing Free: 'Rows read 5 million / day', 'Rows written 100,000 / day', 'Storage 5 GB (total)'.",
+      "source_url": "https://developers.cloudflare.com/d1/best-practices/read-replication/"
+    },
+    {
+      "claim": "[F23] @astrojs/cloudflare 14.3.0: sessions default to Workers KV (SESSION binding); bindings via `import { env } from 'cloudflare:workers'`; workerEntryPoint option removed; custom worker re-exports handle from '@astrojs/cloudflare/handler'; Workers Free 100,000 req/day, 10 ms CPU, 50 subrequests.",
+      "verdict": "confirmed",
+      "correction": "Adapter guide header v14.3.0; sessions use Workers KV with binding 'SESSION' (customisable via sessionKVBindingName); `import { env } from 'cloudflare:workers'`; 'The `workerEntryPoint` option has been removed' with the src/worker.ts + wrangler.jsonc example. Workers limits: Free '100,000/day' requests, '10 ms' CPU per request, '50/request' subrequests (Paid: no request limit, 5 min CPU, 10,000/request).",
+      "source_url": "https://docs.astro.build/en/guides/integrations-guide/cloudflare/"
+    },
+    {
+      "claim": "[F24] node:sqlite on Node 24: Stability 1.2 (Release candidate) since v24.15.0; unflagged since v22.13.0/v23.4.0; DatabaseSync timeout option = busy timeout ms, default 0; latest Node 24 is v24.20.0 (2026-08-26, LTS Krypton); Active LTS until 2026-10-20, Maintenance until 2028-04-30; Node 26 LTS 2026-10-28.",
+      "verdict": "confirmed",
+      "correction": "v24.x sqlite.md line 18 '> Stability: 1.2 - Release candidate.'; history 'v24.15.0: SQLite is now a release candidate', 'v23.4.0, v22.13.0: SQLite is no longer behind --experimental-sqlite'; timeout 'The busy timeout in milliseconds ... Default: 0'. nodejs.org/dist/index.json: v24.20.0 dated 2026-08-26 lts 'Krypton' (latest overall v26.8.1, not LTS). Release schedule.json: v24 lts 2025-10-28, maintenance 2026-10-20, end 2028-04-30; v26 lts 2026-10-28.",
+      "source_url": "https://nodejs.org/docs/latest-v24.x/api/sqlite.html"
+    },
+    {
+      "claim": "[F25] SQLite UPSERT since 3.24.0 (ON CONFLICT DO NOTHING / DO UPDATE); StatementSync.run() returns { changes }; WAL lets readers and one writer proceed concurrently but does not work over a network filesystem; better-sqlite3 13.0.3 is the userland alternative.",
+      "verdict": "confirmed",
+      "correction": "sqlite.org: 'UPSERT syntax was added to SQLite with version 3.24.0 (2018-06-04)'; DO NOTHING documented. Node docs: run() returns { changes, lastInsertRowid }. WAL page: 'readers do not block writers and a writer does not block readers', 'there can only be one writer at a time', WAL 'does not work over a network filesystem'. Registry: better-sqlite3 13.0.3 (engines node >=22).",
+      "source_url": "https://sqlite.org/lang_upsert.html"
+    },
+    {
+      "claim": "[F26] Astro 7.3.1 built-in sessionDrivers include fs, redis, upstash, netlifyBlobs, cloudflareKV, vercelKV, lruCache; Node adapter defaults to filesystem, Netlify to Blobs, Cloudflare to KV; Vercel has no default (docs example uses sessionDrivers.lruCache).",
+      "verdict": "refuted",
+      "correction": "The adapter defaults and the Vercel lruCache example are confirmed (config reference: 'The Node, Cloudflare, and Netlify adapters automatically configure a default driver for you', added astro@5.7.0; Node guide: 'Astro uses the local filesystem for session storage when using the Node adapter'; sessions guide Vercel example `sessionDrivers.lruCache({ max: 800 })`). The driver list is wrong: `sessionDrivers.cloudflareKV` does not exist. astro@7.3.1 dist/core/session/drivers.js builds sessionDrivers from unstorage's builtinDrivers filtered to non-hyphenated keys (astro pins unstorage ^1.17.5). The camelCase keys in unstorage 1.17.5 are: fs (mapped to fsLite with base '.astro/session'), fsLite, memory, lruCache, redis, upstash, netlifyBlobs, cloudflareKVBinding, cloudflareKVHttp, cloudflareR2Binding, vercelKV, vercelBlob, vercelRuntimeCache, denoKV, denoKVNode, mongodb, planetscale, github, http, azure*, indexedb, localstorage, sessionStorage, capacitorPreferences, uploadthing, overlay, null. Use `sessionDrivers.cloudflareKVBinding` for Cloudflare KV. No Astro docs page uses a `cloudflareKV` identifier (only sessionDrivers.redis and sessionDrivers.lruCache appear in the docs source).",
+      "source_url": "https://cdn.jsdelivr.net/npm/astro@7.3.1/dist/core/session/drivers.js"
+    },
+    {
+      "claim": "[F27] No candidate host publishes a numeric read-latency figure for its KV/blob store; only qualitative statements exist (Netlify strong reads 'slower', Vercel Blob 'Fast'/origin reads 'slower', DO colocates SQLite with the object, Global Config <1 ms / 99% <10 ms).",
+      "verdict": "confirmed",
+      "correction": "Consistent with every page fetched in this session: Netlify docs/KB give only '60 seconds' propagation and 'slower reads'; Vercel storage table lists Blob reads 'Fast' and writes 'Milliseconds', Global Config 'Ultra-fast'; Cloudflare DO concepts page: 'Storage colocated with compute ... strongly consistent yet fast to access'; Upstash pricing/consistency pages give no ms figure. This remains an absence claim (low confidence appropriate).",
+      "source_url": "https://vercel.com/docs/storage"
+    },
+    {
+      "claim": "[S1] Code snippet: Netlify Blobs onlyIfNew example (emails store).",
+      "verdict": "confirmed",
+      "correction": "Matches the official example verbatim.",
+      "source_url": "https://docs.netlify.com/build/data-and-storage/netlify-blobs/"
+    },
+    {
+      "claim": "[S2] Code snippet: Netlify Blobs onlyIfMatch example.",
+      "verdict": "confirmed",
+      "correction": "Abridged but faithful: the official example wraps this in a Functions handler, notes '`myLocalCache` is a stub for a local cache implementation you might implement', builds an `updatedData` object (unused in the set call) and writes the literal 'New Jane' with `{ onlyIfMatch: etag }`; the `if (!modified)` branch is verbatim.",
+      "source_url": "https://docs.netlify.com/build/data-and-storage/netlify-blobs/"
+    },
+    {
+      "claim": "[S3] Code snippet: Netlify Blobs strong consistency per store (getStore({ name, consistency: 'strong' })) and per read (store.get(key, { consistency: 'strong' })).",
+      "verdict": "confirmed",
+      "correction": "Per-store part is the official 'animals' example ('This is a strongly-consistent read.'). Per-read form is supported by the documented signature `await store.get(key, { consistency, type })` and by the 11.0.3 typings (`consistency?: ConsistencyMode` on get options).",
+      "source_url": "https://docs.netlify.com/build/data-and-storage/netlify-blobs/"
+    },
+    {
+      "claim": "[S4] Code snippet: Netlify Blobs getWithMetadata(key, { etag }) conditional read.",
+      "verdict": "confirmed",
+      "correction": "Verbatim from the official example (which adds the comment 'Compare the whole value including surrounding quotes and any weakness prefix').",
+      "source_url": "https://docs.netlify.com/build/data-and-storage/netlify-blobs/"
+    },
+    {
+      "claim": "[S5] Code snippet: Vercel Blob head() + put({ allowOverwrite: true, ifMatch }) with BlobPreconditionFailedError.",
+      "verdict": "confirmed",
+      "correction": "Verbatim from the 'Conditional writes' section.",
+      "source_url": "https://vercel.com/docs/vercel-blob"
+    },
+    {
+      "claim": "[S6] Code snippet: get(pathname, { access: 'private', useCache: false }).",
+      "verdict": "confirmed",
+      "correction": "Verbatim from the 'Consistent reads' section (private stores; requires @vercel/blob >= 2.3 for private storage, useCache restored in 2.6.0).",
+      "source_url": "https://vercel.com/docs/vercel-blob/private-storage"
+    },
+    {
+      "claim": "[S7] Code snippet: @upstash/redis set(key, value, { nx: true }) returning 'OK' or null.",
+      "verdict": "confirmed",
+      "correction": "API shape is correct; the official page example is `await redis.set(\"my-key\", {my: \"value\"}, {nx: true});` and its Response section documents only `\"OK\"`. The `null` on NX miss is established by the SDK typings in @upstash/redis 1.38.4 (`Promise<\"OK\" | TData | null>`) and Redis SET semantics, not by that docs page.",
+      "source_url": "https://upstash.com/docs/redis/sdks/ts/commands/string/set"
+    },
+    {
+      "claim": "[S8] Code snippet: @upstash/ratelimit slidingWindow(10, '10 s') with Redis.fromEnv() and UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN.",
+      "verdict": "confirmed",
+      "correction": "Matches the getting-started example; the official version also passes `prefix: \"@upstash/ratelimit\"`.",
+      "source_url": "https://upstash.com/docs/redis/sdks/ratelimit-ts/gettingstarted"
+    },
+    {
+      "claim": "[S9] Code snippet: node:sqlite DatabaseSync basics 'official example' including insert.close() and query.close().",
+      "verdict": "refuted",
+      "correction": "The official v24.x example (doc/api/sqlite.md lines 39-58) contains NO `insert.close()` / `query.close()` lines, and StatementSync has no documented `close()` method in Node 24 - the only close() methods are `database.close()` and `session.close()`. Calling `statement.close()` would throw TypeError at runtime. Remove those two lines; statements are finalized when the database is closed or garbage-collected.",
+      "source_url": "https://raw.githubusercontent.com/nodejs/node/v24.x/doc/api/sqlite.md"
+    },
+    {
+      "claim": "[S10] Code snippet: SQLite UPSERT vocabulary example + PRAGMA journal_mode=WAL.",
+      "verdict": "confirmed",
+      "correction": "Vocabulary example verbatim from lang_upsert.html; `PRAGMA journal_mode=WAL;` is the documented way to enable WAL and is persistent once set.",
+      "source_url": "https://sqlite.org/lang_upsert.html"
+    },
+    {
+      "claim": "[S11] Code snippet: Durable Object new_sqlite_classes migration + this.sql.exec artist table.",
+      "verdict": "confirmed",
+      "correction": "artist example verbatim from the SQLite storage API page; `[[migrations]] tag = \"v1\" new_sqlite_classes = [ \"MyDurableObject\" ]` verbatim from the best-practices/access-durable-objects-storage page.",
+      "source_url": "https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/"
+    },
+    {
+      "claim": "[S12] Code snippet: Astro on Cloudflare custom src/worker.ts re-exporting handle from '@astrojs/cloudflare/handler' with a DurableObject class, wrangler.jsonc main.",
+      "verdict": "confirmed",
+      "correction": "Matches the adapter guide (v14.3.0); the guide's wrangler.jsonc also sets \"name\".",
+      "source_url": "https://docs.astro.build/en/guides/integrations-guide/cloudflare/"
+    },
+    {
+      "claim": "[S13] Code snippet: defineConfig({ session: { driver: sessionDrivers.redis({ url: process.env.REDIS_URL }) } }) and note that netlifyBlobs/upstash/cloudflareKV variants exist.",
+      "verdict": "confirmed",
+      "correction": "Code matches the configuration reference example (which also shows `adapter: vercel()`). The accompanying note is wrong about `cloudflareKV`: the identifier is `sessionDrivers.cloudflareKVBinding` (or cloudflareKVHttp) - see F26.",
+      "source_url": "https://docs.astro.build/en/reference/configuration-reference/"
+    },
+    {
+      "claim": "[P] @netlify/blobs latest 11.0.3 (engines node >=22.12.0)",
+      "verdict": "confirmed",
+      "correction": "registry fetched 2026-09-05: 11.0.3, engines node >=22.12.0",
+      "source_url": "https://registry.npmjs.org/@netlify/blobs/latest"
+    },
+    {
+      "claim": "[P] @netlify/functions latest 6.0.0",
+      "verdict": "confirmed",
+      "correction": "6.0.0 (engines node >=22.12.0)",
+      "source_url": "https://registry.npmjs.org/@netlify/functions/latest"
+    },
+    {
+      "claim": "[P] @vercel/blob latest 2.8.0",
+      "verdict": "confirmed",
+      "correction": "2.8.0 (engines node >=20.0.0); CHANGELOG top entry 2.8.0 adds putImage()",
+      "source_url": "https://registry.npmjs.org/@vercel/blob/latest"
+    },
+    {
+      "claim": "[P] @vercel/kv latest 3.0.0, deprecated",
+      "verdict": "confirmed",
+      "correction": "3.0.0 with deprecated field pointing to Vercel Marketplace Redis",
+      "source_url": "https://registry.npmjs.org/@vercel/kv/latest"
+    },
+    {
+      "claim": "[P] @upstash/redis latest 1.38.4",
+      "verdict": "confirmed",
+      "correction": "1.38.4",
+      "source_url": "https://registry.npmjs.org/@upstash/redis/latest"
+    },
+    {
+      "claim": "[P] @upstash/ratelimit latest 2.0.8",
+      "verdict": "confirmed",
+      "correction": "2.0.8",
+      "source_url": "https://registry.npmjs.org/@upstash/ratelimit/latest"
+    },
+    {
+      "claim": "[P] better-sqlite3 latest 13.0.3",
+      "verdict": "confirmed",
+      "correction": "13.0.3 (engines node >=22)",
+      "source_url": "https://registry.npmjs.org/better-sqlite3/latest"
+    },
+    {
+      "claim": "[P] astro latest 7.3.1",
+      "verdict": "confirmed",
+      "correction": "7.3.1 (engines node >=22.12.0, npm >=9.6.5, pnpm >=7.1.0; depends on unstorage ^1.17.5)",
+      "source_url": "https://registry.npmjs.org/astro/latest"
+    },
+    {
+      "claim": "[P] @astrojs/netlify latest 8.2.5",
+      "verdict": "confirmed",
+      "correction": "8.2.5",
+      "source_url": "https://registry.npmjs.org/@astrojs/netlify/latest"
+    },
+    {
+      "claim": "[P] @astrojs/vercel latest 11.0.10",
+      "verdict": "confirmed",
+      "correction": "11.0.10",
+      "source_url": "https://registry.npmjs.org/@astrojs/vercel/latest"
+    },
+    {
+      "claim": "[P] @astrojs/cloudflare latest 14.3.0",
+      "verdict": "confirmed",
+      "correction": "14.3.0",
+      "source_url": "https://registry.npmjs.org/@astrojs/cloudflare/latest"
+    },
+    {
+      "claim": "[P] @astrojs/node latest 11.1.5",
+      "verdict": "confirmed",
+      "correction": "11.1.5",
+      "source_url": "https://registry.npmjs.org/@astrojs/node/latest"
+    },
+    {
+      "claim": "[P] Node.js 24 latest v24.20.0 (2026-08-26, LTS Krypton); Active LTS until 2026-10-20, Maintenance until 2028-04-30",
+      "verdict": "confirmed",
+      "correction": "dist/index.json: v24.20.0 2026-08-26 lts Krypton; schedule.json v24: lts 2025-10-28, maintenance 2026-10-20, end 2028-04-30; v26 lts 2026-10-28",
+      "source_url": "https://nodejs.org/dist/index.json"
+    },
+    {
+      "claim": "[P] node:sqlite in Node 24.x: Stability 1.2 Release candidate since v24.15.0, no flag required",
+      "verdict": "confirmed",
+      "correction": "sqlite.md v24.x: 'Stability: 1.2 - Release candidate', history v24.15.0",
+      "source_url": "https://nodejs.org/docs/latest-v24.x/api/sqlite.html"
+    }
+  ],
+  "additional_findings": [
+    {
+      "claim": "Vercel Blob is also secret-free inside Vercel Functions: connected projects authenticate with OIDC by default (Vercel injects BLOB_STORE_ID and a short-lived, auto-rotated VERCEL_OIDC_TOKEN; 'no long-lived secret can leak'). The recommendation's point that Netlify Blobs is the only first-party store 'auto-authenticated ... no extra secret to manage' is therefore not a differentiator versus Vercel; the real Vercel blockers remain the Hobby non-commercial rule and the 2K advanced-ops/month cap.",
+      "evidence": "vercel-blob docs 'OIDC access by default': 'Connected projects authenticate with OpenID Connect (OIDC) by default ... The SDK reads these variables automatically, and you never need to read or pass the OIDC token yourself ... Because OIDC tokens rotate automatically, no long-lived secret can leak from your codebase or environment.' BLOB_READ_WRITE_TOKEN is only needed outside Vercel or for client uploads.",
+      "source_url": "https://vercel.com/docs/vercel-blob",
+      "confidence": "high"
+    },
+    {
+      "claim": "Netlify's credit-pricing docs label the product 'Netlify Blobs (Beta)' in the Storage Features table, while the Blobs reference page carries no beta/GA label at all. Treat Blobs' support status as ambiguous and record it in the ADR.",
+      "evidence": "Storage Features table row: 'Netlify Blobs (Beta) | ✓ | ✓ | ✓'. The Blobs docs page, when asked, shows no status designation anywhere.",
+      "source_url": "https://docs.netlify.com/manage/accounts-and-billing/billing/billing-for-credit-based-plans/credit-based-pricing-plans/",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Netlify Free tier legal terms (closes the researcher's open question): the Self-Serve Subscription Agreement imposes no non-commercial restriction, but says the Free Usage Tier exists 'to allow users to experience Netlify's Services', is 'offered at Netlify's sole discretion', that 'Netlify may shut down Free Usage Tier website projects without notice for any reason or no reason', has 'no service level commitments', resolves performance problems/attacks 'by shutting down the affected website projects', and that 'if use exceeds the Services capacity applicable to the Free Usage Tier, Customer will incur and agrees to pay additional fees that reflect actual usage'. Netlify support staff on the official forum state commercial use is allowed as long as you do not resell Netlify hosting. For a studio site, the Personal ($9) or Pro ($20) plan is the defensible choice if uptime matters.",
+      "evidence": "Quotes from the Self-Serve Subscription Agreement fetched 2026-09-05; forum thread 'Can we use Netlify free plan for commercial purposes?' (answers.netlify.com/t/.../41545) answered by Netlify staff; netlify.com/pricing Free card is labelled 'Individual' with no commercial-use restriction.",
+      "source_url": "https://www.netlify.com/legal/self-serve-subscription-agreement/",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Node runtime alignment on Netlify: Functions run on the Node version used for the build (must be a non-deprecated AWS Lambda runtime), with a fallback default of Node.js 24; override only via the AWS_LAMBDA_JS_RUNTIME env var (e.g. nodejs24.x) set in the UI/CLI/API, not netlify.toml. astro 7.3.1, @netlify/blobs 11.0.3 and @netlify/functions 6.0.0 all require Node >=22.12.0, so pin the build to Node 24 (.nvmrc / NODE_VERSION) to satisfy all three.",
+      "evidence": "Netlify functions optional-configuration page: 'the functions runtime uses a fallback default version of Node.js 24' and AWS_LAMBDA_JS_RUNTIME instructions; registry engines fields fetched 2026-09-05.",
+      "source_url": "https://docs.netlify.com/build/functions/optional-configuration/",
+      "confidence": "high"
+    },
+    {
+      "claim": "Astro's sessionDrivers is not a curated list: astro@7.3.1 re-exports unstorage's builtinDrivers filtered to non-hyphenated keys, mapping `fs` to fsLite with base '.astro/session'. Usable identifiers include fs, fsLite, memory, lruCache, redis, upstash, netlifyBlobs, cloudflareKVBinding, cloudflareKVHttp, cloudflareR2Binding, vercelKV, vercelBlob, vercelRuntimeCache, denoKV, mongodb, planetscale, github, http. vercelKV still exists as a driver name even though Vercel KV the product is discontinued.",
+      "evidence": "astro@7.3.1 dist/core/session/drivers.js: `Object.entries(builtinDrivers).filter(([name]) => !name.includes(\"-\"))`; unstorage 1.17.5 builtinDrivers keys enumerated from the package's main bundle.",
+      "source_url": "https://cdn.jsdelivr.net/npm/astro@7.3.1/dist/core/session/drivers.js",
+      "confidence": "high"
+    },
+    {
+      "claim": "Vercel Blob conditional-write surface is wider than the finding states and it also has conditional reads: `ifMatch` is documented on put(), putImage(), copy(), del() (single URL only), rename() and (per changelog) createMultipartUpload(); `get()` accepts `ifNoneMatch` and returns statusCode 304 with stream:null when unchanged - the analogue of Netlify's getWithMetadata etag read. del() is free for billing but counts as an advanced operation for rate limits.",
+      "evidence": "SDK reference option tables (lines for put/putImage/get/del/copy/rename) and usage-and-pricing 'del() operations are free ... considered advanced operations for operation rate limits but not for billing'.",
+      "source_url": "https://vercel.com/docs/vercel-blob/using-blob-sdk",
+      "confidence": "high"
+    },
+    {
+      "claim": "Vercel Blob is backed by Amazon S3 ('Vercel Blob leverages Amazon S3 as its underlying storage infrastructure'), so `ifMatch` maps to S3 conditional headers (the 2.3.2 changelog mentions 'conflicting conditional headers to S3'). This makes it plausible - but still undocumented by Vercel - that the default 'throw if pathname exists' is an S3 If-None-Match:* conditional PUT rather than a client-side check.",
+      "evidence": "vercel-blob docs 'Durability and availability' section; CHANGELOG 2.3.2.",
+      "source_url": "https://vercel.com/docs/vercel-blob",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Cloudflare details the finding glossed over: Durable Objects are 'single-threaded and cooperatively multi-tasked', storage per object is 'up to 10 GB', and 'Storage colocated with compute' is the stated reason it is 'strongly consistent yet fast to access'. D1 read replication is OFF by default (enable in dashboard or REST read_replication.mode: auto), so a fresh D1 database is already single-primary/strongly consistent without touching the Sessions API. The DO storage docs URL has moved to /durable-objects/api/sqlite-storage-api/.",
+      "evidence": "DO concepts page quotes; D1 read-replication page: read replication must be explicitly enabled; WebSearch result listing the sqlite-storage-api page as the home of the input/output gate text.",
+      "source_url": "https://developers.cloudflare.com/durable-objects/concepts/what-are-durable-objects/",
+      "confidence": "high"
+    },
+    {
+      "claim": "node:sqlite StatementSync has no close() method in Node 24.x; the documented statement methods are all(), columns(), expandedSQL, get(), iterate(), run(), setAllowBareNamedParameters(), setAllowUnknownNamedParameters(), setReturnArrays(), setReadBigInts(), sourceSQL. Any code sample calling statement.close() must be corrected before it lands in the repo or tests.",
+      "evidence": "Heading list of doc/api/sqlite.md on the v24.x branch (grep of '### ' headings shows database.close() and session.close() only).",
+      "source_url": "https://raw.githubusercontent.com/nodejs/node/v24.x/doc/api/sqlite.md",
+      "confidence": "high"
+    },
+    {
+      "claim": "Netlify Blobs runtime coverage: CRUD is available from Functions, Edge Functions and Build Plugins; it uses the web fetch() API ('included with Node.js 18'). The Blobs docs page itself contains no pricing/plan statement; plan inclusion is only stated in the KB and the credit-pricing docs.",
+      "evidence": "Blobs docs: 'You can perform CRUD operations for Netlify Blobs from the following Netlify features: Functions, Edge Functions, Build Plugins'; 'Netlify Blobs uses the web platform fetch() ... This is included with Node.js 18.'",
+      "source_url": "https://docs.netlify.com/build/data-and-storage/netlify-blobs/",
+      "confidence": "high"
+    },
+    {
+      "claim": "Vercel Blob Hobby allowances are shared: 'The included resource usage for the Hobby plan is shared across all Vercel services in your project', and Hobby is capped at 100 Blob stores. Private storage requires @vercel/blob >= 2.3 (and Vercel CLI >= 50.20.0).",
+      "evidence": "usage-and-pricing note and store-limits table; private-storage page prerequisites note.",
+      "source_url": "https://vercel.com/docs/vercel-blob/usage-and-pricing",
+      "confidence": "high"
+    }
+  ],
+  "summary": "Verified 54 items against live sources on 2026-09-05: 51 confirmed, 3 refuted, 0 unverifiable. Refuted: (1) the claim that local Netlify Blobs testing requires `netlify dev` - the @astrojs/netlify guide says `astro dev` already starts 'A local Netlify Blobs server'; (2) `sessionDrivers.cloudflareKV` does not exist - Astro's sessionDrivers are unstorage's builtinDrivers, so the name is `cloudflareKVBinding` (or `cloudflareKVHttp`); (3) the node:sqlite 'official example' snippet adds `insert.close()`/`query.close()`, which are not in the official example and StatementSync has no close() method in Node 24. Everything else - Netlify onlyIfNew/onlyIfMatch semantics and typings, consistency model, limits, credits, release history; Vercel Blob ifMatch/412, CDN caching, useCache history, Hobby quotas, non-commercial rule, KV shutdown, Global Config limits, Fluid compute; Upstash pricing/consistency/RYW/SET typings; Cloudflare KV/DO/D1 limits and consistency; Astro adapter versions; Node 24.20.0 / node:sqlite RC status; SQLite UPSERT/WAL; all 14 package versions - checked out. Adjacent facts the researcher missed: Vercel Blob is also secret-free via OIDC (weakens one pillar of the Netlify recommendation); Netlify's credit docs label Blobs '(Beta)'; Netlify's Free tier is legally 'to experience Netlify's Services', can be shut down 'without notice for any reason or no reason' and has no SLA (commercial use itself is allowed per Netlify staff) - so budget for Personal/Pro; Netlify Functions default to Node 24 and astro/@netlify/blobs require >=22.12; D1 read replication is off by default; Vercel Blob get() has ifNoneMatch conditional reads and ifMatch also covers putImage/rename/createMultipartUpload."
+}

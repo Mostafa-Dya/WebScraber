@@ -1,0 +1,202 @@
+---
+// /admin/clients — unique link generator, client list (revoke / restore) and the saves report from
+// Votes (docs/ADMIN_SPEC.md §2.1, §6, §8.3). The link is always regenerated from the runtime SITE_URL.
+// Wired by src/scripts/admin/clients.ts; the report is loaded through GET /api/admin/clients/report.
+export const prerender = false;
+
+import AdminLayout from '../../components/admin/AdminLayout.astro';
+import { clientLink } from '../../lib/admin/clients.ts';
+import { adminRuntime } from '../../lib/admin/http.ts';
+import { fetchAdminSnapshot, type AdminSnapshot } from '../../lib/admin/read.ts';
+import { getClient } from '../../lib/runtime.ts';
+import { consoleLogger, serializeError } from '../../lib/sheets/errors.ts';
+import { jsonForScript } from '../../lib/view.ts';
+
+let snapshot: AdminSnapshot | undefined;
+let error: string | undefined;
+try {
+  snapshot = await fetchAdminSnapshot(getClient(), { logger: consoleLogger });
+} catch (e) {
+  const safe = serializeError(e);
+  consoleLogger.error('admin clients read failed', { error: safe });
+  error = safe.message;
+}
+const clients = (snapshot?.clients ?? []).map((c) => ({
+  ...c,
+  link: clientLink(adminRuntime.siteUrl, c.code),
+}));
+const data = { clients, siteOrigin: new URL(adminRuntime.siteUrl).origin };
+---
+
+<AdminLayout title="Serio Ludere — Clients" active="clients">
+  {error && <div class="msg err on">Could not read the sheet: {error}</div>}
+
+  <section class="stack" aria-labelledby="h-link">
+    <h3 id="h-link">Unique link</h3>
+    <div class="row">
+      <div class="grow">
+        <input
+          id="cl_name"
+          placeholder="Client name — e.g. Nadia"
+          autocomplete="off"
+          aria-label="Client name"
+        />
+      </div>
+      <div class="grow">
+        <input id="cl_note" placeholder="Note (optional)" autocomplete="off" aria-label="Note" />
+      </div>
+      <div class="grow">
+        <input
+          id="cl_pw"
+          placeholder="Password (optional)"
+          autocomplete="off"
+          aria-label="Password"
+          maxlength="200"
+        />
+      </div>
+      <button class="go" id="btnGenerate" type="button">Generate link</button>
+    </div>
+    <p class="hint">
+      Leave the password blank and one is generated — three words and two digits, easy to read down a phone.
+      Type your own if you would rather; eight characters or more.
+    </p>
+    <div id="m8" class="msg"></div>
+    <div id="linkOut" class="stack" hidden>
+      <div class="row">
+        <div class="grow"><input id="linkInput" readonly aria-label="Client link" /></div>
+        <button class="go alt" id="btnCopy" type="button">Copy</button>
+      </div>
+      <div class="row" id="pwOut" hidden>
+        <div class="grow"><input id="pwInput" readonly aria-label="Customer password" /></div>
+        <button class="go alt" id="btnCopyPw" type="button">Copy password</button>
+      </div>
+      <p class="hint">
+        Code <span class="mono" id="linkCode"></span> — <span id="linkNote"></span>
+      </p>
+      <p class="hint" id="pwNote" hidden>
+        This password is shown once and stored only as a hash. Send it with the link; if it is lost, use Reset
+        password on the row below to mint a new one.
+      </p>
+    </div>
+  </section>
+
+  <section class="stack" aria-labelledby="h-clients">
+    <h3 id="h-clients">Clients</h3>
+    <div id="m9" class="msg"></div>
+    <div class="table-wrap">
+      <table id="clientTable">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Code</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Visits</th>
+            <th>Last seen</th>
+            <th>Saves</th>
+            <th>Link</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            clients.map((c) => (
+              <tr data-code={c.code} data-version={c.version} data-status={c.status}>
+                <td>{c.name}</td>
+                <td class="mono">{c.code}</td>
+                <td class:list={['status', c.status]}>{c.status}</td>
+                <td class="mono">{c.createdAt}</td>
+                <td class="n" data-visits>
+                  —
+                </td>
+                <td class="mono" data-last-seen>
+                  —
+                </td>
+                <td class="n" data-saves>
+                  —
+                </td>
+                <td class="mono">
+                  <a href={c.link} target="_blank" rel="noopener">
+                    {c.link}
+                  </a>
+                </td>
+                <td>
+                  <button type="button" class="chip" data-act={c.status === 'active' ? 'revoke' : 'restore'}>
+                    {c.status === 'active' ? 'Revoke' : 'Restore'}
+                  </button>
+                  <button type="button" class="chip" data-act="password">
+                    Reset password
+                  </button>
+                </td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+    {clients.length === 0 && <div class="msg busy on">No clients yet.</div>}
+  </section>
+
+  <section class="stack" aria-labelledby="h-access">
+    <h3 id="h-access">Access log</h3>
+    <p class="hint">
+      Who has opened their link, and when. One entry per visit; repeat views inside half an hour count once.
+      The table above fills in from the same read.
+    </p>
+    <div class="actions">
+      <button class="go alt" id="btnVisits" type="button">Refresh</button>
+    </div>
+    <div id="m11" class="msg"></div>
+    <div id="visitsOut"></div>
+  </section>
+
+  <section class="stack" aria-labelledby="h-report">
+    <h3 id="h-report">Client saves</h3>
+    <div class="actions">
+      <button class="go alt" id="btnReport" type="button">Refresh</button>
+    </div>
+    <div id="m10" class="msg"></div>
+    <div id="reportOut"></div>
+  </section>
+
+  <dialog id="pwDialog">
+    <form method="dialog" class="stack">
+      <h3 id="pwDialogTitle">Reset password</h3>
+      <p class="hint">
+        Leave it blank to generate one. The new password is shown once and replaces the old one immediately;
+        the buyer stays signed in until their session expires.
+      </p>
+      <input
+        id="pwDialogInput"
+        placeholder="New password (optional)"
+        autocomplete="off"
+        aria-label="New password"
+        maxlength="200"
+      />
+      <p class="msg err" id="pwDialogErr" hidden></p>
+      <div class="actions">
+        <button class="go" id="pwDialogOk" type="button">Set password</button>
+        <button class="go alt" id="pwDialogCancel" type="button">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script is:inline type="application/json" id="admin-data" set:html={jsonForScript(data)} />
+  <script>
+    import { initClients } from '../../scripts/admin/clients.ts';
+    initClients();
+  </script>
+</AdminLayout>
+
+<style is:global>
+  [hidden] {
+    display: none !important;
+  }
+  .report .chips {
+    margin-top: 8px;
+  }
+  .report .status-archived {
+    color: var(--ink-soft);
+    text-decoration: line-through;
+  }
+</style>

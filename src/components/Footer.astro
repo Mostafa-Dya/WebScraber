@@ -1,0 +1,51 @@
+---
+// Reference lines 90-96, plus the currency disclaimer the brief makes mandatory (§7): every price
+// on the site is converted from the base currency at an approximate daily rate, and the buyer has
+// to be told so before they quote a number back to the studio. The year is rendered on the server;
+// the contacts come from src/lib/studio.ts.
+import {
+  STUDIO_EMAIL,
+  STUDIO_INSTAGRAM,
+  STUDIO_INSTAGRAM_LABEL,
+  STUDIO_NAME,
+  STUDIO_PHONE_LABEL,
+  STUDIO_SITE,
+  STUDIO_SITE_LABEL,
+  STUDIO_WHATSAPP,
+} from '../lib/studio.ts';
+
+interface Props {
+  /** The private preview carries the email and the disclaimer only — no social, no WhatsApp (§7). */
+  minimal?: boolean;
+}
+const { minimal = false } = Astro.props;
+const year = new Date().getFullYear();
+---
+
+<footer>
+  {
+    !minimal && (
+      <>
+        <a href={STUDIO_SITE} target="_blank" rel="noopener">
+          {STUDIO_SITE_LABEL}
+        </a>
+        <a href={STUDIO_INSTAGRAM} target="_blank" rel="noopener">
+          {STUDIO_INSTAGRAM_LABEL}
+        </a>
+        <a href={`https://wa.me/${STUDIO_WHATSAPP}`} target="_blank" rel="noopener">
+          {STUDIO_PHONE_LABEL}
+        </a>
+      </>
+    )
+  }
+  <a href={`mailto:${STUDIO_EMAIL}`}>{STUDIO_EMAIL}</a>
+  <span>&copy; <span id="yr">{year}</span> {STUDIO_NAME}</span>
+  <span class="fx-note">Prices are indicative and convert at an approximate rate.</span>
+</footer>
+
+<style>
+  .fx-note {
+    display: block;
+    width: 100%;
+  }
+</style>

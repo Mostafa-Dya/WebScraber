@@ -1,0 +1,110 @@
+---
+// /admin/rugs — the CRUD list (docs/ADMIN_SPEC.md §2.1, §8.3): legacy Catalogue cards from a fresh
+// admin read, collection chips with counts, status chips (Active by default), a client-side search.
+// Every card links to its edit page. Filtering runs in src/scripts/admin/rug-list.ts.
+export const prerender = false;
+
+import AdminLayout from '../../../components/admin/AdminLayout.astro';
+import Chips from '../../../components/admin/Chips.astro';
+import RugCardAdmin from '../../../components/admin/RugCardAdmin.astro';
+import { fetchAdminSnapshot, type AdminSnapshot } from '../../../lib/admin/read.ts';
+import { getClient } from '../../../lib/runtime.ts';
+import { consoleLogger, serializeError } from '../../../lib/sheets/errors.ts';
+import { orderedCollectionNames } from '../../../lib/sheets/parse.ts';
+import { collectionSlug } from '../../../lib/text.ts';
+
+interface Chip {
+  value: string;
+  label: string;
+  count?: number;
+  pressed?: boolean;
+}
+
+let snapshot: AdminSnapshot | undefined;
+let error: string | undefined;
+try {
+  snapshot = await fetchAdminSnapshot(getClient(), { logger: consoleLogger });
+} catch (e) {
+  const safe = serializeError(e);
+  consoleLogger.error('admin rugs read failed', { error: safe });
+  error = safe.message;
+}
+const rugs = snapshot?.rugs ?? [];
+const collections = snapshot?.collections ?? [];
+const counts = new Map<string, number>();
+for (const r of rugs) {
+  const key = r.collection.trim() ? collectionSlug(r.collection, collections) : '';
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+const names = orderedCollectionNames(
+  rugs.filter((r) => r.collection.trim()),
+  collections,
+);
+const seen = new Set<string>();
+const collectionChips: Chip[] = [{ value: '*', label: 'All', count: rugs.length, pressed: true }];
+for (const name of [...collections.map((c) => c.name), ...names]) {
+  const slug = collectionSlug(name, collections);
+  if (seen.has(slug)) continue;
+  seen.add(slug);
+  const canonical = collections.find((c) => c.slug === slug)?.name ?? name;
+  collectionChips.push({ value: slug, label: canonical, count: counts.get(slug) ?? 0 });
+}
+if (counts.get('')) collectionChips.push({ value: '__none', label: 'No collection', count: counts.get('') });
+const statusChips: Chip[] = [
+  { value: 'active', label: 'Active', pressed: true },
+  { value: 'draft', label: 'Draft' },
+  { value: 'archived', label: 'Archived' },
+  { value: 'all', label: 'Any status' },
+];
+---
+
+<AdminLayout title="Serio Ludere — Catalogue" active="rugs">
+  {error && <div class="msg err on">Could not read the sheet: {error}</div>}
+  <div class="row">
+    <div class="grow">
+      <input
+        id="q"
+        type="search"
+        placeholder="Search name, id or supplier ref"
+        autocomplete="off"
+        aria-label="Search rugs"
+      />
+    </div>
+    <a class="go button-link" href="/admin/rugs/new">+ Add rug</a>
+  </div>
+  <Chips id="collectionChips" label="Collections" chips={collectionChips} />
+  <Chips id="statusChips" label="Status" chips={statusChips} />
+  <p class="hint" id="count" role="status" aria-live="polite"></p>
+  <div id="empty" class:list={['msg', 'busy', { on: !error && rugs.length === 0 }]}>
+    {rugs.length === 0 ? 'No rugs yet.' : ''}
+  </div>
+  <div id="grid" class="grid">
+    {rugs.map((rug) => <RugCardAdmin rug={rug} collections={collections} />)}
+  </div>
+  <script>
+    import { initRugList } from '../../../scripts/admin/rug-list.ts';
+    initRugList();
+  </script>
+</AdminLayout>
+
+<style is:global>
+  [hidden] {
+    display: none !important;
+  }
+  .card .mt .line,
+  .card .mt .mono {
+    display: block;
+  }
+  a.button-link {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 11px 18px;
+    border-radius: 2px;
+    text-decoration: none;
+    display: inline-block;
+  }
+</style>

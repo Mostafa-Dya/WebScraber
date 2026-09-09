@@ -1,0 +1,56 @@
+---
+// Collection tabs with counts, reference lines 87 and 157-168, with real tab semantics
+// (role=tablist/tab, aria-selected, roving tabindex + arrow keys — ADR D12) and the design pass
+// (docs/DESIGN.md §3.4): a sliding ink bar under the active tab and a standfirst per collection
+// (eyebrow with the count, the Collections tab's description when there is one). Buttons filter
+// client-side (src/scripts/tabs.ts); the first tab is active on the server, ?collection= is applied
+// by the inline pre-paint step and honoured on load.
+import type { NavTab } from '../lib/view.ts';
+
+interface Props {
+  tabs: NavTab[];
+  active: string | undefined;
+}
+const { tabs, active } = Astro.props;
+---
+
+<nav id="nav" role="tablist" aria-label="Collections">
+  {
+    tabs.map((t) =>
+      // Astro keeps template whitespace, so {t.name} and the count pill must stay on one line:
+      // the reference renders "Classics<span class="n">4</span>" with no space (ADR D12).
+      // prettier-ignore
+      <button type="button" role="tab" id={`tab-${t.slug}`} class={t.slug === active ? 'on' : ''} data-collection={t.slug} aria-selected={t.slug === active ? 'true' : 'false'} aria-controls="grid" tabindex={t.slug === active ? 0 : -1}>{t.name}<span class="n">{t.count}</span></button>,
+    )
+  }
+  <span class="ink" aria-hidden="true"></span>
+</nav>
+<section class="lede">
+  {
+    tabs.map((t) => (
+      <div class="standfirst" data-standfirst data-collection={t.slug} hidden={t.slug !== active}>
+        <p class="eyebrow">
+          {t.name} · {t.count} {t.count === 1 ? 'rug' : 'rugs'}
+        </p>
+        {t.description && (
+          // Brief §7: the buyer sees the collection description clamped to one line, with a
+          // "See more" that expands it in place. The button is inert without JS, so it is only
+          // revealed by src/scripts/lede.ts once the handler is bound.
+          <p class="lede-text" data-lede>
+            <span class="lede-body">{t.description}</span>
+            <button type="button" class="lede-more" data-lede-more hidden>
+              See more
+            </button>
+          </p>
+        )}
+      </div>
+    ))
+  }
+</section>
+
+<script>
+  import { initTabs } from '../scripts/tabs.ts';
+  import { initLede } from '../scripts/lede.ts';
+  initTabs();
+  initLede();
+</script>

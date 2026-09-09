@@ -1,0 +1,146 @@
+---
+// Rug detail page (brief §5, ADR D12, docs/DESIGN.md §4): a two-page spread — photo plate with
+// thumbnails and a lightbox on the left, a sticky spec column on the right (name, price, votes,
+// specs, description, tags), prev/next within the collection, related rugs below. Brief §7 forbids
+// an enquiry action inside the preview: the studio email lives in the footer and nowhere else.
+// Unavailable → the designed shell with a ghost spread and HTTP 503 (not cached); unknown → 404.
+export const prerender = false;
+
+import Footer from '../../components/Footer.astro';
+import Gallery from '../../components/Gallery.astro';
+import Header from '../../components/Header.astro';
+import Layout from '../../components/Layout.astro';
+import Pager from '../../components/Pager.astro';
+import RelatedRugs from '../../components/RelatedRugs.astro';
+import Specs from '../../components/Specs.astro';
+import VoteButtons from '../../components/VoteButtons.astro';
+import { money } from '../../lib/currency.ts';
+import { baseCurrency, loadCatalogue, ratesFor } from '../../lib/runtime.ts';
+import {
+  activeRugs,
+  cardView,
+  ratingText,
+  relatedCards,
+  siblings,
+  SLUG_PARAM_RE,
+  withLeads,
+} from '../../lib/view.ts';
+
+const slug = Astro.params.slug ?? '';
+const { snapshot, error } = await loadCatalogue();
+const catalogue = snapshot?.catalogue ?? { rugs: [], collections: [], tags: [], rates: [], customers: [] };
+const rates = ratesFor(catalogue);
+const cards = snapshot ? withLeads(activeRugs(catalogue).map((r) => cardView(r, catalogue))) : [];
+const card = snapshot && SLUG_PARAM_RE.test(slug) ? cards.find((c) => c.slug === slug) : undefined;
+
+if (error || !snapshot) {
+  Astro.cache.set(false);
+  Astro.response.status = 503;
+  Astro.response.statusText = 'Service Unavailable';
+  Astro.response.headers.set('retry-after', '60');
+  Astro.response.headers.set('cache-control', 'no-store');
+} else if (!card) {
+  Astro.cache.set(false);
+  Astro.response.status = 404;
+  Astro.response.statusText = 'Not Found';
+} else {
+  Astro.cache.set({ maxAge: 60, swr: 60, tags: ['sheet'] });
+}
+
+const priceText = card ? money(card.priceUsd, baseCurrency, rates, 'en-US') : '';
+const rating = card ? ratingText(card.likes, card.dislikes, card.rating) : null;
+const sib = card ? siblings(cards, card.slug) : undefined;
+const related = card ? relatedCards(cards, card.slug, 4) : [];
+const title = card ? `${card.name} — Serio Ludere` : 'Serio Ludere — Catalogue';
+const retry = Astro.url.pathname;
+const ghostLines = [60, 40, 30, 50, 35, 45, 20];
+---
+
+<Layout title={title} rates={rates}>
+  <Header rates={rates} />
+  <nav id="nav" class="nav-detail" aria-label="Breadcrumb">
+    <a class="back" href={card ? `/?collection=${card.collectionSlug}` : '/'}
+      >← {card?.collection || 'Catalogue'}</a
+    >
+    {sib && <Pager prev={sib.prev} next={sib.next} index={sib.index + 1} total={sib.total} />}
+  </nav>
+  {
+    !card && error && (
+      <main>
+        <div id="state" class="state" role="status">
+          {error}
+          <a class="retry" href={retry}>
+            Try again
+          </a>
+        </div>
+        <div class="ghost-spread" aria-hidden="true">
+          <div class="sk sk-plate" />
+          <div>
+            {ghostLines.map((w) => (
+              <div class:list={['sk', 'sk-line', `w${w}`]} />
+            ))}
+          </div>
+        </div>
+      </main>
+    )
+  }
+  {
+    !card && !error && (
+      <main>
+        <div class="plate-empty" data-plate data-empty data-ar="3-4" aria-hidden="true">
+          <div class="ph-art" data-ar="3-4">
+            <span class="ph-rug" />
+          </div>
+          <div class="ph">photo to come</div>
+        </div>
+        <div id="state" class="state">
+          This rug is not in the catalogue.
+        </div>
+      </main>
+    )
+  }
+  {
+    card && (
+      <main class="detail">
+        <Gallery card={card} />
+        <aside class="info">
+          <a class="eyebrow" href={`/?collection=${card.collectionSlug}`}>
+            {card.collection}
+          </a>
+          <h1 class="nm">{card.name}</h1>
+          <div class="price" data-price data-usd={card.priceUsd ?? ''} hidden={!priceText}>
+            {priceText}
+          </div>
+          <div class="vote-row">
+            <VoteButtons rugId={card.id} name={card.name} mode="detail" />
+            <div class="rating" data-rating-for={card.id} hidden={!rating}>
+              {rating}
+            </div>
+          </div>
+          <Specs card={card} />
+          {card.description && <p class="desc">{card.description}</p>}
+          {card.tags.length > 0 && (
+            <ul class="tags" aria-label="Tags">
+              {card.tags.map((t) => (
+                <li>
+                  <a href={`/tags/${t.slug}`}>{t.name}</a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+      </main>
+    )
+  }
+  {
+    card && related.length > 0 && (
+      <RelatedRugs
+        cards={related}
+        rates={rates}
+        collection={card.collection}
+        collectionSlug={card.collectionSlug}
+      />
+    )
+  }
+  <Footer />
+</Layout>

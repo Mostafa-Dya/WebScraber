@@ -1,0 +1,94 @@
+---
+// Reference line 88: the .state message and the .grid of cards, with the design pass
+// (docs/DESIGN.md §3.5, §3.10, §6.5): a polite live region for tab changes, eager loading for the
+// first cards of the active tab, one empty plate for an empty catalogue, and a static ghost grid with
+// a Try-again link when the sheet is unreachable. (The inline pre-paint step lives in Layout.astro.)
+import type { RateTable } from '../lib/currency.ts';
+import type { CardView } from '../lib/view.ts';
+import RugCard from './RugCard.astro';
+
+interface Props {
+  cards: CardView[];
+  rates: RateTable;
+  /** When set, only cards of this collection slug are visible on first paint. */
+  active?: string;
+  /** Message for the .state element (loading error, empty catalogue). */
+  state?: string;
+  /** The sheet could not be read: ghost grid + Try again (the page answers 503). */
+  error?: boolean;
+  /** How many visible cards load eagerly (the first of them with fetchpriority=high). */
+  eager?: number;
+  /** Card link builder; the private preview points cards at `/{customer}/{productId}` (brief §7). */
+  hrefFor?: (card: CardView) => string;
+}
+const { cards, rates, active, state, error = false, eager = 0, hrefFor } = Astro.props;
+let left = eager;
+const loadMode = cards.map((c) => {
+  const visible = active === undefined || c.collectionSlug === active;
+  if (!visible || left <= 0) return 'lazy';
+  left -= 1;
+  return left === eager - 1 ? 'priority' : 'eager';
+});
+const retry = Astro.url.pathname + Astro.url.search;
+const ghosts = Array.from({ length: 8 }, (_, i) => i);
+---
+
+<main>
+  {
+    state && !error && cards.length === 0 && (
+      <div class="plate-empty" data-plate data-empty data-ar="3-4" aria-hidden="true">
+        <div class="ph-art" data-ar="3-4">
+          <span class="ph-rug" />
+        </div>
+        <div class="ph">photo to come</div>
+      </div>
+    )
+  }
+  {
+    state && (
+      <div id="state" class="state" role={error ? 'status' : undefined}>
+        {state}
+        {error && (
+          <a class="retry" href={retry}>
+            Try again
+          </a>
+        )}
+      </div>
+    )
+  }
+  {
+    error && (
+      <>
+        <p class="sr-only">Loading catalogue</p>
+        <div class="grid ghost" aria-hidden="true">
+          {ghosts.map(() => (
+            <div class="card">
+              <div class="sk sk-plate" />
+              <div class="sk sk-line w60" />
+              <div class="sk sk-line w40" />
+              <div class="sk sk-line w30" />
+              <div class="sk sk-line w20" />
+            </div>
+          ))}
+        </div>
+      </>
+    )
+  }
+  <p id="grid-live" class="sr-only" aria-live="polite"></p>
+  {
+    cards.length > 0 && (
+      <div id="grid" class="grid" role="tabpanel" aria-label="Rugs">
+        {cards.map((card, i) => (
+          <RugCard
+            card={card}
+            rates={rates}
+            hidden={active !== undefined && card.collectionSlug !== active}
+            eager={loadMode[i] !== 'lazy'}
+            priority={loadMode[i] === 'priority'}
+            href={hrefFor ? hrefFor(card) : undefined}
+          />
+        ))}
+      </div>
+    )
+  }
+</main>

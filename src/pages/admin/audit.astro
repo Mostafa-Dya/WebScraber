@@ -1,0 +1,104 @@
+---
+// /admin/audit — the AuditLog viewer (docs/ADMIN_SPEC.md §2.1, §8.3): newest 100 rows server-rendered
+// as text, client-side filter by action / target id, "Load more" through GET /api/admin/audit.
+export const prerender = false;
+
+import AdminLayout from '../../components/admin/AdminLayout.astro';
+import { AUDIT_ACTIONS } from '../../lib/admin/audit.ts';
+import { fetchAdminSnapshot, type AdminSnapshot } from '../../lib/admin/read.ts';
+import { getClient } from '../../lib/runtime.ts';
+import { consoleLogger, serializeError } from '../../lib/sheets/errors.ts';
+
+let snapshot: AdminSnapshot | undefined;
+let error: string | undefined;
+try {
+  snapshot = await fetchAdminSnapshot(getClient(), { logger: consoleLogger });
+} catch (e) {
+  const safe = serializeError(e);
+  consoleLogger.error('admin audit read failed', { error: safe });
+  error = safe.message;
+}
+const rows = snapshot?.audit ?? [];
+const pretty = (s: string): string => {
+  if (!s) return '';
+  try {
+    return JSON.stringify(JSON.parse(s), null, 2);
+  } catch {
+    return s;
+  }
+};
+---
+
+<AdminLayout title="Serio Ludere — Audit log" active="audit">
+  {error && <div class="msg err on">Could not read the sheet: {error}</div>}
+  <div class="row">
+    <div class="narrow">
+      <select id="f_action" aria-label="Filter by action">
+        <option value="">Any action</option>
+        {AUDIT_ACTIONS.map((a) => <option value={a}>{a}</option>)}
+      </select>
+    </div>
+    <div class="grow">
+      <input
+        id="f_target"
+        placeholder="Target id — e.g. SL-021"
+        autocomplete="off"
+        aria-label="Filter by target id"
+      />
+    </div>
+  </div>
+  <p class="hint" id="count" role="status" aria-live="polite"></p>
+  <div class="table-wrap">
+    <table id="auditTable">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Actor</th>
+          <th>Action</th>
+          <th>Target</th>
+          <th>Change</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          rows.map((a) => (
+            <tr data-action={a.action} data-target={a.targetId.toLowerCase()} data-row={a.row}>
+              <td class="mono">{a.timestamp}</td>
+              <td>{a.actor}</td>
+              <td class="mono">{a.action}</td>
+              <td class="mono">
+                {a.targetTab} {a.targetId}
+              </td>
+              <td>
+                {(a.before || a.after) && (
+                  <details>
+                    <summary>before → after</summary>
+                    {a.before && <pre>{pretty(a.before)}</pre>}
+                    {a.after && <pre>{pretty(a.after)}</pre>}
+                  </details>
+                )}
+              </td>
+              <td class="mono">{a.note}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  {rows.length === 0 && <div class="msg busy on">No audit rows yet.</div>}
+  <div class="actions">
+    <button class="go alt" id="btnMore" type="button" data-offset={rows.length}>Load more</button>
+  </div>
+  <div id="m11" class="msg"></div>
+  <script>
+    import { initAudit } from '../../scripts/admin/audit.ts';
+    initAudit();
+  </script>
+</AdminLayout>
+
+<style is:global>
+  [hidden] {
+    display: none !important;
+  }
+</style>

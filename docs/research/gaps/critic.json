@@ -1,0 +1,67 @@
+{
+ "overall": "Findings are deep and version-accurate but disagree on the most consequential decision, the host, and leave three constraint-mandated mechanisms undesigned: shared state for vote dedupe, rate limiting and last-good fallback; a keyless Sheets auth fallback; and scoping of the remote-image proxy. Resolve the host first; most remaining gaps are conditional on it.",
+ "gaps": [
+  {
+   "key": "deploy-target-conflict",
+   "title": "Deployment target is contested across topics",
+   "why": "astro-core picks Node standalone; cache-invalidation and images pick Netlify Free; verifiers call Netlify Free fragile (300-credit cap) and Vercel Hobby non-commercial. The mandated in-process TTL cache with bust(), rate limiting and last-good fallback are only exact on one long-lived process. Every other decision depends on this.",
+   "question": "Which always-on container hosts (Railway Hobby, Fly.io, Render Starter, DigitalOcean App Platform, Hetzner with Coolify) run a Node 24 Docker image as exactly one long-lived instance by default, with custom domain and TLS, and what is their September 2026 monthly price?"
+  },
+  {
+   "key": "vote-state-store",
+   "title": "No store designed for vote dedupe, rate limits, last-good snapshot",
+   "why": "Constraints require per-visitor rate limiting, one vote per rug per visitor, and serving the last cached catalogue when Sheets fails. No topic says where this state lives: serverless instances are isolated and cold starts lose memory; a Node restart loses it too. A cookie alone is client-controlled.",
+   "question": "Which durable key-value stores with conditional (compare-and-set) writes exist per candidate host — Netlify Blobs strong-consistency mode (onlyIfMatch/onlyIfNew), Vercel Blob or Marketplace KV, node:sqlite on Node 24 — and what are their free-tier limits, consistency guarantees, and typical read latency?"
+  },
+  {
+   "key": "keyless-sheets-auth",
+   "title": "Service-account key may be impossible to create",
+   "why": "Both direct-API recommendations depend on a JSON key, but GCP organisations created after May 2024 block key creation by default, and key-expiry or leaked-key policies can silently disable the site. If the studio owner is on Workspace, the ADR needs a keyless fallback or must default to the Apps Script write path.",
+   "question": "Can a Node server (self-hosted, Netlify, or Vercel) call the Google Sheets API without a service-account JSON key — via Workload Identity Federation using the host's OIDC token, or a stored user OAuth refresh token — and what exactly does google-auth-library 11 require for each?"
+  },
+  {
+   "key": "image-endpoint-allowlist",
+   "title": "Allow-listing lh3 makes /_image an open proxy",
+   "why": "Drive IDs are opaque, so image.domains cannot scope to the studio's files; anyone can push arbitrary Drive files through sharp (a CVSS 9.8 AVIF RCE class was patched in 7.2.8) or Netlify Image CDN. The proposed fix — a custom image endpoint validating IDs against the sheet — is unresearched, and Netlify's remote_images regex is static.",
+   "question": "In Astro 7.3, how is a custom `image.endpoint` (entrypoint and route options) implemented so it validates the remote href at request time against a dynamic allow-list before delegating to the default sharp or Netlify handler — is there a working example?"
+  },
+  {
+   "key": "drive-hotlink-reliability",
+   "title": "lh3 hotlinking reliability is undocumented",
+   "why": "Drive-vs-external-host hinges on lh3.googleusercontent.com/d/ staying stable, yet its size suffixes are undocumented, responses carry Cache-Control: private (Netlify/Vercel caching of such origins is unverified), rate limits are unpublished, and only community throttling anecdotes exist. If throttling is real, ImageKit should be the default, not the fallback.",
+   "question": "What 2025–2026 evidence exists (Google statements, issue trackers, forum reports) of lh3.googleusercontent.com/d/<id> image hotlinking being throttled, blocked, or policy-changed, and at what request volumes or images-per-page densities did it occur?"
+  },
+  {
+   "key": "counter-formula-vs-write",
+   "title": "likes/dislikes ownership undecided; append concurrency unverified",
+   "why": "Requirements only make `rating` a formula. If `likes`/`dislikes` are code-written, Sheets has no atomic increment, which is the sole argument for the Apps Script LockService path. If they are COUNTIFS over Votes, safety of concurrent values.append and read-after-append recalculation rest on a 2017 blog and community anecdotes.",
+   "question": "Is there official Google documentation or a reproducible 2024–2026 test showing whether concurrent spreadsheets.values.append calls to the same table can lose or overwrite rows, and whether an immediately following values.get returns recalculated COUNTIFS results?"
+  },
+  {
+   "key": "apps-script-anonymous-deploy",
+   "title": "Apps Script write path viability on the owner's account",
+   "why": "The hybrid recommendation routes votes through an execute-as-owner web app deployed to 'Anyone'. Findings could not confirm whether Workspace admins can remove that option (only a community remark), Apps Script became an admin-controllable core service in June 2026, and the 400–1500 ms latency is a community estimate about google.script.run, not doPost.",
+   "question": "Which Google Workspace Admin console settings (as of 2025–2026) prevent deploying an Apps Script web app with access 'Anyone' or anonymous execution, and what error or missing option does the deploy dialog show when they apply?"
+  },
+  {
+   "key": "sheets-client-choice",
+   "title": "sheets-api and tooling disagree on the client library",
+   "why": "sheets-api recommends google-auth-library plus plain fetch (or @googleapis/sheets); tooling recommends google-spreadsheet 5.3.0. Verifiers showed raw fetch gets no retries unless enabled and that default FORMATTED_VALUE returns locale-formatted strings (the owner's sheet may use a comma-decimal locale), so the chosen client must expose render options and retry config.",
+   "question": "Does google-spreadsheet 5.3.0 let getRows() or loadCells() set valueRenderOption=UNFORMATTED_VALUE and dateTimeRenderOption=FORMATTED_STRING and configure retryConfig for 429 responses, or must the project call values.batchGet directly through google-auth-library?"
+  }
+ ],
+ "contradictions": [
+  "Deployment target: astro-core recommends Node standalone; cache-invalidation and images recommend Netlify Free; images verifier refutes Netlify Free as fragile (300-credit hard cap, 15 credits/deploy, 20 credits/GB); apps-script verifier says Netlify or Node; three verifiers rule Vercel Hobby non-commercial (Pro $20).",
+  "Sheets client library: sheets-api says google-auth-library + plain fetch, skip googleapis, google-spreadsheet only for ergonomics; tooling says google-auth-library + google-spreadsheet 5.3.0 as the default pairing.",
+  "onChange on API writes: apps-script verifier 1 cites a 2022 thread saying installable onChange does NOT fire for Sheets API writes; verifier 2 cites tanaikech saying it DOES fire (without the service-account email). The ADR's 'API writes never fire triggers' premise is only documented for onEdit.",
+  "gaxios retries: sheets-api researcher said retries are on by default for GET/PUT; verifier 2 refuted — nothing retries unless retry:true or retryConfig is set; typed googleapis clients enable it, the recommended raw authClient.fetch() path does not.",
+  "Cache layer: cache-invalidation researcher proposes a hand-rolled Map plus host CDN headers and purge SDKs; both verifiers refute in favour of Astro 7 route cache (memoryCache/cacheNetlify/cacheVercel, still experimental for CDN providers). Requirements mandate a data-level TTL cache with bust() — a different layer the ADR must reconcile with route caching.",
+  "Vercel tag purge: cache-invalidation researcher treated invalidateByTag as immediate; verifier 2 refuted — it is soft invalidation (stale served once), so dangerouslyDeleteByTag is needed to meet the 1-minute freshness target on a low-traffic site.",
+  "Vercel ISR revalidation for Astro via x-prerender-revalidate remains unverifiable across both verifiers; only SvelteKit/Nuxt document it.",
+  "Client-id cookie: astro-core suggested on-demand pages behind route caching could set the cookie; verifier refuted — memoryCache never stores Set-Cookie responses and cache hits bypass middleware; the cookie may only be set in POST /api/vote.",
+  "Vercel Node runtime: astro-core said it is chosen in project settings; verifier refuted — @astrojs/vercel derives it from the build machine's Node version (package.json engines overrides).",
+  "Version attributions corrected by verifiers: @typescript/typescript6 tops out at 6.0.2 (pin typescript@6.0.3 directly); Netlify remotePatterns Image CDN support landed in @astrojs/netlify 5.2.0 not 6.3.0; Cloudflare Pages drop and workerd dev server are in @astrojs/cloudflare 13.0.0 not 14.0.0.",
+  "Frankfurter Google Sheets page: fx-rates researcher reported 404; both verifiers found it at frankfurter.dev/google-sheets/ with the exact IMPORTDATA recipe and a serial-number date caveat.",
+  "Zod RatesRow schema: fx-rates researcher's z.number()/z.string() schema was refuted — Sheets returns locale strings by default (FORMATTED_VALUE), serial-number dates under UNFORMATTED_VALUE, and '' for blank cells, so .default(0) never fires."
+ ]
+}

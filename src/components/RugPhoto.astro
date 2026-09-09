@@ -1,0 +1,96 @@
+---
+// Photo + placeholder, reference lines 183-186 and 189, with the design pass (docs/DESIGN.md §5):
+// the driving image carries data-plate-img so photos.ts can shimmer/reveal the enclosing plate, a
+// proportion diagram (.ph-art) shows the rug's real shape when there is no photo, and the hero
+// mode renders the card's cached =w800 as the base with the =w1600 full layer fading over it.
+// Plain <img> (ADR D6). `.ph` keeps exactly the reference's text node.
+import { dims } from '../lib/units.ts';
+import type { Bucket } from '../lib/view.ts';
+
+interface Props {
+  src?: string;
+  alt: string;
+  rot: 'force' | '1' | '0';
+  ar?: Bucket;
+  widthCm?: number;
+  lengthCm?: number;
+  eager?: boolean;
+  priority?: boolean;
+  /** Detail hero: base (=w800) + full (=w1600) layers. */
+  hero?: boolean;
+  full?: string;
+}
+const {
+  src,
+  alt,
+  rot,
+  ar = '3-4',
+  widthCm,
+  lengthCm,
+  eager = false,
+  priority = false,
+  hero = false,
+  full,
+} = Astro.props;
+const dimText = dims(widthCm, lengthCm, 'cm');
+const rotClass = rot === 'force' ? 'rot' : undefined; // known without the file (ADR D6)
+---
+
+{
+  src && !hero && (
+    <img
+      src={src}
+      alt={alt}
+      class={rotClass}
+      loading={eager ? 'eager' : 'lazy'}
+      fetchpriority={priority ? 'high' : undefined}
+      decoding="async"
+      data-rot={rot}
+      data-rug-img
+      data-plate-img
+    />
+  )
+}
+{
+  src && hero && (
+    <img
+      class:list={['hero-base', rotClass]}
+      src={src}
+      alt={alt}
+      loading="eager"
+      fetchpriority="high"
+      decoding="async"
+      data-rot={rot}
+      data-rug-img
+      data-plate-img
+    />
+  )
+}
+{
+  src && hero && full && (
+    <img
+      class:list={['hero-full', rotClass]}
+      src={full}
+      srcset={`${src} 800w, ${full} 1600w`}
+      sizes="(min-width: 900px) 55vw, 100vw"
+      alt=""
+      loading="eager"
+      fetchpriority="low"
+      decoding="async"
+      data-rot={rot}
+      data-rug-img
+    />
+  )
+}
+<div class="ph-art" aria-hidden="true" data-ar={ar}>
+  <span class="ph-rug"></span>
+  <span class="ph-dims" data-dims data-w={widthCm ?? ''} data-l={lengthCm ?? ''} hidden={!dimText}
+    >{dimText}</span
+  >
+</div>
+<div class="ph">photo to come</div>
+
+<script>
+  import { initPhotos } from '../scripts/photos.ts';
+  initPhotos();
+</script>

@@ -1,0 +1,103 @@
+---
+// Detail-page gallery (docs/DESIGN.md §4.3): the hero plate at the rug's real ratio (the card's
+// cached =w800 as the base, the =w1600 full layer fading over it), a caption, a thumbnail strip and
+// a native <dialog> lightbox. Behaviour in src/scripts/gallery.ts. A <button> may not contain a
+// <div>, so the hero stays a div with an invisible overlay button.
+import { driveImageUrl } from '../lib/images.ts';
+import type { CardView } from '../lib/view.ts';
+import RugPhoto from './RugPhoto.astro';
+
+interface Props {
+  card: CardView;
+}
+const { card } = Astro.props;
+const ids = card.photoIds ?? [];
+const first = ids[0];
+const w800 = first ? driveImageUrl(first, 800) : undefined;
+const w1600 = first ? driveImageUrl(first, 1600) : undefined;
+const ar = card.ar ?? '3-4';
+const caption = first ? `Photo 1 of ${ids.length} · click to enlarge` : 'No photo yet';
+---
+
+<figure class="stage">
+  <div
+    class="hero"
+    data-plate
+    data-ar={ar}
+    data-slug={card.slug}
+    data-empty={first ? undefined : ''}
+    data-name={card.name}
+    data-rot={card.rot}
+    data-src800={w800}
+    data-src1600={w1600}
+  >
+    <RugPhoto
+      hero
+      src={w800}
+      full={w1600}
+      alt={card.name}
+      rot={card.rot}
+      ar={ar}
+      widthCm={card.widthCm}
+      lengthCm={card.lengthCm}
+      eager
+      priority
+    />
+    {first && <button type="button" class="hero-open" aria-label="Open photo viewer" />}
+  </div>
+  <figcaption class="hero-cap" aria-live="polite">{caption}</figcaption>
+  {
+    ids.length > 1 && (
+      <div class="thumbs" role="group" aria-label="Photos">
+        {ids.map((id, i) => (
+          <button
+            type="button"
+            class="thumb"
+            data-plate
+            aria-pressed={i === 0 ? 'true' : 'false'}
+            aria-label={`Photo ${i + 1}`}
+            data-i={i}
+            data-src800={driveImageUrl(id, 800)}
+            data-src1600={driveImageUrl(id, 1600)}
+          >
+            <img
+              src={driveImageUrl(id, 800)}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              data-rug-img
+              data-plate-img
+              data-rot={card.rot}
+            />
+          </button>
+        ))}
+      </div>
+    )
+  }
+</figure>
+{
+  first && (
+    <dialog id="lightbox" class="lb" aria-label="Photo viewer">
+      <div class="lb-stage" data-plate data-ar={ar} />
+      <button type="button" class="lb-close" aria-label="Close" autofocus>
+        ×
+      </button>
+      {ids.length > 1 && (
+        <button type="button" class="lb-prev" aria-label="Previous photo">
+          ‹
+        </button>
+      )}
+      {ids.length > 1 && (
+        <button type="button" class="lb-next" aria-label="Next photo">
+          ›
+        </button>
+      )}
+      <p class="lb-count" aria-live="polite" />
+    </dialog>
+  )
+}
+
+<script>
+  import { initGallery } from '../scripts/gallery.ts';
+  initGallery();
+</script>

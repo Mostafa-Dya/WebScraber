@@ -1,0 +1,210 @@
+---
+// `/{customer-slug}` — one buyer's private preview catalog (Figma "G2 · Catalog", 53:33).
+//
+// This is the last route in the tree on purpose: `/admin`, `/api`, `/rugs` and `/tags` are static
+// segments and win against `[slug]`, and src/lib/customer/gate.ts refuses those names as slugs
+// anyway. The middleware has already default-denied anything that is not a well-formed slug and
+// marked the response no-store; what is left here is the three-way answer:
+//
+//   unknown or inactive customer → 404 (a typo in a link must not confirm who else exists)
+//   known customer, no session   → the password gate, which is header-less and footer-less as drawn
+//   known customer, session      → their catalog
+//
+// The design filters by rug type rather than by collection, so the collection tabs and the
+// standfirst that the public catalogue uses are gone; what replaces them is one title, one line, and
+// a strip of type chips closing with the buyer's own shortlist.
+export const prerender = false;
+
+import PreviewControls from '../../components/customer/PreviewControls.astro';
+import PreviewFooter from '../../components/customer/PreviewFooter.astro';
+import PreviewGate from '../../components/customer/PreviewGate.astro';
+import PreviewHeader from '../../components/customer/PreviewHeader.astro';
+import PreviewLayout from '../../components/customer/PreviewLayout.astro';
+import ProductCard from '../../components/customer/ProductCard.astro';
+import TagFilters from '../../components/customer/TagFilters.astro';
+import { findCustomer, noteVisit } from '../../lib/customer/http.ts';
+import { baseCurrency, loadCatalogue, ratesFor } from '../../lib/runtime.ts';
+import { activeRugs, cardView, tagSlug } from '../../lib/view.ts';
+
+const slug = (Astro.params.slug ?? '').toLowerCase();
+const { snapshot, error } = await loadCatalogue();
+const catalogue = snapshot?.catalogue ?? { rugs: [], collections: [], tags: [], rates: [], customers: [] };
+const rates = ratesFor(catalogue);
+const customer = snapshot ? findCustomer(catalogue.customers, slug) : undefined;
+const signedIn = Astro.locals.customer === slug;
+
+// Belt and braces: the middleware already marked every realm response uncacheable. `?.` because
+// Astro's test container renders without a cache adapter.
+Astro.cache?.set(false);
+Astro.response.headers.set('cache-control', 'no-store');
+if (error || !snapshot) {
+  Astro.response.status = 503;
+  Astro.response.statusText = 'Service Unavailable';
+  Astro.response.headers.set('retry-after', '60');
+} else if (!customer) {
+  Astro.response.status = 404;
+  Astro.response.statusText = 'Not Found';
+}
+
+// One row per buyer per half hour, appended in the background: never awaited, never fatal.
+if (customer && signedIn) noteVisit(slug, Astro.request);
+
+const rugs = customer && signedIn ? activeRugs(catalogue) : [];
+const cards = rugs.map((r) => cardView(r, catalogue));
+
+// The chips are the rug types actually present, most-used first, then alphabetical for a stable
+// order when counts tie. A tag nothing carries is not offered.
+const counts = new Map<string, { slug: string; name: string; count: number }>();
+for (const card of cards) {
+  for (const t of card.tags) {
+    const key = t.slug || tagSlug(t.name, catalogue.tags);
+    const seen = counts.get(key);
+    if (seen) seen.count += 1;
+    else counts.set(key, { slug: key, name: t.name, count: 1 });
+  }
+}
+// Capped at the eight the design draws. A dev sheet with thirty tags would otherwise turn a
+// one-line strip into two dense rows and bury the grid; the least-used types are simply not offered
+// as shortcuts, and "All" still reaches every rug.
+const MAX_TAG_CHIPS = 8;
+const tags = [...counts.values()]
+  .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+  .slice(0, MAX_TAG_CHIPS);
+
+const title = customer ? `Serio Ludere — ${customer.displayName}` : 'Serio Ludere';
+---
+
+<PreviewLayout title={title} rates={rates} customer={signedIn ? slug : undefined}>
+  {
+    error && (
+      <main class="pv-state">
+        <p class="pv-h3">Could not load the catalogue.</p>
+        <p class="pv-lede">
+          <a href={`/${slug}`}>Try again</a>
+        </p>
+      </main>
+    )
+  }
+
+  {
+    !error && !customer && (
+      <main class="pv-state">
+        <p class="pv-h3">This preview link is not active.</p>
+        <p class="pv-lede">Ask the studio for a new one.</p>
+      </main>
+    )
+  }
+
+  {!error && customer && !signedIn && <PreviewGate slug={slug} displayName={customer.displayName} />}
+
+  {
+    !error && customer && signedIn && (
+      <>
+        <PreviewHeader home={`/${slug}`} displayName={customer.displayName} />
+        <main class="pv-main">
+          <section class="pv-wrap pv-title">
+            <div class="pv-title-row">
+              <h1 class="pv-h1">The collection</h1>
+              <span class="pv-spacer" aria-hidden="true" />
+              <PreviewControls rates={rates} />
+            </div>
+            <p class="pv-lede">
+              <span class="pv-wide-only">Every rug we have available. </span>Mark what draws you — and what
+              doesn&rsquo;t.
+            </p>
+          </section>
+
+          {tags.length > 0 && (
+            <section class="pv-wrap">
+              <TagFilters tags={tags} />
+            </section>
+          )}
+
+          <section class="pv-wrap">
+            {cards.length > 0 ? (
+              <div class="pv-grid">
+                {cards.map((card, i) => (
+                  <div
+                    data-card
+                    data-rug={card.id}
+                    data-tags={card.tags.map((t) => t.slug || tagSlug(t.name, catalogue.tags)).join(' ')}
+                  >
+                    <ProductCard
+                      card={card}
+                      rates={rates}
+                      baseCurrency={baseCurrency}
+                      href={`/${slug}/${encodeURIComponent(card.id)}`}
+                      eager={i < 4}
+                      priority={i === 0}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p class="pv-lede">No rugs published yet.</p>
+            )}
+            <p class="pv-lede" data-grid-empty hidden>
+              Nothing matches that filter yet.
+            </p>
+          </section>
+        </main>
+        <PreviewFooter />
+      </>
+    )
+  }
+
+  {(error || !customer) && <PreviewFooter />}
+</PreviewLayout>
+
+<style>
+  /* Fixed 300px cards with a 16px column gap and a 64px row gap, left-aligned with whatever slack is
+     left over: the design is explicit that the cards do not flex, so the grid drops from four to
+     three to two columns as the window narrows rather than stretching each card. */
+  .pv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 300px);
+    column-gap: var(--stack-lg);
+    row-gap: var(--section-gap);
+    align-items: start;
+    /* The grid band's own bottom padding, which is what puts the footer 176 clear of the last row. */
+    padding-bottom: var(--space-section);
+  }
+
+  .pv-state {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--stack-md);
+    padding: var(--space-section) var(--gutter);
+    text-align: center;
+  }
+
+  @media (max-width: 767px) {
+    /* One column, not two: a buyer judging a rug needs the image large. */
+    .pv-grid {
+      grid-template-columns: 1fr;
+      row-gap: var(--section-gap);
+    }
+    .pv-wide-only {
+      display: none;
+    }
+    /* At 390 the title steps down a size and the row gaps tighten from 12 to 8, which is what the
+       mobile frame measures; together with the abbreviated "ft" that keeps the title, the toggle and
+       the picker on one row inside 358px. */
+    .pv-title-row {
+      gap: var(--stack-sm);
+    }
+    .pv-title-row .pv-h1 {
+      font-size: var(--h3);
+      white-space: nowrap;
+    }
+    .pv-title-row .pv-spacer {
+      min-width: var(--stack-sm);
+    }
+    .pv-state {
+      padding-inline: var(--stack-lg);
+    }
+  }
+</style>

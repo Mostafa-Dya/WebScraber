@@ -1,0 +1,37 @@
+---
+// The preview footer (Figma 130:274 / 130:297, identical on both screens).
+//
+// Three groups on one row: the studio and an invitation to ask; the contact address; and, pushed to
+// the right, the two lines of fine print. Both fine-print lines are required — the currency
+// disclaimer by the brief (§7), and the line about reactions being shared because a buyer tapping a
+// heart should know the studio sees it. At 390 the row stacks and the fine print left-aligns.
+import { STUDIO_EMAIL, STUDIO_NAME } from '../../lib/studio.ts';
+---
+
+<footer class="pv-footer">
+  <div class="pv-footer-row">
+    <div class="pv-footer-col">
+      <p class="pv-h4">{STUDIO_NAME}</p>
+      <p>Questions, or want to see one in person?</p>
+    </div>
+    <div class="pv-footer-col pv-footer-contact">
+      <p class="pv-label pv-muted">Contact</p>
+      <p><a href={`mailto:${STUDIO_EMAIL}`}>{STUDIO_EMAIL}</a></p>
+    </div>
+    <div class="pv-footer-col pv-footer-fine">
+      <p>Prices are indicative and convert at an approximate rate.</p>
+      <p>The rugs you like are shared with {STUDIO_NAME}.</p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .pv-footer-contact {
+    margin-left: 16px;
+  }
+  @media (max-width: 767px) {
+    .pv-footer-contact {
+      margin-left: 0;
+    }
+  }
+</style>

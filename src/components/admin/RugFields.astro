@@ -1,0 +1,376 @@
+---
+// The rug field grid shared by /admin/rugs/new (add mode: name + collection + tags + supplier link
+// → Fetch → preview) and /admin/rugs/[id] (edit mode: the same grid with id readonly, a hidden
+// version, Save / Archive / Restore). docs/ADMIN_SPEC.md §8.3. Wired by src/scripts/admin/rug-form.ts;
+// nothing inline (hash CSP), sheet text only ever lands as text.
+import type { AdminCollection, AdminRug, AdminTag } from '../../lib/admin/read.ts';
+import { driveImageUrl } from '../../lib/images.ts';
+import Chips from './Chips.astro';
+
+interface Props {
+  mode: 'add' | 'edit';
+  rug?: AdminRug;
+  collections: readonly AdminCollection[];
+  tags: readonly AdminTag[];
+  defaultStatus: 'active' | 'draft';
+  roundStep: number;
+  driveScopeOk: boolean | null;
+  nextId?: string;
+}
+const { mode, rug, collections, tags, defaultStatus, roundStep, driveScopeOk, nextId } = Astro.props;
+const edit = mode === 'edit';
+const v = (s: string | number | undefined): string => (s === undefined ? '' : String(s));
+const pressed = new Set(rug?.tags.map((t) => t.toLowerCase()) ?? []);
+const tagChips = tags.map((t) => ({
+  value: t.name,
+  label: t.name,
+  pressed: pressed.has(t.name.toLowerCase()),
+}));
+const status = rug?.status ?? defaultStatus;
+const openSite = rug ? `/rugs/${rug.slug}` : '#';
+const collectionValue = rug?.collection.trim().toLowerCase() ?? '';
+---
+
+<div class="row">
+  {
+    !edit && (
+      <div class="grow">
+        <input
+          id="yourName"
+          placeholder="Your name for this rug — e.g. Khal Mohammadi"
+          autocomplete="off"
+          aria-label="Your name for this rug"
+        />
+      </div>
+    )
+  }
+  <div class="narrow">
+    <select id="f_collection" aria-label="Collection" required>
+      <option value="">Collection…</option>
+      {
+        collections.map((c) => (
+          <option value={c.name} selected={c.name.trim().toLowerCase() === collectionValue}>
+            {c.name}
+          </option>
+        ))
+      }
+    </select>
+  </div>
+</div>
+<div class="row tagrow">
+  <Chips id="tagChips" label="Tags" chips={tagChips} multi />
+  <div class="newtag">
+    <input id="newTag" placeholder="+ new tag" autocomplete="off" aria-label="New tag name" />
+    <button class="chip" id="btnNewTag" type="button">Add tag</button>
+  </div>
+</div>
+{
+  !edit && (
+    <>
+      <div class="row">
+        <div class="grow">
+          <input
+            id="url"
+            placeholder="Product link — ecarpetgallery.com or karavanrug.com"
+            inputmode="url"
+            autocomplete="off"
+            aria-label="Supplier product link"
+          />
+        </div>
+        <button class="go" id="btnFetch" type="button">
+          Fetch
+        </button>
+      </div>
+      <p class="hint">Your name is what clients see. The link only supplies size, material, age and price.</p>
+      <p class="hint" id="supplierTitle" hidden />
+      <div id="m1" class="msg" />
+    </>
+  )
+}
+
+<div id="preview" class:list={['preview', { on: edit }]}>
+  <div class="fields">
+    <div class="f">
+      <label for="f_id">Rug number (id)</label>
+      <input id="f_id" value={rug?.id ?? nextId ?? ''} readonly={edit} autocomplete="off" />
+    </div>
+    <div class="f">
+      <label for="f_slug">Slug (URL)</label>
+      <div class="pair">
+        <input id="f_slug" value={rug?.slug ?? ''} autocomplete="off" />
+        <button class="chip" id="btnSlug" type="button" title="Regenerate from the name">↻</button>
+      </div>
+    </div>
+    <div class="f">
+      <label for="f_name">Name (what clients see)</label>
+      <input id="f_name" value={rug?.name ?? ''} autocomplete="off" />
+    </div>
+    <div class="f wide">
+      <label for="f_description">Description</label>
+      <textarea id="f_description" rows="3">{rug?.description ?? ''}</textarea>
+    </div>
+    <div class="f">
+      <label for="f_width">Width (cm)</label>
+      <input id="f_width" inputmode="numeric" value={v(rug?.widthCm)} />
+    </div>
+    <div class="f">
+      <label for="f_length">Length (cm)</label>
+      <div class="pair">
+        <input id="f_length" inputmode="numeric" value={v(rug?.lengthCm)} />
+        <button class="chip" id="btnSwap" type="button" title="Swap width and length">⇄</button>
+      </div>
+    </div>
+    <div class="f">
+      <label for="f_material">Material</label>
+      <input id="f_material" value={rug?.material ?? ''} />
+    </div>
+    <div class="f">
+      <label for="f_method">Method</label>
+      <input id="f_method" value={rug?.method ?? ''} />
+    </div>
+    <div class="f">
+      <label for="f_age">Age</label>
+      <input id="f_age" value={rug?.age ?? ''} />
+    </div>
+    <div class="f">
+      <label for="f_origin">Origin</label>
+      <input id="f_origin" value={rug?.origin ?? ''} />
+    </div>
+    <div class="f">
+      <label for="f_price">Retail price (USD)</label>
+      <div class="pair">
+        <input id="f_price" inputmode="decimal" value={v(rug?.priceUsd)} />
+        <button class="chip" id="btnRound" type="button">Round to {roundStep}</button>
+      </div>
+    </div>
+    <div class="f">
+      <label for="f_rotate">Rotate</label>
+      <select id="f_rotate">
+        <option value="false" selected={(rug?.rotate ?? 'false') === 'false'}>no</option>
+        <option value="true" selected={rug?.rotate === 'true'}>portrait (turn a landscape file)</option>
+        <option value="force" selected={rug?.rotate === 'force'}>force</option>
+      </select>
+    </div>
+    <div class="f">
+      <label for="f_status">Status</label>
+      <select id="f_status">
+        <option value="active" selected={status === 'active'}>active</option>
+        <option value="draft" selected={status === 'draft'}>draft</option>
+        <option value="archived" selected={status === 'archived'}>archived</option>
+      </select>
+    </div>
+    <div class="f">
+      <label class="chk" for="f_featured"
+        ><input type="checkbox" id="f_featured" checked={rug?.featured === true} /> Featured</label
+      >
+    </div>
+    <div class="f">
+      <label for="f_sourceUrl">Supplier link</label>
+      <input id="f_sourceUrl" inputmode="url" value={rug?.sourceUrl ?? ''} autocomplete="off" />
+    </div>
+    <div class="f">
+      <label for="f_supplier">Supplier</label>
+      <select id="f_supplier">
+        <option value="" selected={!rug?.supplier}>— owned / other</option>
+        <option value="ecarpetgallery" selected={rug?.supplier === 'ecarpetgallery'}>ecarpetgallery</option>
+        <option value="karavanrug" selected={rug?.supplier === 'karavanrug'}>karavanrug</option>
+      </select>
+    </div>
+    <div class="f">
+      <label for="f_supplierRef">Supplier ref</label>
+      <input id="f_supplierRef" value={rug?.supplierRef ?? ''} autocomplete="off" />
+    </div>
+    <div class="f wide">
+      <label for="f_notes">Notes (internal)</label>
+      <textarea id="f_notes" rows="2">{rug?.notes ?? ''}</textarea>
+    </div>
+  </div>
+
+  <p class="hint" id="ftHint" hidden></p>
+  <p class="hint" id="priceHint" hidden></p>
+  <p class="hint" id="tagHint" hidden></p>
+  <ul class="hint warnings" id="warnings" hidden></ul>
+
+  <div class="stack">
+    <h3>Photos <span class="cnt-inline" id="photoCount"></span></h3>
+    <div id="photoStrip" class="grid photos">
+      {
+        rug?.photos.map((id, i) => (
+          <div class="card tile">
+            <div class="ph">
+              <img src={driveImageUrl(id, 800)} alt="" loading="lazy" />
+            </div>
+            <div class="mt">
+              {i + 1} · {id}
+            </div>
+          </div>
+        ))
+      }
+    </div>
+    <p class="hint" id="photoHint" hidden>
+      Drive is not authorised — photos are not saved; paste Drive ids below instead (SHEET_SETUP §6).
+    </p>
+    <div class="f wide">
+      <label for="f_photos">Drive photo ids or links — one per line, first = card image</label>
+      <textarea id="f_photos" rows="3">{rug?.photos.join('\n') ?? ''}</textarea>
+    </div>
+  </div>
+
+  <div class="actions">
+    {
+      !edit && (
+        <label class="chk">
+          <input
+            type="checkbox"
+            id="savePhotos"
+            checked={driveScopeOk === true}
+            disabled={driveScopeOk !== true}
+          />
+          Save photos to Drive
+        </label>
+      )
+    }
+    <label class="chk">
+      <input type="checkbox" id="roundOnSave" checked={!edit} />
+      Round price to {roundStep} on save
+    </label>
+    {
+      !edit && (
+        <>
+          <button class="go" id="btnAdd" type="button">
+            Add to sheet
+          </button>
+          <button class="go alt" id="btnClear" type="button">
+            Clear
+          </button>
+        </>
+      )
+    }
+    {
+      edit && (
+        <>
+          <button class="go" id="btnSave" type="button">
+            Save
+          </button>
+          <button class="go alt" id="btnArchive" type="button" hidden={status === 'archived'}>
+            Archive
+          </button>
+          <button class="go alt" id="btnRestore" type="button" hidden={status !== 'archived'}>
+            Restore
+          </button>
+          <a
+            id="openSite"
+            class="chip"
+            href={openSite}
+            target="_blank"
+            rel="noopener"
+            aria-disabled={status === 'active' ? undefined : 'true'}
+          >
+            Open on site
+          </a>
+        </>
+      )
+    }
+  </div>
+  <div id="m2" class="msg"></div>
+  <input type="hidden" id="f_version" value={rug?.version ?? ''} />
+  {
+    edit && rug && (
+      <p class="hint mono">
+        ❤ {rug.likes} · 👎 {rug.dislikes} · rating {rug.rating.toFixed(2)} · row {rug.row} · created{' '}
+        {rug.scrapedAt || '—'} · updated {rug.scrapedAt || '—'}
+      </p>
+    )
+  }
+</div>
+
+{
+  edit && (
+    <dialog id="confirm">
+      <p id="confirmText" />
+      <div class="actions">
+        <button class="go" id="confirmYes" type="button">
+          Yes
+        </button>
+        <button class="go alt" id="confirmNo" type="button">
+          Cancel
+        </button>
+      </div>
+    </dialog>
+  )
+}
+
+<style is:global>
+  [hidden] {
+    display: none !important;
+  }
+  .tagrow {
+    align-items: flex-start;
+    margin-top: 8px;
+  }
+  .tagrow .chips {
+    margin-top: 0;
+    flex: 1;
+  }
+  .newtag {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .newtag input {
+    width: 160px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .pair {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+  }
+  .pair .chip {
+    white-space: nowrap;
+  }
+  .warnings {
+    padding-left: 18px;
+    margin: 8px 0 0;
+  }
+  .photos {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .photos .tile .ph {
+    aspect-ratio: 3 / 4;
+  }
+  .photos .tile .mt {
+    word-break: break-all;
+  }
+  .photos label.tile {
+    cursor: pointer;
+  }
+  .photos .tile input {
+    width: auto;
+  }
+  .cnt-inline {
+    color: var(--accent);
+  }
+  a.chip {
+    text-decoration: none;
+    display: inline-block;
+  }
+  a.chip[aria-disabled='true'] {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  dialog {
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink);
+    padding: 20px 24px;
+    max-width: 420px;
+    font-family: var(--body);
+  }
+  dialog::backdrop {
+    background: rgba(0, 0, 0, 0.35);
+  }
+</style>

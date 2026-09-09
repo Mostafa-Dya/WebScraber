@@ -1,0 +1,44 @@
+---
+// Detail-page specification list (docs/DESIGN.md §4.4): one dt/dd per present value. The Size row
+// carries data-dims so prefs.ts and the pre-paint step keep re-rendering it; Reference is the rug id
+// buyers quote when they enquire.
+import { dims } from '../lib/units.ts';
+import type { CardView } from '../lib/view.ts';
+
+interface Props {
+  card: CardView;
+}
+const { card } = Astro.props;
+const dimText = dims(card.widthCm, card.lengthCm, 'cm');
+const rows: Array<[string, string]> = (
+  [
+    ['Material', card.material],
+    ['Age', card.age],
+    ['Origin', card.origin],
+    ['Method', card.method],
+  ] as Array<[string, string]>
+).filter(([, v]) => Boolean(v));
+---
+
+<dl class="specs">
+  {
+    dimText && (
+      <>
+        <dt>Size</dt>
+        <dd data-dims data-w={card.widthCm ?? ''} data-l={card.lengthCm ?? ''}>
+          {dimText}
+        </dd>
+      </>
+    )
+  }
+  {
+    rows.map(([k, v]) => (
+      <>
+        <dt>{k}</dt>
+        <dd>{v}</dd>
+      </>
+    ))
+  }
+  <dt>Reference</dt>
+  <dd class="ref">{card.id}</dd>
+</dl>

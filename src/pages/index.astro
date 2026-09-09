@@ -1,0 +1,42 @@
+---
+// The reference page (docs/ADR.md §2, D12): header, collection tabs with counts, card grid.
+// Rendered on demand from the cached snapshot; the route cache keeps it for 60 s (tag "sheet").
+// Failure states are never cached and answer 503 so monitors and CDNs see the truth.
+// Design pass (docs/DESIGN.md §3): lead-first ordering when a collection has a featured landscape
+// rug, eager loading for the first four visible cards, ghost grid on 503.
+export const prerender = false;
+
+import CollectionNav from '../components/CollectionNav.astro';
+import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
+import Layout from '../components/Layout.astro';
+import RugGrid from '../components/RugGrid.astro';
+import { loadCatalogue, ratesFor } from '../lib/runtime.ts';
+import { activeRugs, cardView, navTabs, withLeads } from '../lib/view.ts';
+
+const { snapshot, error } = await loadCatalogue();
+if (error || !snapshot) {
+  Astro.cache.set(false);
+  Astro.response.status = 503;
+  Astro.response.statusText = 'Service Unavailable';
+  Astro.response.headers.set('retry-after', '60');
+  Astro.response.headers.set('cache-control', 'no-store');
+} else {
+  Astro.cache.set({ maxAge: 60, swr: 60, tags: ['sheet'] });
+}
+const catalogue = snapshot?.catalogue ?? { rugs: [], collections: [], tags: [], rates: [], customers: [] };
+const rugs = snapshot ? activeRugs(catalogue) : [];
+const tabs = navTabs(rugs, catalogue);
+const active = tabs[0]?.slug;
+const cards = withLeads(rugs.map((r) => cardView(r, catalogue)));
+const rates = ratesFor(catalogue);
+const state = error ?? (rugs.length === 0 ? 'No rugs published yet.' : undefined);
+---
+
+<Layout title="Serio Ludere — Catalogue" rates={rates}>
+  <Header rates={rates} />
+  {tabs.length > 0 && <CollectionNav tabs={tabs} active={active} />}
+  {tabs.length === 0 && <nav id="nav" aria-label="Collections" />}
+  <RugGrid cards={cards} rates={rates} active={active} state={state} error={Boolean(error)} eager={4} />
+  <Footer />
+</Layout>

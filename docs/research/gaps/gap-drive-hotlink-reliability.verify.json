@@ -1,0 +1,212 @@
+{
+  "topic": "drive-hotlink-reliability: is lh3.googleusercontent.com/d/<id> hotlinking throttled, blocked or policy-changed (2025-2026), and should ImageKit be the default instead of the fallback?",
+  "verdicts": [
+    {
+      "claim": "F1: lh3.googleusercontent.com/d/<id> is undocumented; the only documented Drive image-byte paths are files.get?alt=media (authorized), webContentLink and thumbnailLink (short-lived, not for web use).",
+      "verdict": "confirmed",
+      "correction": "Verbatim on the live files resource page: thumbnailLink = 'A short-lived link to the file's thumbnail, if available. Typically lasts on the order of hours. Not intended for direct usage on web applications due to Cross-Origin Resource Sharing (CORS) policies. Consider using a proxy server. Only populated when the requesting app can access the file's content. If the file isn't shared publicly, the URL returned in files.thumbnailLink must be fetched using a credentialed request.' webContentLink = 'A link for downloading the content of the file in a browser. This is only available for files with binary content in Google Drive.' Manage-downloads guide: 'File downloads started from your app must be authorized with a scope that allows read access to the file content.' Neither page mentions lh3.googleusercontent.com, /d/ or =w/=s suffixes (grep of the fetched HTML).",
+      "source_url": "https://developers.google.com/workspace/drive/api/reference/rest/v3/files"
+    },
+    {
+      "claim": "F2: Since Jan 2 2024 Google's position is that Drive download URLs are not an embed mechanism (switch to publishing flows / iframe); Justin Poehnelt's 11 Jan 2024 post says /uc?export=view returns 403, the iframe has a background colour and is not responsive, and recommends a CDN-backed host; Drive web hosting (googledrive.com/host) was discontinued 31 Aug 2016 because 'a wide variety of public web content hosting services have emerged'.",
+      "verdict": "confirmed",
+      "correction": "All quotes verified verbatim: Workspace Updates (Oct 2023): 'Starting January 2, 2024, Drive will start serving downloads without requiring third-party cookies that are embedded on third-party websites' and 'If you have specific workflows in place that rely on Drive's download URLs or use an app which relies on Drive's download URLs, you'll need to switch to the Drive and Docs publishing flows by January 2, 2024.' Poehnelt post (dated January 11, 2024, https://justin.poehnelt.com/posts/google-drive-embed-images-403/): 'However this no longer works and a 403 error is returned', 'The iframe has a background color', 'The image in the iframe is not responsive', 'I would move the files to a different host optimized for serving public images behind a CDN.' 2015 blog: 'Google Apps customers can continue to use this feature for a period of one year until August 31, 2016, when serving content via googledrive.com/host/doc id will be discontinued' and 'a wide variety of public web content hosting services have emerged' (https://workspaceupdates.googleblog.com/2015/08/deprecating-web-hosting-support-in.html). Nuance: the report's phrase 'Google's own DevRel advises' overstates it - the post is on Poehnelt's personal site (cross-posted to the dev.to/googleworkspace org account); the site now describes him as a 'Google Workspace alum'. It is a then-DevRel engineer's personal recommendation, not a Google policy statement.",
+      "source_url": "https://workspaceupdates.googleblog.com/2023/10/upcoming-changes-to-third-party-cookies-in-google-drive.html"
+    },
+    {
+      "claim": "F3: Live probe of the studio's photo ID 1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb: lh3 /d/ returns 200 image/jpeg 1200x1200 with 'Cache-Control: private, max-age=86400, no-transform', 'Expires: Fri, 01 Jan 1990', 'ETag: \"v1\"', 'Vary: Origin'; =w800 -> 800x800 (125,346 B); =s400 -> 400x400 (37,683 B); =w400-h300-c -> 35,763 B cropped; =w6000 -> 1200x1200 (no upscaling); =w800-rw -> image/webp 90,366 B; Accept header alone does not switch format; query strings ignored (identical bytes); If-None-Match \"v1\" -> 304; If-Modified-Since ignored (200); no Referer/User-Agent gating.",
+      "verdict": "confirmed",
+      "correction": "Independently reproduced 2026-09-05 with curl and System.Drawing: base 200 image/jpeg 196,966 B 1200x1200, headers exactly as claimed (plus Access-Control-Allow-Origin: *, Content-Disposition: inline;filename=\"1389-1.jpg\", Server: fife); =w800 800x800 125,346 B; =s400 400x400 37,683 B; =w400-h300-c 400x300 35,763 B; =w6000 and =w1600 both 1200x1200 196,966 B (byte-identical to the original); =w800-rw image/webp 90,366 B; Accept: image/webp alone -> image/jpeg; ?v=2 -> 200 with 196,966 identical bytes; If-None-Match \"v1\" -> 304; If-Modified-Since -> 200; Referer serioludere.com + UA 'node' -> 200; empty UA -> 200. Only one ID was available to me, so the 'second file returned v2' detail was not re-checked. Google Photos doc confirms w, h, c (and d) as documented base-URL params; -rw is not documented anywhere.",
+      "source_url": "https://developers.google.com/photos/library/guides/access-media-items"
+    },
+    {
+      "claim": "F3 sub-claim: 'A typo'd ID -> HTTP 500 (not 404)'.",
+      "verdict": "confirmed",
+      "correction": "Depends on the malformation. A well-formed 33-character ID with one character changed (…Pjkc) -> 500. An ID with an extra character appended (34 chars), a random 34-char ID, and a short ID ('abc') -> 400. So unknown-but-plausible IDs give 500, syntactically invalid IDs give 400; neither returns 404. Code should treat any non-2xx/non-304 as 'not an image'.",
+      "source_url": "https://lh3.googleusercontent.com/d/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkc"
+    },
+    {
+      "claim": "F4: drive.google.com/thumbnail?id=..&sz=w800 is a 302 to lh3 /d/<id>=w800 (Cache-Control: no-cache, no-store, max-age=0, must-revalidate; Vary: Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site); uc?export=view is a 303 to drive.usercontent.google.com/download?id=..&export=view which serves image/jpeg inline with Cache-Control: private, max-age=0.",
+      "verdict": "confirmed",
+      "correction": "Reproduced exactly with curl -I on 2026-09-05: 302 Found -> Location: https://lh3.googleusercontent.com/d/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb=w800 with the stated Cache-Control and Vary; 303 See Other -> drive.usercontent.google.com/download?id=...&export=view -> 200 image/jpeg, Content-Disposition: inline, Cache-Control: private, max-age=0.",
+      "source_url": "https://drive.google.com/thumbnail?id=1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb&sz=w800"
+    },
+    {
+      "claim": "F5: No Google statement, quota or number exists for lh3 hotlink throttling; community evidence (GitHub Community discussion #86986, Jan 2024-Nov 2025) is anecdotal: /thumbnail rate-limited at 10+ images/page, 'Image loaded resolution very low', lh3 =s?authuser=0 'worked as of August 2024', mobile-only failures (Jan 2025), '403 forbidden' / 'Too Many Requests' with Remix (late 2025); a 45-request burst was not throttled.",
+      "verdict": "confirmed",
+      "correction": "GitHub thread verified with authors/dates: thumbnail endpoint suggested Jan 13 2024; lh3 /d/[FILE_ID]=s[size]?authuser=0 suggested Apr 17 2024, 'working as of 2024-08-22'; JatiMuar Feb 13 2024 'Image loaded resolution very low'; ZMYaro Dec 5 2024 'The /thumbnail endpoint doesn't seem to work consistently if there are too many images on the page. I tried to load a page that had 10+ images embedded with that new format, and it rate limited me.'; Mr-Sim Jan 15 2025 'It's working on desktop devices but not on mobile devices'; SujitVidyutva Nov 11 2025 403 forbidden with uc?export=view and 'Too Many Requests' in Remix. My own burst: 45 requests (15 sizes x w/s/-rw) in 30 s, all 200. No Google page gives a figure.",
+      "source_url": "https://github.com/orgs/community/discussions/86986"
+    },
+    {
+      "claim": "F5 sub-claim: the '10+ images ... rate limited me' quote is a 'DEV comment (Jul/Dec 2024)' on the DEV Community post.",
+      "verdict": "refuted",
+      "correction": "The dev.to Google Workspace Developers article (id 1724861, https://dev.to/googleworkspace/embed-images-from-google-drive-in-your-website-11k6) has zero comments: the DEV comments API https://dev.to/api/comments?a_id=1724861 returns an empty array, and the page shows 'Top comments (0)'. The quote is ZMYaro's 5 Dec 2024 comment on GitHub Community discussion #86986, so it is one anecdote, not two independent reports.",
+      "source_url": "https://dev.to/api/comments?a_id=1724861"
+    },
+    {
+      "claim": "F6: Drive's per-file 'Too many users have viewed or downloaded this file recently' quota is still active (community thread 393605675, 9 Dec 2025), has no published threshold, Product Expert only asked 'Did you share the file with multiple recipients?', thread locked; third-party guides describe a ~24 h lock; support.google.com/drive/answer/2494822 has no quota figures.",
+      "verdict": "confirmed",
+      "correction": "Thread HTML (fetched 2026-09-05) contains the exact error text, 'Diamond Product Expert', 'Did you share the file with multiple recipients?', and 'This question is locked and replying has been disabled.'; embedded timestamp 1765323086 = 2025-12-09 23:31 UTC. Help article 2494822 mentions no download quota, 24 h lock or numeric limits (only the 100-open-tabs editing limit). Third-party guides (multcloud.com, partitionwizard.com, technewstoday.com) state a ~24 h lock; no Google source gives a number.",
+      "source_url": "https://support.google.com/drive/thread/393605675?hl=en"
+    },
+    {
+      "claim": "F7: Google changed thumbnail access without notice in Oct 2025, breaking Adobe Express's Drive add-on for ~2 weeks (reported 23 Oct 2025; Adobe's Chris_Z_ on 24 Oct: 'an update in Google's APIs has changed how file thumbnails are accessed, resulting in the issue you're seeing now'; fix released 7 Nov 2025); the thread does not name lh3 or /d/.",
+      "verdict": "confirmed",
+      "correction": "Dates and the Chris_Z_ quote verified verbatim; on 7 Nov 2025 a Community Manager wrote 'Our product team has released an updated version of Google Drive'. Caveat: the affected surface is unknown, and an add-on calling 'Google's APIs' most plausibly used the documented (and explicitly short-lived) thumbnailLink, so this is weak evidence about the lh3 /d/ path specifically.",
+      "source_url": "https://community.adobe.com/t5/adobe-express-bugs/google-drive-add-on-thumbnails-not-loading-and-error/idc-p/15561325"
+    },
+    {
+      "claim": "F8: Drive API quotas: 1,000,000 quota units/min/project, 325,000/min/user/project, 403 'User rate limit exceeded', 429 'Rate limit exceeded' from backend checks, exponential backoff recommended, 1 TB/day/project egress.",
+      "verdict": "confirmed",
+      "correction": "All numbers verified on the live limits page. Adjacent detail the report missed: per-method cost table - 'Read items, such as files.get' 5 units; 'List items, such as files.list' 100; 'Download items, such as files.download' 200; 'Edit items, such as files.update' 50. The page does not say whether files.get?alt=media is billed as a 5-unit read or a 200-unit download; even at 200 units the per-project quota allows 5,000 downloads/min.",
+      "source_url": "https://developers.google.com/workspace/drive/api/guides/limits"
+    },
+    {
+      "claim": "F9a: Astro's build/remote.ts constructs CachePolicy without an options object, so http-cache-semantics' default shared=true applies and 'private' responses are not storable (expires = 0).",
+      "verdict": "confirmed",
+      "correction": "remote.ts on main: 'const policy = new CachePolicy(webToCachePolicyRequest(req), webToCachePolicyResponse(res)); const expires = policy.storable() ? policy.timeToLive() : 0;' in both loadRemoteImage and revalidateRemoteImage, no options object. http-cache-semantics README: 'If options.shared is true (default), then the response is evaluated from a perspective of a shared cache (i.e. private is not cacheable and s-maxage is respected).'",
+      "source_url": "https://raw.githubusercontent.com/withastro/astro/main/packages/astro/src/assets/build/remote.ts"
+    },
+    {
+      "claim": "F9b: Because of the 'private' header, Astro's build-time remote-asset cache re-downloads the lh3 image on every build.",
+      "verdict": "refuted",
+      "correction": "Astro's generate.ts does not re-download when the entry is expired: if 'JSONData.expires > Date.now()' fails it checks 'if (JSONData.etag || JSONData.lastModified)' and calls revalidateRemoteImage(src, { etag, lastModified }); when the server answers 304 it writes fresh metadata, copies the cached file and returns { cached: 'revalidated' }. remote.ts stores the ETag from the response, and lh3 returns ETag \"v1\" and answers 304 to If-None-Match (verified). So each build costs one conditional GET per image (returning 304 with no body), and bytes are re-downloaded only when the ETag changes. The practical cost is N small requests per build, not N full downloads.",
+      "source_url": "https://raw.githubusercontent.com/withastro/astro/main/packages/astro/src/assets/build/generate.ts"
+    },
+    {
+      "claim": "F9c: Astro's on-demand /_image endpoint responds with 'Cache-Control: public, max-age=31536000', ETag and Date, and returns 403 for remote URLs not allowed by image.domains/remotePatterns.",
+      "verdict": "confirmed",
+      "correction": "endpoint/shared.ts on main: headers 'Content-Type', 'Cache-Control': 'public, max-age=31536000', 'ETag': etag(data.toString()), 'Date'; 'new Response(\"Forbidden\", { status: 403 })' when !isRemoteAllowed(transform.src, imageConfig).",
+      "source_url": "https://raw.githubusercontent.com/withastro/astro/main/packages/astro/src/assets/endpoint/shared.ts"
+    },
+    {
+      "claim": "F9d: Netlify: 'Netlify's cache is a shared cache, so using private means we don't cache the response in our network and can't reuse it for multiple clients.'",
+      "verdict": "confirmed",
+      "correction": "Verbatim on the caching overview page; the sentence continues 'However, the response will be cached in the local cache for each client.' This governs responses Netlify serves; it does not by itself describe how the Image CDN treats a private source image.",
+      "source_url": "https://docs.netlify.com/platform/caching/"
+    },
+    {
+      "claim": "F9e: Netlify Image CDN docs say 'Netlify will respect any cache headers an external domain sends with the source images' and 'After an image is transformed, the result is uniquely cached on our edge', without stating whether a private source blocks caching of the transformed asset.",
+      "verdict": "confirmed",
+      "correction": "Both quotes verified. The report omitted the very next sentence, which narrows the ambiguity: 'Note that Cache-Control headers on source images only apply to browsers and CDNs in front of Netlify and not the Netlify Cache itself.' That indicates source headers are passed through to the transformed response (so a private lh3 source would make the transformed image uncacheable by browsers-in-front CDNs but not by Netlify's own edge cache). Still not an explicit statement about 'private'; a throwaway deploy remains the only definitive test.",
+      "source_url": "https://docs.netlify.com/build/image-cdn/overview/"
+    },
+    {
+      "claim": "F10: Vercel Image Optimization TTL = max(upstream Cache-Control max-age, minimumCacheTTL default 3600) and the docs never mention 'private'; Hobby includes 5K transformations/month, is non-commercial only, and over-limit images return 402; Next.js 16.3.4 docs say the same max-age rule; @astrojs/vercel 11.0.10 exposes imagesConfig.minimumCacheTTL and auto-fills domains/remotePatterns.",
+      "verdict": "confirmed",
+      "correction": "vercel.com/docs/image-optimization (last_updated 2026-08-13): 'TTL is determined by the Cache-Control max-age header from the upstream image or minimumCacheTTL config (default: 3600 seconds), whichever is larger.' - no occurrence of 'private'. vercel.com/docs/image-optimization/limits-and-pricing (last_updated 2026-08-11): 'Image transformations 5K/month' Hobby, 'Hobby teams are restricted to non-commercial personal use only', over limit 'return a runtime error response with 402 status code', 'Previously optimized images have already been cached and will continue to work'. Next.js docs (version 16.3.4 = npm latest, lastUpdated 2026-08-25): 'The expiration (or rather Max Age) of the optimized image is defined by either the minimumCacheTTL or the upstream image Cache-Control header, whichever is larger.' @astrojs/vercel@11.0.10 dist/image/shared.d.ts declares domains, remotePatterns and minimumCacheTTL; dist/image/shared.js fills domains/remotePatterns from astroImageConfig; Astro docs: 'The domains and remotePatterns properties will automatically be filled using the Astro corresponding image settings.' Minor: the '2026-08-11' date belongs to the image-optimization limits page; the general /docs/limits page is dated 2026-09-03 and lists only on-demand rates ($0.05 per 1K transformations).",
+      "source_url": "https://vercel.com/docs/image-optimization/limits-and-pricing"
+    },
+    {
+      "claim": "F11: Netlify Free = 300 credits/month hard cap (site pauses), bandwidth 20 credits/GB, production deploys 15 credits, web requests 2 credits/10k, Personal $9, Pro $20; Image CDN output counts as bandwidth (~14 GB/month ceiling after one deploy); remote_images is a regex array in netlify.toml; 'Remote source images must be publicly accessible'; @astrojs/netlify 8.2.5 maps image.domains/remotePatterns to remote_images and has imageCDN:false.",
+      "verdict": "confirmed",
+      "correction": "netlify.com/pricing.md and the 'How credits work' page verify 300 credits/month ('Hard limit', cannot buy more on Free), pausing ('all of your web projects ... are paused and visitors ... will find a Site not available page'), 20 credits/GB, 15 credits per production deploy, 2 credits per 10,000 requests, Personal $9, Pro $20. The credits page lists 'Image serving - Images served through Netlify's CDN' under bandwidth, which supports 'output counts as bandwidth' (transformations are not separately priced there). Image CDN docs verify the regex array and 'Remote source images must be publicly accessible.' @astrojs/netlify@8.2.5 dist/index.js: config.image.remotePatterns mapped via remotePatternToRegex into 'images: { remote_images: remoteImages }' and the imageCDN === false opt-out. Arithmetic: (300-15)/20 = 14.25 GB before request credits.",
+      "source_url": "https://docs.netlify.com/manage/accounts-and-billing/billing/billing-for-credit-based-plans/how-credits-work/"
+    },
+    {
+      "claim": "F12: Hotlinking requires 'anyone' sharing; a Workspace admin turning off external sharing blocks 'Links to files stored in Drive' and 'External users also lose access to any items previously shared with them.'",
+      "verdict": "confirmed",
+      "correction": "Both sentences verified verbatim on the Workspace admin help page. Photos are public today: every lh3 request in this session succeeded without credentials.",
+      "source_url": "https://knowledge.workspace.google.com/admin/drive/manage-external-sharing-for-your-organization"
+    },
+    {
+      "claim": "F13: Drive exposes md5Checksum, sha256Checksum, version ('A monotonically increasing version number for the file. This reflects every change made to the file on the server'), modifiedTime, thumbnailVersion ('The thumbnail version for use in thumbnail cache invalidation') and imageMediaMetadata.width/height as cache-busting keys.",
+      "verdict": "confirmed",
+      "correction": "All field descriptions verified verbatim. The lh3 ETag 'vN' <-> files.version mapping remains unverified (the report already flags it).",
+      "source_url": "https://developers.google.com/workspace/drive/api/reference/rest/v3/files"
+    },
+    {
+      "claim": "F14: ImageKit Web Proxy URL form 'https://ik.imagekit.io/your_imagekit_id/[transformations]/https://www.example.com/rest-of-the-path.jpg'; unsigned URLs should be restricted because the origin 'allows anyone to access any publicly accessible file using your account'; CDN caches up to 1 year; respecting origin Cache-Control is off by default, needs support, and uses only max-age; Free 20 GB bandwidth, 3 GB DAM storage, 500 purges; Lite $9/mo 40 GB, $0.5/GB overage; imagekit@6.0.0 deprecated in favour of @imagekit/nodejs@7.11.0.",
+      "verdict": "confirmed",
+      "correction": "Web-proxy page verifies the URL form and 'Attaching this origin on a URL endpoint allows anyone to access any publicly accessible file using your account' plus the signed-URL recommendation. The caching page the report paraphrased is https://imagekit.io/docs/cdn-caching-and-purging: 'ImageKit caches all files on the global CDN for a maximum time of 1 year', origin cache control 'turned off by default', 'Contact us at support@imagekit to enable it for your account', 'We only pick timing from the max-age directive in the Cache-control header.' Plans page verifies Free 20 GB / 3 GB / 500 purges and Lite $9 + 40 GB + $0.5/GB. npm: imagekit latest 6.0.0 with deprecated 'Please use @imagekit/nodejs'; @imagekit/nodejs latest 7.11.0.",
+      "source_url": "https://imagekit.io/docs/cdn-caching-and-purging"
+    },
+    {
+      "claim": "Snippet 1 (src/lib/drive-mirror.ts): fetch lh3 /d/<id>=w1600 once per (id, version) with If-None-Match, store original, retry 429/5xx with backoff.",
+      "verdict": "confirmed",
+      "correction": "Every lh3 behaviour the snippet relies on was reproduced (=w suffix, no upscaling so =w1600 returns the 1200px original byte-for-byte, ETag \"v1\", 304 on If-None-Match, no UA/Referer gating). Node 24 has global fetch. Two notes: (1) the comment '403/500 also seen for unknown or unshared ids' - 500 is what a well-formed unknown ID returns, malformed IDs return 400, and 403 for an unshared file is unverified; (2) because file and meta are both keyed by version and the function returns early when the file exists, the 304 branch is effectively unreachable (harmless dead code).",
+      "source_url": "https://lh3.googleusercontent.com/d/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb=w1600"
+    },
+    {
+      "claim": "Snippet 2 (google-auth-library GoogleAuth + client.request with responseType 'arraybuffer' and retryConfig { retry: 3, statusCodesToRetry: [[429,429],[500,599]] }) for files.get?alt=media and ?fields=version,md5Checksum,mimeType,imageMediaMetadata(width,height).",
+      "verdict": "confirmed",
+      "correction": "gaxios RetryConfig (src/common.ts) declares retry ('The number of times to retry the request. Defaults to 3.') and statusCodesToRetry ('Defaults to: [[100, 199], [408, 408], [429, 429], [500, 599]]'); responseType accepts 'arraybuffer'. gaxios src/retry.ts line 18 only refuses when neither retryConfig nor retry is set, so passing retryConfig alone enables retries. google-auth-library@11.0.2 depends on gaxios ^7.1.4 (npm latest gaxios is 8.0.0; the RetryConfig shape is the same). Quota note: the limits page bills 'Download items, such as files.download' at 200 units and files.get at 5; which applies to alt=media is not stated.",
+      "source_url": "https://raw.githubusercontent.com/googleapis/gaxios/main/src/retry.ts"
+    },
+    {
+      "claim": "Snippet 3 (astro.config.mjs image.remotePatterns [{ protocol:'https', hostname:'lh3.googleusercontent.com', pathname:'/d/**' }] and <Image src={`https://lh3.googleusercontent.com/d/${id}=w1600?v=${version}`} inferSize={false} />).",
+      "verdict": "confirmed",
+      "correction": "Astro configuration reference: remotePatterns accepts protocol, hostname, port, pathname; pathname 'End with /** to allow all sub-routes (like startsWith)'; image.domains permits no wildcards. inferSize is 'Type: boolean, Default: false', so inferSize={false} is redundant but valid. lh3 ignores the ?v= query (identical bytes, verified), so the version param only changes the /_image and browser cache keys, which is the intent.",
+      "source_url": "https://docs.astro.build/en/reference/configuration-reference/"
+    },
+    {
+      "claim": "Package versions: astro 7.3.1, sharp 0.35.4, @astrojs/node 11.1.5, @astrojs/netlify 8.2.5, @astrojs/vercel 11.0.10, @imagekit/nodejs 7.11.0, imagekit 6.0.0 (deprecated), @googleapis/drive 22.0.0, google-auth-library 11.0.2, http-cache-semantics 4.2.0.",
+      "verdict": "confirmed",
+      "correction": "All ten match https://registry.npmjs.org/<pkg>/latest fetched 2026-09-05; imagekit@6.0.0 carries deprecated: 'Please use @imagekit/nodejs'.",
+      "source_url": "https://registry.npmjs.org/astro/latest"
+    }
+  ],
+  "additional_findings": [
+    {
+      "claim": "lh3 /d/ responses carry 'Access-Control-Allow-Origin: *', 'Timing-Allow-Origin: *', 'X-Content-Type-Options: nosniff', 'Server: fife' and 'Content-Disposition: inline;filename=\"<original Drive filename>\"'.",
+      "evidence": "curl -I https://lh3.googleusercontent.com/d/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb on 2026-09-05 returned those headers (filename \"1389-1.jpg\"). CORS * means browser fetch/canvas use works; the Content-Disposition leaks the owner's original filename to anyone with the ID.",
+      "source_url": "https://lh3.googleusercontent.com/d/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb",
+      "confidence": "high"
+    },
+    {
+      "claim": "Astro SSG builds against lh3 cost one conditional request per image per build, not one full download: Astro revalidates expired cache entries with If-None-Match and lh3 answers 304.",
+      "evidence": "generate.ts: expired entries with an etag call revalidateRemoteImage(); a 304 leads to writeCacheMetaFile + copyFile and { cached: 'revalidated' }. lh3 returned 304 to If-None-Match \"v1\" in this session. Re-download happens only when the ETag changes (e.g. the owner replaces the photo).",
+      "source_url": "https://raw.githubusercontent.com/withastro/astro/main/packages/astro/src/assets/build/generate.ts",
+      "confidence": "high"
+    },
+    {
+      "claim": "Netlify Image CDN passes source-image Cache-Control through to consumers but not to its own cache: 'Cache-Control headers on source images only apply to browsers and CDNs in front of Netlify and not the Netlify Cache itself.'",
+      "evidence": "Sentence follows 'Netlify will respect any cache headers an external domain sends with the source images' on the Image CDN overview. Implication for lh3: transformed images would be served with 'private, max-age=86400' to browsers (still browser-cacheable), while Netlify's edge cache is governed by its own rules ('uniquely cached on our edge'). Not an explicit statement about 'private', so a test deploy is still needed.",
+      "source_url": "https://docs.netlify.com/build/image-cdn/overview/",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Vercel's remote-image cache key includes the full absolute source URL, and 'Once an image is cached, it remains so even if you update the source image' until TTL expiry or a manual/programmatic purge - so a ?v=<Drive version> query is the right invalidation lever on Vercel too.",
+      "evidence": "vercel.com/docs/image-optimization, 'Remote images cache key': Project ID + q + w + url (absolute) + Accept; 'Redeploying your app doesn't invalidate the image cache'; manual/programmatic purge documented.",
+      "source_url": "https://vercel.com/docs/image-optimization",
+      "confidence": "high"
+    },
+    {
+      "claim": "Vercel explicitly advises scoping remotePatterns to an account-specific path segment when you don't own the hostname; lh3 /d/<id> has no such segment, so on any host the image endpoint stays an open proxy for every publicly shared Drive file.",
+      "evidence": "'In the case of external images, you should consider adding your account id to the pathname if you don't own the hostname ... This helps protect your source images from potential abuse.' lh3 /d/ URLs are just /d/<fileId>, so the narrowest pattern is '/d/**'. This strengthens the report's recommendation to mirror images server-side.",
+      "source_url": "https://vercel.com/docs/image-optimization",
+      "confidence": "high"
+    },
+    {
+      "claim": "Drive API per-method quota costs: files.get 5 units, files.list 100, 'Download items, such as files.download' 200, files.update 50; the docs do not say whether files.get?alt=media is a 5-unit read or a 200-unit download.",
+      "evidence": "Per-method table on the Drive usage-limits page. Even at 200 units, 1,000,000 units/min/project allows 5,000 downloads/min - orders of magnitude above this catalogue's needs.",
+      "source_url": "https://developers.google.com/workspace/drive/api/guides/limits",
+      "confidence": "high"
+    },
+    {
+      "claim": "thumbnailLink for a publicly shared file can be fetched without credentials, but Google says it 'Typically lasts on the order of hours' and to 'Consider using a proxy server' - it is a valid short-lived server-side fetch source, not a hotlink.",
+      "evidence": "Full field text: '... Consider using a proxy server. Only populated when the requesting app can access the file's content. If the file isn't shared publicly, the URL returned in files.thumbnailLink must be fetched using a credentialed request.'",
+      "source_url": "https://developers.google.com/workspace/drive/api/reference/rest/v3/files",
+      "confidence": "high"
+    },
+    {
+      "claim": "The lh3 throttling evidence is thinner than the report implies: one GitHub user (ZMYaro, 2024-12-05) about the /thumbnail redirector at 10+ images, and one Remix user (2025-11-11) reporting 'Too Many Requests' without details; the dev.to post has no comments.",
+      "evidence": "GitHub Community discussion #86986 comments; dev.to comments API returns [] for article 1724861.",
+      "source_url": "https://github.com/orgs/community/discussions/86986",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Google Issue Tracker 229184403 cannot be read without sign-in (confirmed), and Google Photos base URLs (the documented w/h/c/d parameters) are valid for only 60 minutes - so the Photos doc must not be read as a stability promise for lh3 /d/ Drive renditions.",
+      "evidence": "issuetracker.google.com/issues/229184403 renders only a sign-in prompt. Photos doc: 'Base URLs remain active for 60 minutes'. Drive /d/ renditions showed no expiry in this session, but that is observed behaviour, not documented.",
+      "source_url": "https://developers.google.com/photos/library/guides/access-media-items",
+      "confidence": "high"
+    },
+    {
+      "claim": "gaxios 8.0.0 is the npm latest, but google-auth-library 11.0.2 pins gaxios ^7.1.4; snippet 2 works on both because RetryConfig and responseType are unchanged.",
+      "evidence": "registry.npmjs.org/google-auth-library/latest dependencies: \"gaxios\":\"^7.1.4\"; registry.npmjs.org/gaxios/latest version 8.0.0; RetryConfig fields identical in main src/common.ts.",
+      "source_url": "https://registry.npmjs.org/google-auth-library/latest",
+      "confidence": "high"
+    }
+  ],
+  "summary": "22 of 24 verdicts confirmed against live sources on 2026-09-05; 2 refuted; 0 unverifiable. All 10 package versions match npm. All lh3 probe claims were independently reproduced with curl and pixel-dimension checks (200 image/jpeg, private/max-age=86400, ETag v1 with 304 revalidation, =w/=s/-c/-rw suffixes, no upscaling, query strings ignored, no Referer/UA gating, 45-request burst clean), and the drive.google.com 302/303 redirect chains match exactly. Refuted: (1) the '10+ images rate limited' quote is not a DEV Community comment - the dev.to post has zero comments; it is a single GitHub user's Dec 2024 comment, so the throttling evidence is thinner than presented; (2) Astro's build cache does not re-download lh3 images every build - generate.ts revalidates expired entries with If-None-Match and lh3 answers 304, so the cost is one conditional request per image per build. Nuances: a typo'd ID returns 500 only when well-formed (malformed IDs return 400); Poehnelt's CDN advice is a personal post by a now-former Google DevRel, not Google policy; the Adobe Oct 2025 breakage most plausibly hit the documented thumbnailLink, so it is weak evidence about lh3 /d/; Netlify's Image CDN docs add that source Cache-Control applies to browsers/CDNs in front of Netlify, not Netlify's own cache. The report's recommendation (mirror server-side, hotlink lh3 only as phase-1 fallback, do not default to ImageKit) survives verification; the open-proxy concern is reinforced by Vercel's own guidance that remotePatterns cannot be scoped for hosts you do not own, which lh3 /d/ does not allow."
+}

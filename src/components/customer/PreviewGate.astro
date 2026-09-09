@@ -1,0 +1,184 @@
+---
+// The password gate (Figma 53:3 desktop, 58:206 at 390).
+//
+// A 560-wide column centred in the viewport, four groups separated by the same 64px the rest of the
+// site uses: the studio and what this page is, the buyer's name, the form, and the consent note.
+//
+// Two things are in the code that are not drawn in Figma, both necessary:
+//   - an error line under the button, because a wrong password has to say so somewhere;
+//   - a real <label>, visually hidden, because the field's placeholder is not an accessible name.
+// The eye control IS drawn, and it reveals the password rather than decorating the field.
+import { STUDIO_NAME } from '../../lib/studio.ts';
+
+interface Props {
+  slug: string;
+  displayName: string;
+}
+const { slug, displayName } = Astro.props;
+---
+
+<main class="pv-gate">
+  <section class="pv-gate-col">
+    <div class="pv-gate-brand">
+      <p class="pv-h1">{STUDIO_NAME}</p>
+      <p class="pv-lede">A private preview, prepared for you</p>
+    </div>
+
+    <p class="pv-h3 pv-gate-welcome">Welcome, {displayName}.</p>
+
+    <form class="pv-gate-form" method="post" action={`/api/customers/${slug}/login`} data-gate={slug}>
+      <label class="sr-only" for="gate-password">Password</label>
+      <div class="pv-field">
+        <input
+          class="pv-input"
+          id="gate-password"
+          name="password"
+          type="password"
+          placeholder="Enter your password"
+          autocomplete="current-password"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          required
+          maxlength="200"
+        />
+        <button type="button" class="pv-eye" data-gate-reveal aria-pressed="false">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false">
+            <path
+              d="M1.8 8C1.8 8 4.2 3.8 8 3.8C11.8 3.8 14.2 8 14.2 8C14.2 8 11.8 12.2 8 12.2C4.2 12.2 1.8 8 1.8 8Z"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"></path>
+            <path
+              d="M9.9 8C9.9 9.04934 9.04934 9.9 8 9.9C6.95066 9.9 6.1 9.04934 6.1 8C6.1 6.95066 6.95066 6.1 8 6.1C9.04934 6.1 9.9 6.95066 9.9 8Z"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"></path>
+          </svg>
+          <span class="sr-only">Show password</span>
+        </button>
+      </div>
+      <button type="submit" class="pv-btn" data-gate-submit>View the catalogue</button>
+      <p class="pv-gate-error" data-gate-error role="alert" hidden></p>
+    </form>
+
+    <div class="pv-gate-note">
+      <p>The rugs you like and dislike are shared with {STUDIO_NAME}.</p>
+      <p class="pv-gate-note-2">It helps us show you more of what you&rsquo;re drawn to.</p>
+    </div>
+  </section>
+</main>
+
+<style>
+  .pv-gate {
+    flex: 1 0 auto;
+    display: grid;
+    place-items: center;
+    padding: var(--section-gap) var(--gutter);
+  }
+  .pv-gate-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--section-gap);
+    width: 100%;
+    max-width: 560px;
+    text-align: center;
+  }
+  .pv-gate-brand {
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-sm);
+    width: 100%;
+  }
+  .pv-gate-welcome {
+    width: 100%;
+  }
+  .pv-gate-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-md);
+    width: 100%;
+    max-width: 360px;
+  }
+  /* The eye sits inside the field's padding box, so the input keeps its own 12.8px inline padding
+     and the text simply stops short of the control. */
+  .pv-field {
+    position: relative;
+    display: flex;
+  }
+  .pv-field .pv-input {
+    padding-right: 36px;
+    text-align: left;
+  }
+  .pv-eye {
+    position: absolute;
+    right: var(--input-x);
+    top: 50%;
+    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ink-soft);
+    cursor: pointer;
+  }
+  /* 44px tap target on a coarse pointer without moving the 16px glyph. */
+  @media (pointer: coarse) {
+    .pv-eye::after {
+      content: '';
+      position: absolute;
+      inset: -14px;
+    }
+  }
+  .pv-eye[aria-pressed='true'] {
+    color: var(--ink);
+  }
+  .pv-gate-error {
+    font-size: var(--text-xs);
+    color: var(--brand);
+    text-align: left;
+  }
+  .pv-gate-note {
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-xs);
+    width: 100%;
+  }
+  .pv-gate-note p {
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+  }
+  .pv-gate-note-2 {
+    font-size: var(--text-xs);
+    color: var(--ink-muted);
+  }
+
+  /* At 390 the gutter is 48, not the 16 the rest of the site uses: the form is 294 wide and the
+     second consent line is dropped, because one line of reassurance is enough on a phone. */
+  @media (max-width: 767px) {
+    .pv-gate {
+      padding-inline: 48px;
+    }
+    .pv-gate-col {
+      max-width: 294px;
+    }
+    .pv-gate-brand .pv-h1 {
+      font-size: var(--h3);
+    }
+    .pv-gate-welcome {
+      font-size: var(--h4);
+    }
+    .pv-gate-note-2 {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  import { initGate } from '../../scripts/gate.ts';
+  initGate();
+</script>

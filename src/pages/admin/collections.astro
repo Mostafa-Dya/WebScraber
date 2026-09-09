@@ -1,0 +1,213 @@
+---
+// /admin/collections — collections (reorder ▲/▼, inline edit, add) and tags (chips + edit panel,
+// add) on one page (docs/ADMIN_SPEC.md §2.1, §8.3). Wired by src/scripts/admin/collections.ts.
+// Renaming never rewrites rugs (they store display names); the rug counts show what would detach.
+export const prerender = false;
+
+import AdminLayout from '../../components/admin/AdminLayout.astro';
+import { fetchAdminSnapshot, type AdminSnapshot } from '../../lib/admin/read.ts';
+import { getClient } from '../../lib/runtime.ts';
+import { consoleLogger, serializeError } from '../../lib/sheets/errors.ts';
+import { jsonForScript } from '../../lib/view.ts';
+
+let snapshot: AdminSnapshot | undefined;
+let error: string | undefined;
+try {
+  snapshot = await fetchAdminSnapshot(getClient(), { logger: consoleLogger });
+} catch (e) {
+  const safe = serializeError(e);
+  consoleLogger.error('admin collections read failed', { error: safe });
+  error = safe.message;
+}
+const rugs = snapshot?.rugs ?? [];
+const rugCount = (name: string): number =>
+  rugs.filter((r) => r.collection.trim().toLowerCase() === name.trim().toLowerCase()).length;
+const tagCount = (name: string): number =>
+  rugs.filter((r) => r.tags.some((t) => t.trim().toLowerCase() === name.trim().toLowerCase())).length;
+const collections = (snapshot?.collections ?? [])
+  .slice()
+  .sort((a, b) => (a.sortOrder ?? 1e9) - (b.sortOrder ?? 1e9) || a.name.localeCompare(b.name));
+const tags = snapshot?.tags ?? [];
+const data = {
+  collections: collections.map((c) => ({ ...c, rugs: rugCount(c.name) })),
+  tags: tags.map((t) => ({ ...t, rugs: tagCount(t.name) })),
+};
+---
+
+<AdminLayout title="Serio Ludere — Collections" active="collections">
+  {error && <div class="msg err on">Could not read the sheet: {error}</div>}
+
+  <section class="stack" aria-labelledby="h-collections">
+    <h3 id="h-collections">Collections</h3>
+    <p class="hint">
+      Order = the tabs on the site. Renaming a collection does not rewrite its rugs — they keep the old name
+      and drop out of the tab until re-saved.
+    </p>
+    <div id="m5" class="msg"></div>
+    <div class="table-wrap">
+      <table id="collectionTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Slug</th>
+            <th>Description</th>
+            <th>Cover (Drive id / URL)</th>
+            <th>Rugs</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            collections.map((c, i) => (
+              <tr data-id={c.id} data-version={c.version} data-name={c.name}>
+                <td class="n">{c.sortOrder ?? i + 1}</td>
+                <td>
+                  <input data-field="name" value={c.name} aria-label={`Name of ${c.name}`} />
+                </td>
+                <td class="mono">{c.slug}</td>
+                <td>
+                  <input
+                    data-field="description"
+                    value={c.description}
+                    aria-label={`Description of ${c.name}`}
+                  />
+                </td>
+                <td>
+                  <input data-field="cover" value={c.coverImageUrl ?? ''} aria-label={`Cover of ${c.name}`} />
+                </td>
+                <td class="n">{rugCount(c.name)}</td>
+                <td class="acts">
+                  <button type="button" class="chip" data-act="up" aria-label={`Move ${c.name} up`}>
+                    ▲
+                  </button>
+                  <button type="button" class="chip" data-act="down" aria-label={`Move ${c.name} down`}>
+                    ▼
+                  </button>
+                  <button type="button" class="chip" data-act="save">
+                    Save
+                  </button>
+                </td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+    {collections.length === 0 && <div class="msg busy on">No collections yet.</div>}
+    <div class="fields">
+      <div class="f">
+        <label for="c_name">New collection</label>
+        <input id="c_name" placeholder="Name" autocomplete="off" />
+      </div>
+      <div class="f">
+        <label for="c_description">Description</label>
+        <input id="c_description" autocomplete="off" />
+      </div>
+      <div class="f">
+        <label for="c_cover">Cover image (Drive id / URL)</label>
+        <input id="c_cover" autocomplete="off" />
+      </div>
+    </div>
+    <div class="actions">
+      <button class="go" id="btnAddCollection" type="button">Add collection</button>
+    </div>
+    <div id="m6" class="msg"></div>
+  </section>
+
+  <section class="stack" aria-labelledby="h-tags">
+    <h3 id="h-tags">Tags</h3>
+    <p class="hint">Click a tag to rename it or change its colour. Rugs keep the tag names they store.</p>
+    <div class="chips" id="tagList" role="group" aria-label="Tags">
+      {
+        tags.map((t) => (
+          <button
+            type="button"
+            class="chip"
+            data-id={t.id}
+            data-version={t.version}
+            data-name={t.name}
+            data-color={t.color ?? ''}
+            data-rugs={tagCount(t.name)}
+          >
+            {t.name}
+          </button>
+        ))
+      }
+    </div>
+    {tags.length === 0 && <div class="msg busy on">No tags yet.</div>}
+    <div id="tagEdit" class="fields" hidden>
+      <div class="f">
+        <label for="t_name">Tag name</label>
+        <input id="t_name" autocomplete="off" />
+      </div>
+      <div class="f">
+        <label for="t_color">Colour</label>
+        <input id="t_color" type="color" value="#bb3e03" />
+      </div>
+      <div class="f">
+        <label class="chk" for="t_noColor"><input type="checkbox" id="t_noColor" /> no colour</label>
+      </div>
+      <div class="f actions">
+        <button class="go" id="btnSaveTag" type="button">Save tag</button>
+        <button class="go alt" id="btnCancelTag" type="button">Cancel</button>
+      </div>
+      <p class="hint" id="tagEditHint"></p>
+    </div>
+    <div id="m7" class="msg"></div>
+    <div class="fields">
+      <div class="f">
+        <label for="nt_name">New tag</label>
+        <input id="nt_name" placeholder="Name" autocomplete="off" />
+      </div>
+      <div class="f">
+        <label for="nt_color">Colour (optional)</label>
+        <input id="nt_color" type="color" value="#bb3e03" />
+      </div>
+      <div class="f">
+        <label class="chk" for="nt_noColor"><input type="checkbox" id="nt_noColor" checked /> no colour</label
+        >
+      </div>
+    </div>
+    <div class="actions">
+      <button class="go" id="btnAddTag" type="button">Add tag</button>
+    </div>
+    <div id="m8" class="msg"></div>
+  </section>
+
+  <script is:inline type="application/json" id="admin-data" set:html={jsonForScript(data)} />
+  <script>
+    import { initCollections } from '../../scripts/admin/collections.ts';
+    initCollections();
+  </script>
+</AdminLayout>
+
+<style is:global>
+  [hidden] {
+    display: none !important;
+  }
+  td.acts {
+    white-space: nowrap;
+  }
+  td.acts .chip + .chip {
+    margin-left: 4px;
+  }
+  td input {
+    padding: 6px 8px;
+    font-size: 13px;
+    min-width: 120px;
+  }
+  input[type='color'] {
+    padding: 2px;
+    height: 38px;
+    width: 60px;
+  }
+  .chip .swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 6px;
+    border: 1px solid var(--rule);
+    vertical-align: middle;
+  }
+</style>

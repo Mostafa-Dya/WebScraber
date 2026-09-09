@@ -1,0 +1,58 @@
+---
+// Grid filtered by tag (brief §5): same header, grid and cards; the tag is named in the standfirst
+// (docs/DESIGN.md §3.9). Unavailable → the designed shell with the reference's .state text and
+// HTTP 503 (not cached).
+export const prerender = false;
+
+import Footer from '../../components/Footer.astro';
+import Header from '../../components/Header.astro';
+import Layout from '../../components/Layout.astro';
+import RugGrid from '../../components/RugGrid.astro';
+import { loadCatalogue, ratesFor } from '../../lib/runtime.ts';
+import { activeRugs, cardView, rugsWithTag, SLUG_PARAM_RE } from '../../lib/view.ts';
+
+const slug = Astro.params.slug ?? '';
+const { snapshot, error } = await loadCatalogue();
+const catalogue = snapshot?.catalogue ?? { rugs: [], collections: [], tags: [], rates: [], customers: [] };
+const rates = ratesFor(catalogue);
+const found =
+  snapshot && SLUG_PARAM_RE.test(slug) ? rugsWithTag(activeRugs(catalogue), slug, catalogue) : undefined;
+
+if (error || !snapshot) {
+  Astro.cache.set(false);
+  Astro.response.status = 503;
+  Astro.response.statusText = 'Service Unavailable';
+  Astro.response.headers.set('retry-after', '60');
+  Astro.response.headers.set('cache-control', 'no-store');
+} else if (!found) {
+  Astro.cache.set(false);
+  Astro.response.status = 404;
+  Astro.response.statusText = 'Not Found';
+} else {
+  Astro.cache.set({ maxAge: 60, swr: 60, tags: ['sheet'] });
+}
+const cards = found ? found.rugs.map((r) => cardView(r, catalogue)) : [];
+const state =
+  error ?? (!found ? 'No such tag.' : cards.length === 0 ? 'No rugs carry this tag yet.' : undefined);
+const n = cards.length;
+---
+
+<Layout title={found ? `${found.name} — Serio Ludere` : 'Serio Ludere — Catalogue'} rates={rates}>
+  <Header rates={rates} />
+  <nav id="nav" class="nav-detail" aria-label="Breadcrumb">
+    <a class="back" href="/">← Catalogue</a>
+  </nav>
+  {
+    found && (
+      <section class="lede">
+        <div class="standfirst">
+          <p class="eyebrow">
+            Tag · {found.name} · {n} {n === 1 ? 'rug' : 'rugs'}
+          </p>
+        </div>
+      </section>
+    )
+  }
+  <RugGrid cards={cards} rates={rates} state={state} error={Boolean(error)} eager={4} />
+  <Footer />
+</Layout>

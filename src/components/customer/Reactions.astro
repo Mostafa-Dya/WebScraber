@@ -1,0 +1,183 @@
+---
+// The Like / Dislike control (Figma 18:54, documented at 18:100).
+//
+// Straight from the component documentation, because every line of it is load-bearing:
+//
+//   "Geometry is extracted, not designed: settings_data.blocks[wishlist-product-card] gives
+//    border_radius 100, icon_size 18, icon_thickness 1, #000000 on #ffffff. This is the storefront's
+//    own wishlist control."
+//
+//   showDislike is "OFF on catalogue and shortlist cards — scanning a grid deserves one clear
+//   positive action, and a row of X buttons reads as an invitation to reject. ON at product detail,
+//   where the buyer has actually looked and a negative signal is worth something."
+//
+//   "Syncing: the tapped circle keeps its filled state at 45% glyph opacity plus a 4px muted dot.
+//    Reactions buffer 2-3s and flush in batches, so this state is common — it must read as 'noted,
+//    not yet stored'. Failed: the optimistic state is HELD and a 12px alert glyph appears. Retry is
+//    automatic."
+//
+//   "Accessibility: real focusable buttons with text labels ('Like this rug' / 'Not for me'), never
+//    icon-only. Pressed maps to aria-pressed; the buffered pending state is deliberately NOT
+//    announced."
+//
+// The last sentence is why the syncing dot and the alert glyph are `aria-hidden`: they are visible,
+// and silent. The label text is a visually hidden span rather than an aria-label so voice control
+// can address the button by the words the design gives it.
+//
+// The two glyphs are the exported 16×16 assets, unchanged except that the hard-coded stroke becomes
+// `currentColor` — which is what the icon documentation asks for: "Stroke binds to text/primary so
+// it inherits its surface." Each sits at the top-left of an 18×18 box, as drawn.
+interface Props {
+  rugId: string;
+  /** `card` renders the heart alone; `detail` adds the dismiss circle. */
+  mode?: 'card' | 'detail';
+}
+const { rugId, mode = 'card' } = Astro.props;
+const showDislike = mode === 'detail';
+---
+
+<div class="pv-react" data-react data-rug={rugId}>
+  <button
+    type="button"
+    class="pv-circle"
+    data-vote="like"
+    data-source={mode}
+    data-rug={rugId}
+    aria-pressed="false"
+  >
+    <span class="pv-glyph" aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="16" height="16" fill="none">
+        <path
+          d="M8 13.4C8 13.4 2.6 10.2 2.6 6.6C2.40109 5.88392 2.49479 5.11814 2.86048 4.47114C3.22618 3.82414 3.83392 3.34891 4.55 3.15C5.26608 2.95109 6.03186 3.04479 6.67886 3.41048C7.32586 3.77618 7.80109 4.38392 8 5.1C8.19891 4.38392 8.67414 3.77618 9.32114 3.41048C9.96814 3.04479 10.7339 2.95109 11.45 3.15C12.1661 3.34891 12.7738 3.82414 13.1395 4.47114C13.5052 5.11814 13.5989 5.88392 13.4 6.6C13.4 10.2 8 13.4 8 13.4Z"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
+      </svg>
+    </span>
+    <span class="sr-only">Like this rug</span>
+  </button>
+
+  {
+    showDislike && (
+      <button
+        type="button"
+        class="pv-circle"
+        data-vote="dislike"
+        data-source={mode}
+        data-rug={rugId}
+        aria-pressed="false"
+      >
+        <span class="pv-glyph" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="none">
+            <path d="M4 4L12 12" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M12 4L4 12" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+        <span class="sr-only">Not for me</span>
+      </button>
+    )
+  }
+
+  <span class="pv-sync" data-react-sync aria-hidden="true"></span>
+  <span class="pv-alert" data-react-alert aria-hidden="true">
+    <svg viewBox="0 0 12 12" width="12" height="12" fill="none">
+      <path d="M6 1.5 11 10.5H1L6 1.5Z" stroke="currentColor" stroke-linejoin="round"></path>
+      <path d="M6 5v2.2" stroke="currentColor" stroke-linecap="round"></path>
+      <path d="M6 8.9v.1" stroke="currentColor" stroke-linecap="round"></path>
+    </svg>
+  </span>
+</div>
+
+<style>
+  .pv-react {
+    display: flex;
+    align-items: center;
+    gap: var(--tight);
+    min-height: 44px;
+  }
+
+  /* 32px circle, fully round. Neutral is the raised surface on a hairline; pressed fills with ink
+     and the glyph inherits the surface colour through currentColor. */
+  .pv-circle {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: var(--rule-width) solid var(--rule);
+    border-radius: var(--radius-pill);
+    background: var(--surface-raised);
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .pv-circle[aria-pressed='true'] {
+    background: var(--ink);
+    border-color: transparent;
+    color: var(--surface);
+  }
+
+  /* The glyph box is 18 with the 16px artwork at its top-left, exactly as the component is drawn. */
+  .pv-glyph {
+    position: relative;
+    display: block;
+    width: 18px;
+    height: 18px;
+  }
+  .pv-glyph svg {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+
+  /* Syncing: the fill is held and the glyph drops to 45%. Never announced. */
+  .pv-circle[data-sync] .pv-glyph {
+    opacity: 0.45;
+  }
+
+  .pv-sync {
+    display: none;
+    flex: none;
+    width: 4px;
+    height: 4px;
+    border-radius: var(--radius-pill);
+    background: var(--ink-muted);
+  }
+  .pv-react[data-syncing] .pv-sync {
+    display: block;
+  }
+
+  /* Failed: the optimistic state stays put and this appears beside it. Retry is automatic, so there
+     is no button here — the glyph is a status, not a control. */
+  .pv-alert {
+    display: none;
+    flex: none;
+    width: 12px;
+    height: 12px;
+    color: var(--brand);
+  }
+  .pv-react[data-failed] .pv-alert {
+    display: block;
+  }
+  .pv-react[data-failed] .pv-sync {
+    display: none;
+  }
+
+  /* 44px target on a coarse pointer without moving the 32px circle. */
+  @media (pointer: coarse) {
+    .pv-circle::after {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: inherit;
+    }
+  }
+</style>
+
+<script>
+  import { initVotes } from '../../scripts/votes.ts';
+  initVotes();
+</script>

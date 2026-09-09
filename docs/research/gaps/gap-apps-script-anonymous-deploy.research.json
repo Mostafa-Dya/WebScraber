@@ -1,0 +1,132 @@
+{
+  "topic": "Apps Script write path viability on the owner's Workspace account: which Google Workspace Admin console settings (2025-2026) can prevent deploying a web app with access 'Anyone' (anonymous execution), what the deploy dialog shows when they apply, what the June 2026 core-service change means, and how reliable/fast an execute-as-owner doPost endpoint is for vote writes.",
+  "findings": [
+    {
+      "claim": "There is exactly one Admin console switch that blocks Apps Script web apps outright: Menu > Apps > Google Workspace > Drive and Docs > Google Apps Script (on/off). It is ON by default for all users and guests. When OFF, 'Script and trigger executions are blocked. Blocked scripts include web apps, custom functions, and macros recorded in Sheets' and 'Blocked trigger executions include simple triggers and installable triggers.' There are no granular sub-settings (no per-access-level control); it applies per OU or access group.",
+      "evidence": "Official Workspace Admin Help page 'Turn Apps Script on or off for users' (support.google.com/a/answer/15100049 redirects here). Consequence for this project: if a future admin flips it OFF, BOTH halves of the sync that run in Apps Script die at once (the vote web app and the installable onEdit trigger that calls POST /api/revalidate). A direct Sheets-API write path is unaffected by this toggle because it is not Apps Script.",
+      "source_url": "https://knowledge.workspace.google.com/admin/users/access/turn-apps-script-on-or-off-for-users",
+      "confidence": "high"
+    },
+    {
+      "claim": "Apps Script became a Google Workspace core service on 22-23 June 2026 (GA, Rapid and Scheduled release). The announcement adds enterprise data protection, admin on/off control and standard support; it introduces NO new restriction on web apps, anonymous access, sharing or deployments, and organisations that already had Apps Script enabled need no action.",
+      "evidence": "Workspace Updates blog post dated June 23, 2026 ('Google Apps Script is now a Google Workspace core service with enterprise-grade data protection') and the Apps Script release note dated June 22, 2026 ('Apps Script is generally available as a core service in Google Workspace...'). Neither text mentions web apps, 'Anyone' access or deployment restrictions. Release notes Jan 2025 - Sep 2026 contain no web-app or quota changes (only granular OAuth Jan 2025, core service Jun 2026, Gemini side panel Aug 2026).",
+      "source_url": "https://workspaceupdates.googleblog.com/2026/06/google-apps-script-workspace-core-service.html",
+      "confidence": "high"
+    },
+    {
+      "claim": "Google's official admin-control page for Apps Script lists only: Drive audit log events, Apps Script usage reports, the URL Fetch external-domain allowlist (Business Plus / Enterprise / Education editions), the org-wide on/off toggle, and deleting a script's Cloud project. No official Google page documents a setting that removes the 'Anyone' option from the web-app deploy dialog.",
+      "evidence": "developers.google.com 'Monitor and control Apps Script use in your Google Workspace organization' enumerates these controls and contains no text about web-app 'Anyone' access or anonymous execution. The web-app guide likewise does not mention admin restrictions on access levels.",
+      "source_url": "https://developers.google.com/apps-script/guides/admin/monitor-use",
+      "confidence": "high"
+    },
+    {
+      "claim": "The anonymous option ('Anyone' in the UI = manifest ANYONE_ANONYMOUS) is gated by the Drive external-sharing policy, not by an Apps Script-specific setting: Admin console > Apps > Google Workspace > Drive and Docs > Sharing settings > Sharing options > 'Sharing outside of your organization' = On, plus the sub-option that lets users make files and published web content visible to anyone with the link (historically worded 'Allow users in <org> to publish files on the web or make them visible to the world as public or unlisted files'). If the admin turns external sharing OFF or unticks the publish-on-the-web option, the 'Anyone' choice is not offered.",
+      "evidence": "Google does not document the linkage in Apps Script docs. Evidence is (a) the official 'Restrict the access users can give to files' page, which says the least-restrictive Access Checker level ('Recipients only, your organization, or public') is 'only available if external sharing is enabled and you allow users to publish files on the web' - i.e. the publish-on-the-web checkbox exists and gates public link access; (b) labnol.org (Amit Agarwal, 2017): 'If you are unable to publish your web app for anonymous usage, it is likely that your Google Apps admin has disabled the option for the organization', naming that checkbox; (c) the 2023 Apps Script community thread reply: 'Sometimes an administrator may have disabled the ability to deploy a webapp to anyone... The Drive and Docs permissions and Admin Console you are referring to are for those using Enterprise or Education Workspace accounts'. Confidence is medium because the only official text is indirect and the community sources are 2017/2023.",
+      "source_url": "https://knowledge.workspace.google.com/admin/drive/restrict-the-access-users-can-give-to-files",
+      "confidence": "medium"
+    },
+    {
+      "claim": "When the restriction applies, the symptom is a missing option, not an error: the 'Who has access' dropdown in Deploy > New deployment simply lacks 'Anyone' (only 'Only myself', 'Anyone within <org>', 'Anyone with Google account' remain). No official error text for the deploy dialog is documented anywhere; the current UI label is 'Anyone' (the older 'Anyone, even anonymous' wording is gone).",
+      "evidence": "Apps Script community thread 'No Anyone, even anonymous option on APP Script deployment' (Feb 2023): responder clarifies the option 'is actually labeled Anyone rather than Anyone, even anonymous' and that admin restrictions apply only to Workspace tenants; the poster's own case turned out to be a consumer account with multiple live deployments, not a restriction. I could not find any documented dialog error string or a 2025-2026 first-hand report of the option being hidden under a Workspace policy, so this is low confidence.",
+      "source_url": "https://groups.google.com/g/google-apps-script-community/c/owFeX5fTcyo",
+      "confidence": "low"
+    },
+    {
+      "claim": "The manifest (appsscript.json) 'webapp' resource defines access = MYSELF ('Only the deploying user can run the app'), DOMAIN ('Only users in the same domain as the deployer can run it'), ANYONE ('Any logged-in user'), ANYONE_ANONYMOUS ('Any user, even if not logged in') and executeAs = USER_ACCESSING | USER_DEPLOYING. UI mapping: 'Anyone' = ANYONE_ANONYMOUS, 'Anyone with Google account' = ANYONE, 'Anyone within <org>' = DOMAIN (Workspace accounts only), 'Execute as: Me' = USER_DEPLOYING.",
+      "evidence": "Official manifest reference 'Web apps and API executables manifest resource' for the enum values (high). The UI-label mapping comes from tanaikech's Web Apps README ('Execute the app as: Me / User accessing the web app'; 'Who has access to the app: Only myself / Anyone with Google account / Anyone') plus the community note that only Workspace accounts get the domain option (medium). The project's legacy deployment (execute-as-owner / anyone) therefore corresponds to executeAs USER_DEPLOYING + access ANYONE_ANONYMOUS, and its existence proves the option is available on serioludere.com today.",
+      "source_url": "https://developers.google.com/apps-script/manifest/web-app-api-executable",
+      "confidence": "high"
+    },
+    {
+      "claim": "Fallback if 'Anyone' ever disappears: deploy as Execute as: Me + 'Anyone with Google account' (ANYONE) and call it from the Node server with an OAuth bearer token; a service-account token works for both GET and POST provided the token carries at least one Drive scope (e.g. https://www.googleapis.com/auth/drive.readonly). The Apps Script API scripts.run is NOT an alternative: 'The Apps Script API doesn't work with service accounts'.",
+      "evidence": "tanaikech gist 'Executing Google Apps Script with Service Account' (last active Oct 22, 2025): 'the Web Apps can be accessed by the service account' with Execute as: Me + Anyone with Google account, Authorization: Bearer <token>, GET and POST (doPost) both shown; his Web Apps README: 'At least one Drive API scope must be included in the access token'. Official Apps Script API 'Execute functions' guide states service accounts are unsupported. This fallback needs a service-account credential (key or Workload Identity Federation), so it inherits the keyless-sheets-auth gap; if a credential exists anyway, appending directly with the Sheets API is simpler than the web app.",
+      "source_url": "https://gist.github.com/tanaikech/304fea821ca36b8e9ccebe9814eaed82",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Every request to the web app's /exec URL is answered with a 302 to https://script.googleusercontent.com/macros/echo?user_content_key=...; for doPost the client must issue the POST, then follow the redirect with GET (following with POST yields 405 'Page Not Found'). The Fetch Standard already does this: on a 302 after POST the user agent 'uses the GET method in the subsequent redirection request', so Node's global fetch with redirect: 'follow' (the default) works without special handling. The POST body is processed by doPost during the first request, before the redirect.",
+      "evidence": "tanaikech gist 'Understanding Flow of Request to Web Apps Created by Google Apps Script' (302 for GET and POST; redirect target host; GET required on the redirect; 405 otherwise) and MDN '302 Found' quoting the Fetch Standard HTTP-redirect fetch rule.",
+      "source_url": "https://gist.github.com/tanaikech/131ba814a1f6012fd6a5ffe11789971f",
+      "confidence": "high"
+    },
+    {
+      "claim": "No measured doPost/doGet HTTP round-trip benchmark exists in official docs or in 2024-2026 community posts. The '400-1500 ms' figure is a community estimate for google.script.run calls (Nov 2024 thread; the original poster measured 800-3000 ms for an empty function), and a 2018 benchmark shows about 1.1 s per Web App request when fetched in parallel. Expect roughly 1-2 s per server-side vote write including the redirect hop until measured.",
+      "evidence": "Apps Script community thread 'google.script.run Lag?' (Nov 21, 2024): 'expect latency to range between 400-1500ms for each google.script.run call' and 'Published web apps generally run faster than scripts accessed in /dev mode'; nobody measured doPost. tanaikech benchmark (Apr 19, 2018): 5 Web App requests in 5.502 s via fetchAll (~1.1 s each). Searches for doPost latency measurements on stackoverflow/groups/reddit returned nothing quantitative.",
+      "source_url": "https://groups.google.com/g/google-apps-script-community/c/M0UHwkNKYUE",
+      "confidence": "low"
+    },
+    {
+      "claim": "Quotas relevant to an execute-as-owner web app (page last updated July 22, 2026): Google Workspace accounts get 100,000 URL Fetch calls/day, 6 h/day total trigger runtime, 30 simultaneous executions per user, 1,000 simultaneous executions per script, 6 min per execution. Because the web app executes as the owner, every visitor doPost counts against the owner's 30 simultaneous executions (~30 votes/s at 1 s each) - ample for low traffic but a denial-of-service surface if the public /exec URL leaks.",
+      "evidence": "Official 'Quotas for Google Services' page tables; the page states quotas 'are per user and reset 24 hours after the first request' and may change without notice. No separate web-app or doPost quota exists.",
+      "source_url": "https://developers.google.com/apps-script/guides/services/quotas",
+      "confidence": "high"
+    },
+    {
+      "claim": "A separate admin control can silently break the trigger half of the sync (installable onEdit -> UrlFetchApp.fetch(POST /api/revalidate)): Admin console > Apps > Google Workspace > Drive and Docs > Features and Applications > 'Importing and fetching from URLs' lets admins allowlist up to 1,000 URLs (one wildcard, e.g. https://*.example.com). Default: 'Apps Script scripts and Google Sheets functions can send or fetch data using any URL'. Blocked calls fail with: 'Admin has not allowed imports from: [URL]. Contact your Admin if you'd like to allow access'. Available only on Frontline Plus, Business Plus, Enterprise Standard/Plus, Education Standard/Plus, Enterprise Essentials Plus - not Business Starter/Standard.",
+      "evidence": "Official Workspace Admin Help 'Allow only certain external connections for Apps Script and Sheets' (support.google.com/a/answer/13686736 redirects here). The ADR's TTL cache already covers this failure mode (freshness degrades to the TTL instead of breaking), but the runbook must list the site's revalidate URL as something to allowlist if the tenant is on an eligible edition.",
+      "source_url": "https://knowledge.workspace.google.com/admin/drive/allow-only-certain-external-connections-for-apps-script-and-sheets",
+      "confidence": "high"
+    },
+    {
+      "claim": "Reliability caveat: an execute-as-Me / Anyone web app can return an HTML '500 - Google Docs encountered an error' page to POST requests with doPost never executing and no execution log, and Google gave no root cause. The vote write must therefore be idempotent (client-generated voteId) and retried once, and the visitor's vote must be persisted locally first (vote-state-store gap) so a transient Apps Script failure never loses or duplicates a vote.",
+      "evidence": "Google Developer forums thread (Nov 28 - Dec 6, 2025) 'Apps Script Web App POST requests fail with 500 Docs error and doPost() never runs': deployment Execute as Me + Anyone, permissive admin policies, POST consistently 500 while doPost never runs; community suggested Content-Type application/x-www-form-urlencoded or multipart/form-data; unresolved, no Google staff reply. Single anecdote, so medium-low weight.",
+      "source_url": "https://discuss.google.dev/t/apps-script-web-app-post-requests-fail-with-500-docs-error-and-dopost-never-runs/292239",
+      "confidence": "low"
+    },
+    {
+      "claim": "Web app deployments stop working if the script project's ownership moves to a shared drive or to a different domain, and Apps Script rate-limits new-user authorisation only for web apps that execute as the accessing user (irrelevant to execute-as-owner).",
+      "evidence": "Official 'Web Apps' guide (developers.google.com/apps-script/guides/web): notes that web apps cease functioning when ownership transfers to a shared drive or another domain, and 'To prevent abuse, Apps Script imposes limits on the rate at which new users can authorize a web app that executes as the user.' Runbook item: keep the sheet and script in hello@serioludere.com's My Drive, never move them to a shared drive.",
+      "source_url": "https://developers.google.com/apps-script/guides/web",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Contradiction 'onChange on API writes' resolved: the official restriction text ('Script executions and API requests don't cause triggers to run') is contradicted by a reproducible demonstration that an installable onChange trigger DOES fire when the sheet is edited through the Sheets API (the event object merely lacks the editor's email when a service account made the edit). The ADR must not assume 'API writes never fire triggers'; only onEdit is documented as UI-only.",
+      "evidence": "Official 'Installable Triggers' guide restriction section vs tanaikech gist (Nov 10, 2022) 'Workaround: Detecting to Edit Google Spreadsheet using Sheets API with Service Account': 'the installable onChange trigger does fire when a service account edits via Sheets API' but 'the email of the service account is not included in the event object'. In the hybrid design the vote write is a script execution (doPost) which per the official text does not fire triggers, and the site busts its own cache after a successful write, so the trigger question only matters if the ADR later switches to direct Sheets API appends - in which case use an installable onEdit (UI edits only) for /api/revalidate and make the endpoint idempotent so an onChange loop is harmless.",
+      "source_url": "https://developers.google.com/apps-script/guides/triggers/installable",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Workspace 'App access control' (Security > Access and data control > API controls > 'Trust internal apps') could not be confirmed to affect Apps Script's own OAuth grant; the official page only says the checkbox allows 'internal apps built by your organization to access restricted Google Workspace APIs'.",
+      "evidence": "Official page 'Control which third-party & internal apps access Google Workspace data' does not mention Apps Script explicitly. Left as an open question; the owner already authorised the legacy script, so it is not blocking today.",
+      "source_url": "https://knowledge.workspace.google.com/admin/apps/control-which-apps-access-google-workspace-data",
+      "confidence": "low"
+    }
+  ],
+  "code_snippets": [
+    {
+      "purpose": "appsscript.json manifest fields that pin the vote web app to execute-as-owner + anonymous access (equivalent to the UI 'Execute as: Me' / 'Who has access: Anyone'); use with clasp deploy so the setting is version-controlled and visible if an admin policy later blocks it",
+      "code": "{\n  \"runtimeVersion\": \"V8\",\n  \"webapp\": {\n    \"access\": \"ANYONE_ANONYMOUS\",\n    \"executeAs\": \"USER_DEPLOYING\"\n  },\n  \"oauthScopes\": [\n    \"https://www.googleapis.com/auth/spreadsheets\",\n    \"https://www.googleapis.com/auth/script.external_request\"\n  ]\n}",
+      "source_url": "https://developers.google.com/apps-script/manifest/web-app-api-executable"
+    },
+    {
+      "purpose": "doPost handler for vote appends: shared-secret check (the /exec URL is public), idempotency by voteId, LockService to serialise concurrent appends, JSON response via ContentService (Apps Script cannot set an HTTP status code, so the body carries ok/error)",
+      "code": "function doPost(e) {\n  const props = PropertiesService.getScriptProperties();\n  const body = JSON.parse((e.postData && e.postData.contents) || '{}');\n  if (!props.getProperty('VOTE_SECRET') || body.secret !== props.getProperty('VOTE_SECRET')) {\n    return json_({ ok: false, error: 'unauthorized' });\n  }\n  const lock = LockService.getScriptLock();\n  lock.waitLock(10000); // throws if not acquired within 10 s\n  try {\n    const sheet = SpreadsheetApp.openById(props.getProperty('SHEET_ID')).getSheetByName('Votes');\n    const ids = sheet.getRange(2, 5, Math.max(sheet.getLastRow() - 1, 1), 1).getValues().flat();\n    if (ids.indexOf(body.voteId) === -1) {\n      sheet.appendRow([new Date(), body.rugId, body.visitorId, body.vote, body.voteId]);\n    }\n    return json_({ ok: true, voteId: body.voteId });\n  } finally {\n    lock.releaseLock();\n  }\n}\n\nfunction json_(obj) {\n  return ContentService.createTextOutput(JSON.stringify(obj))\n    .setMimeType(ContentService.MimeType.JSON);\n}",
+      "source_url": "https://developers.google.com/apps-script/reference/lock/lock"
+    },
+    {
+      "purpose": "Node 24 server-side call to the /exec URL from POST /api/vote: fetch follows the 302 to script.googleusercontent.com and re-issues it as GET per the Fetch Standard; timeout and one retry; the visitor's vote is persisted locally before this call so a failure degrades gracefully",
+      "code": "// src/lib/votes/appsScriptWriter.ts\nconst EXEC_URL = process.env.APPS_SCRIPT_EXEC_URL!;   // https://script.google.com/macros/s/<deploymentId>/exec - server-only, never shipped to the client\nconst SECRET = process.env.VOTE_SECRET!;\n\nexport async function appendVote(v: { rugId: string; visitorId: string; vote: 'like' | 'dislike'; voteId: string }) {\n  for (let attempt = 0; attempt < 2; attempt++) {\n    try {\n      const res = await fetch(EXEC_URL, {\n        method: 'POST',\n        redirect: 'follow',                       // /exec answers 302 -> script.googleusercontent.com; Fetch re-issues it as GET\n        headers: { 'content-type': 'text/plain;charset=utf-8' },\n        body: JSON.stringify({ secret: SECRET, ...v }),\n        signal: AbortSignal.timeout(10_000),\n      });\n      const data = (await res.json()) as { ok: boolean; error?: string };\n      if (data.ok) return data;\n      if (data.error === 'unauthorized') throw new Error('apps-script: unauthorized');\n    } catch (err) {\n      if (attempt === 1) throw err;\n    }\n  }\n}",
+      "source_url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/302"
+    },
+    {
+      "purpose": "Fallback when an admin removes the 'Anyone' option: redeploy with access ANYONE ('Anyone with Google account') and call with a service-account bearer token carrying a Drive scope (tanaikech's pattern). Requires a service-account credential (see keyless-sheets-auth gap); verify in the spike that Node fetch's cross-origin redirect handling does not break the call",
+      "code": "import { GoogleAuth } from 'google-auth-library';\n\nconst auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/drive.readonly'] });\nconst client = await auth.getClient();\nconst { token } = await client.getAccessToken();\n\nconst res = await fetch(EXEC_URL, {\n  method: 'POST',\n  redirect: 'follow',\n  headers: { authorization: `Bearer ${token}`, 'content-type': 'text/plain;charset=utf-8' },\n  body: JSON.stringify({ secret: SECRET, rugId, visitorId, vote, voteId }),\n  signal: AbortSignal.timeout(10_000),\n});",
+      "source_url": "https://gist.github.com/tanaikech/304fea821ca36b8e9ccebe9814eaed82"
+    }
+  ],
+  "package_versions": [
+    {
+      "name": "@google/clasp",
+      "latest_version": "3.4.1",
+      "checked_url": "https://registry.npmjs.org/@google/clasp/latest"
+    }
+  ],
+  "recommendation": "Keep the hybrid write path (votes -> Apps Script web app, Execute as: Me + Who has access: Anyone, i.e. manifest USER_DEPLOYING + ANYONE_ANONYMOUS): the legacy deployment proves the option is available on serioludere.com today, the June 2026 core-service change added no web-app restriction, and only two admin controls can remove it - Drive and Docs > Sharing settings > 'Sharing outside of your organization' OFF / publish-on-the-web unticked (hides 'Anyone', no error) and Drive and Docs > Google Apps Script OFF (kills web apps AND triggers). Put both console paths plus the URL Fetch allowlist path in the owner runbook; the owner is most likely their own super-admin.\nHarden the endpoint: shared secret in the body, server-only /exec URL, per-visitor rate limit at the Node layer, client-generated voteId for idempotency, LockService in doPost, fetch with redirect:'follow' + 10 s timeout + one retry, and persist the vote in the local store before calling Apps Script.\nPlan the fallback now: if 'Anyone' disappears, redeploy as 'Anyone with Google account' and call with a service-account bearer (drive.readonly scope); if a service-account credential exists anyway, prefer direct Sheets API values.append and drop the web app.\nTreat latency as unmeasured: the 400-1500 ms figure is a google.script.run community estimate; budget ~1-2 s per write (302 hop included) and measure doPost p50/p95 with 20 curl -w time_total requests in the Phase-0 spike.\nDo not rely on 'API writes never fire triggers' for onChange; use an installable onEdit for /api/revalidate and make the endpoint idempotent.",
+  "open_questions": [
+    "What exactly does the deploy dialog show on a Workspace tenant with external sharing OFF - is 'Anyone' hidden or greyed, and does a clasp/manifest deploy with access ANYONE_ANONYMOUS fail with a specific error? No official text or 2025-2026 first-hand report was found; needs a throwaway Workspace tenant test.",
+    "Which Workspace edition is serioludere.com on? Business Starter/Standard cannot use the URL Fetch allowlist or Access Checker restrictions, which narrows the admin-policy risk to the two switches above.",
+    "Does the Authorization header survive Node fetch's cross-origin 302 to script.googleusercontent.com in the 'Anyone with Google account' fallback? tanaikech's curl -L examples work, but the Fetch Standard strips Authorization on cross-origin redirects; verify in Node before relying on it.",
+    "Does Security > API controls > 'Trust internal apps' affect authorisation of the owner's own Apps Script project? The official page does not say.",
+    "Actual doPost round-trip latency (p50/p95) from the chosen host region to script.google.com, and whether the Nov 2025 '500 Google Docs encountered an error' failure mode recurs with text/plain JSON bodies."
+  ]
+}

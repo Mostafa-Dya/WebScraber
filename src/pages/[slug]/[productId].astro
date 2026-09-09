@@ -1,0 +1,303 @@
+---
+// `/{customer-slug}/{productId}` — one rug inside a buyer's private preview
+// (Figma "G3 · Product detail", 57:223).
+//
+// Addressed by Product ID, not by handle: the brief keys everything on the manually assigned id, and
+// a buyer's link should survive the studio renaming a rug.
+//
+// Four bands, 64 apart: a back bar, a full-bleed hero on the surface with the reaction pair pinned
+// to its top right, a thumbnail strip, and a two-column body — a fixed 620 text column beside the
+// specification panel, 112 apart. There is no enquiry action anywhere; the studio email lives in the
+// footer, which is the one contact route the brief allows.
+export const prerender = false;
+
+import PreviewControls from '../../components/customer/PreviewControls.astro';
+import PreviewFooter from '../../components/customer/PreviewFooter.astro';
+import PreviewHeader from '../../components/customer/PreviewHeader.astro';
+import PreviewLayout from '../../components/customer/PreviewLayout.astro';
+import Reactions from '../../components/customer/Reactions.astro';
+import SpecTable from '../../components/customer/SpecTable.astro';
+import { money } from '../../lib/currency.ts';
+import { findCustomer } from '../../lib/customer/http.ts';
+import { baseCurrency, loadCatalogue, ratesFor } from '../../lib/runtime.ts';
+import { dims, PREVIEW_SEP } from '../../lib/units.ts';
+import { activeRugs, cardView } from '../../lib/view.ts';
+
+const slug = (Astro.params.slug ?? '').toLowerCase();
+const productId = Astro.params.productId ?? '';
+const { snapshot, error } = await loadCatalogue();
+const catalogue = snapshot?.catalogue ?? { rugs: [], collections: [], tags: [], rates: [], customers: [] };
+const rates = ratesFor(catalogue);
+const customer = snapshot ? findCustomer(catalogue.customers, slug) : undefined;
+const signedIn = Astro.locals.customer === slug;
+
+const cards = customer && signedIn ? activeRugs(catalogue).map((r) => cardView(r, catalogue)) : [];
+const card = cards.find((c) => c.id === productId);
+
+Astro.cache?.set(false);
+Astro.response.headers.set('cache-control', 'no-store');
+if (error || !snapshot) {
+  Astro.response.status = 503;
+  Astro.response.statusText = 'Service Unavailable';
+  Astro.response.headers.set('retry-after', '60');
+} else if (!customer) {
+  Astro.response.status = 404;
+  Astro.response.statusText = 'Not Found';
+} else if (!signedIn) {
+  // A deep link into someone's preview: send them to their own gate, which then returns here.
+  return Astro.redirect(`/${slug}`, 303);
+} else if (!card) {
+  Astro.response.status = 404;
+  Astro.response.statusText = 'Not Found';
+}
+
+const priceText = card ? money(card.priceUsd, baseCurrency, rates, 'en-US') : '';
+const sizeText = card ? dims(card.widthCm, card.lengthCm, 'cm', PREVIEW_SEP) : '';
+const photos = card?.photoUrls?.length ? card.photoUrls : card?.photoUrl ? [card.photoUrl] : [];
+const specRows = card
+  ? [
+      { key: 'Size', value: sizeText },
+      { key: 'Material', value: card.material },
+      { key: 'Method', value: card.method },
+      { key: 'Origin', value: card.origin },
+      // `Pile` is in the brief's spec block; `Shape` is stored and deliberately never shown.
+      { key: 'Pile', value: card.pile },
+      { key: 'Age', value: card.age },
+    ]
+  : [];
+const title = card ? `${card.name} — Serio Ludere` : 'Serio Ludere';
+---
+
+<PreviewLayout title={title} rates={rates} customer={signedIn ? slug : undefined}>
+  {
+    customer && (
+      <PreviewHeader home={`/${slug}`} back={{ href: `/${slug}`, label: 'Back to the collection' }} />
+    )
+  }
+
+  {
+    error && (
+      <main class="pv-state">
+        <p class="pv-h3">Could not load the catalogue.</p>
+        <p class="pv-lede">
+          <a href={Astro.url.pathname}>Try again</a>
+        </p>
+      </main>
+    )
+  }
+
+  {
+    !error && !card && (
+      <main class="pv-state">
+        <p class="pv-h3">
+          {customer ? 'This rug is not in your preview.' : 'This preview link is not active.'}
+        </p>
+        {customer && (
+          <p class="pv-lede">
+            <a href={`/${slug}`}>Back to the collection</a>
+          </p>
+        )}
+      </main>
+    )
+  }
+
+  {
+    card && (
+      <main class="pv-main">
+        <section class="pv-hero">
+          {photos[0] ? (
+            <img src={photos[0]} alt={card.name} data-hero-img fetchpriority="high" decoding="async" />
+          ) : (
+            <span class="pv-hero-empty">Photo to come</span>
+          )}
+          <div class="pv-hero-react">
+            <Reactions rugId={card.id} mode="detail" />
+          </div>
+        </section>
+
+        {photos.length > 1 && (
+          <section class="pv-wrap">
+            <div class="pv-thumbs" data-thumbs role="toolbar" aria-label="Photographs">
+              {photos.map((src, i) => (
+                <button
+                  type="button"
+                  class:list={['pv-thumb', { 'is-on': i === 0 }]}
+                  data-full={src}
+                  data-alt={`${card.name}, photograph ${i + 1}`}
+                  aria-current={i === 0 ? 'true' : undefined}
+                >
+                  <img src={src} alt={`Photograph ${i + 1}`} loading="lazy" decoding="async" />
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section class="pv-body">
+          <div class="pv-detail-text">
+            <h1 class="pv-h1">{card.name}</h1>
+
+            <div class="pv-price-row">
+              <p class="pv-price" data-price data-usd={card.priceUsd ?? ''} hidden={!priceText}>
+                {priceText}
+              </p>
+              <span class="pv-spacer" aria-hidden="true" />
+              <PreviewControls rates={rates} />
+            </div>
+
+            {card.description && <p class="pv-detail-desc">{card.description}</p>}
+
+            <div class="pv-react-row">
+              <Reactions rugId={card.id} mode="detail" />
+              <p class="pv-react-note" data-react-note aria-live="off" />
+            </div>
+          </div>
+
+          <SpecTable rows={specRows} widthCm={card.widthCm} lengthCm={card.lengthCm} />
+        </section>
+      </main>
+    )
+  }
+
+  <PreviewFooter />
+</PreviewLayout>
+
+<style>
+  /* Full-bleed band on the surface, 620 tall, with the photo capped at the drawn 560×400 box. */
+  .pv-hero {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-height: 620px;
+    background: var(--surface);
+  }
+  .pv-hero img {
+    max-width: 560px;
+    max-height: 400px;
+    object-fit: contain;
+  }
+  .pv-hero-empty {
+    font-size: var(--text-sm);
+    color: var(--ink-muted);
+  }
+  .pv-hero-react {
+    position: absolute;
+    top: 32px;
+    right: 32px;
+  }
+
+  .pv-thumbs {
+    display: flex;
+    gap: var(--stack-sm);
+    flex-wrap: wrap;
+  }
+  .pv-thumb {
+    width: 96px;
+    height: 120px;
+    padding: 0;
+    border: var(--rule-width) solid var(--rule);
+    border-radius: var(--radius);
+    background: var(--surface);
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .pv-thumb.is-on {
+    border: 2px solid #1c1c1c;
+  }
+  .pv-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 8px;
+  }
+
+  /* A fixed 620 text column beside the panel, 112 apart, both starting at the top. */
+  .pv-body {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-section);
+    padding: var(--section-gap) var(--gutter);
+  }
+  .pv-detail-text {
+    flex: 0 0 620px;
+    max-width: 620px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-gap);
+  }
+  .pv-price-row {
+    display: flex;
+    align-items: center;
+    gap: var(--stack-md);
+  }
+  .pv-price {
+    font-size: var(--h1);
+    font-weight: 700;
+    line-height: var(--leading-heading);
+  }
+  .pv-detail-desc {
+    color: var(--ink-soft);
+  }
+  .pv-react-row {
+    display: flex;
+    align-items: center;
+    gap: var(--tight);
+  }
+  .pv-react-note {
+    font-size: var(--text-sm);
+    color: var(--ink-soft);
+  }
+
+  .pv-state {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--stack-md);
+    padding: var(--space-section) var(--gutter);
+    text-align: center;
+  }
+
+  @media (max-width: 767px) {
+    .pv-hero {
+      min-height: 488px;
+    }
+    .pv-hero img {
+      max-width: 240px;
+      max-height: 300px;
+    }
+    .pv-hero-react {
+      top: var(--stack-lg);
+      right: var(--stack-lg);
+    }
+    .pv-body {
+      flex-direction: column;
+      gap: var(--section-gap);
+      padding: 0 var(--stack-lg);
+    }
+    .pv-detail-text {
+      flex-basis: auto;
+      max-width: none;
+      width: 100%;
+      gap: var(--stack-lg);
+    }
+    .pv-detail-text .pv-h1 {
+      font-size: var(--h3);
+    }
+    .pv-price {
+      font-size: var(--h3);
+    }
+    .pv-price-row {
+      flex-wrap: wrap;
+    }
+    .pv-state {
+      padding-inline: var(--stack-lg);
+    }
+  }
+</style>
+
+<script>
+  import { initPreviewGallery } from '../../scripts/preview-gallery.ts';
+  initPreviewGallery();
+</script>

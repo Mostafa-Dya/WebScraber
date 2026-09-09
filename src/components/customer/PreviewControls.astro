@@ -1,0 +1,147 @@
+---
+// Unit toggle + currency picker (Figma "Unit Toggle" 130:260, "Currency Picker" 130:265).
+//
+// The behaviour already exists in src/scripts/prefs.ts and is unchanged: it finds `#unitTog
+// button[data-u]` and `#cur`, remembers the choice, and re-renders every `[data-dims]` and
+// `[data-price]` on the page. Only the appearance is new — a bordered segmented control where the
+// active half is filled with ink, and a bordered select with its own chevron.
+//
+// `data-sep="·"` on the dimension lines is what makes the preview render "240 · 170 cm" while the
+// public catalogue keeps the reference's cross; prefs.ts and the pre-paint step both honour it.
+//
+// **Deliberate deviation.** The design draws an Open state for the picker: a 74px bordered panel of
+// 40px rows, each a currency code beside its symbol in the muted grey, with a 16px check against the
+// current one. This uses a native `<select>` instead, so the closed trigger matches the design and
+// the open menu is the platform's. The trade is worth making: a native select brings correct
+// keyboard handling, the iOS and Android pickers, and screen-reader support that a hand-built
+// `role="listbox"` would have to re-earn — and the open menu is a transient OS surface nobody
+// compares against a frame. Building the drawn panel is a contained change if the studio wants it.
+import { SUPPORTED_CURRENCIES, type RateTable } from '../../lib/currency.ts';
+
+interface Props {
+  rates: RateTable;
+}
+const { rates } = Astro.props;
+const fromSheet = Object.keys(rates.rates).filter((c) => c in rates.symbols);
+const currencies = fromSheet.length
+  ? ['USD', ...fromSheet.filter((c) => c !== 'USD')]
+  : [...SUPPORTED_CURRENCIES];
+---
+
+<div class="pv-controls">
+  <div class="pv-seg" id="unitTog" role="group" aria-label="Units">
+    <button type="button" data-u="cm" class="on" aria-pressed="true">cm</button>
+    <button type="button" data-u="ft" aria-pressed="false">
+      <span class="pv-seg-long">ft / in</span><span class="pv-seg-short">ft</span>
+    </button>
+  </div>
+  <div class="pv-select">
+    <select id="cur" aria-label="Currency">
+      {currencies.map((c) => <option>{c}</option>)}
+    </select>
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false">
+      <path d="M4 6.5L8 10.5L12 6.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
+      ></path>
+    </svg>
+  </div>
+</div>
+
+<style>
+  .pv-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--stack-md);
+  }
+
+  .pv-seg {
+    display: inline-flex;
+    height: 36px;
+    border: var(--rule-width) solid var(--rule);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .pv-seg button {
+    padding-inline: var(--stack-md);
+    border: 0;
+    background: none;
+    font-family: inherit;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--ink-soft);
+    cursor: pointer;
+    /* No transition, deliberately: the Unit Toggle documentation says switching is instant and every
+       dimension on the surface reconverts at the same moment. */
+  }
+  .pv-seg button.on,
+  .pv-seg button[aria-pressed='true'] {
+    background: var(--ink);
+    color: var(--surface);
+  }
+
+  /* Symmetric 12px inline padding with an 8px gap to the 16px chevron, as drawn. The height is a
+     minimum rather than a fixed 36 so a larger text setting is not clipped. */
+  .pv-select {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    border: var(--rule-width) solid var(--rule);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .pv-select select {
+    appearance: none;
+    -webkit-appearance: none;
+    align-self: stretch;
+    padding-left: var(--stack-md);
+    padding-right: calc(var(--stack-md) + var(--stack-sm) + 16px);
+    border: 0;
+    background: none;
+    font-family: inherit;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    line-height: var(--leading-body);
+    text-transform: uppercase;
+    letter-spacing: 0;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .pv-select svg {
+    position: absolute;
+    right: var(--stack-md);
+    width: 16px;
+    height: 16px;
+    color: var(--ink-soft);
+    pointer-events: none;
+  }
+
+  .pv-seg-short {
+    display: none;
+  }
+
+  /* The Unit Toggle documentation: at 390 the imperial segment abbreviates to "ft" so the toggle and
+     the picker clear 358px beside the title without truncating it. */
+  @media (max-width: 767px) {
+    .pv-controls {
+      gap: var(--stack-sm);
+    }
+    .pv-seg button {
+      padding-inline: var(--stack-sm);
+    }
+    .pv-seg-long {
+      display: none;
+    }
+    .pv-seg-short {
+      display: inline;
+    }
+  }
+</style>
+
+<script>
+  import { initPrefs } from '../../scripts/prefs.ts';
+  initPrefs();
+</script>

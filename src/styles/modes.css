@@ -1,0 +1,138 @@
+/* Brief §5 — the three-mode token set.
+ *
+ * Source of truth caveat: the brief names the Figma file (`07 · Handoff`) as the authority for UI,
+ * and forbids re-deriving token values from screenshots. Every value here is one the brief's own
+ * text states outright; nothing is eyeballed. What is still missing without the Figma file is the
+ * component inventory and the frame specs, not these primitives — see docs/BRIEF_GAP.md §5.
+ *
+ * Structure the brief asks for, and the rule that makes it worth having:
+ *   - three custom-property sets selected by `[data-mode]` on <html>: preview, admin, admin-dark;
+ *   - components read SEMANTICS only (--canvas, --surface, --brand, --focus-ring, …) and never a
+ *     primitive, so a mode switch is a one-line change rather than a sweep through the components.
+ *
+ * The pre-brief palette in tokens.css is still the fallback for anything not yet mapped, which is
+ * why this file is imported after it: same specificity, later wins.
+ */
+
+:root,
+[data-mode='preview'] {
+  /* ---- surfaces ----
+     Every value below is read from the Figma file's own variables, not inferred from the brief's
+     prose, which is why some differ slightly from the earlier pass. */
+  --canvas: #fefcf0; /* --page-background */
+  --surface: #fffff5; /* bg/surface, bg/inset */
+  --surface-raised: #ffffff; /* bg/surface-raised */
+  --canvas-sunken: #f6f0dc;
+  --subtle: #efefef; /* action/subtle: the unselected chip and the photo plate */
+
+  /* ---- ink ---- */
+  --ink: #000000; /* --text-color */
+  --ink-soft: #403f3c; /* text/secondary */
+  --ink-muted: #8c8b84; /* text/muted */
+  --rule: #d8d6cc; /* --border-color */
+  --rule-width: 1px;
+
+  /* ---- brand and feedback ---- */
+  --brand: #b80d09;
+  --success: #307a07;
+  --warning: #ed8a00;
+  --danger: #cb2b2b;
+
+  /* ---- type ---- */
+  --body: 'Inter', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-lg: 15px;
+  --text-xl: 19px;
+  /* Body line-height is 1.65 everywhere; headings are 1.2. */
+  --leading-body: 1.65;
+  --leading-heading: 1.2;
+  --h1: 28.8px;
+  --h2: 25.2px;
+  --h3: 19.8px;
+  --h4: 16.2px;
+  --h5: 12.6px;
+  --h6: 11.2px;
+
+  /* ---- shape ----
+     Square by default. The pill is for chips and the reaction circles only; nothing else. */
+  --radius: 0;
+  --radius-pill: 9999px;
+
+  /* ---- focus ----
+     Ink, never the brand red: a red ring next to a red destructive action reads as an error. */
+  --focus-ring: 2px solid var(--ink);
+  --focus-offset: 2px;
+
+  /* ---- containers ---- */
+  --container-xs: 440px;
+  --container-sm: 680px;
+  --container-md: 980px;
+  --container-lg: 1150px;
+  --container-xl: 1260px;
+  --container-2xl: 1360px;
+
+  /* ---- off-grid values the brief says to carry rather than round ---- */
+  --input-y: 10.4px; /* --space/control-y */
+  --input-x: 12.8px; /* --input-padding-inline */
+  --control-x: 24px; /* --space/control-x, the button's horizontal padding */
+  --control-gap: 10px;
+  --checkbox: 14px;
+
+  /* ---- spacing scale (space/stack-*) ---- */
+  --stack-xs: 4px;
+  --stack-sm: 8px;
+  --stack-md: 12px;
+  --stack-lg: 16px;
+  --tight: 12px;
+  --gutter: 48px; /* --container-gutter */
+  --section-gap: 64px; /* --section-stack-gap */
+
+  /* ---- mode-scoped aliases: the same name means something different per realm ---- */
+  --space-section: 112px;
+  --motion-transition: 600ms;
+}
+
+/* The admin is a working tool: tighter, quieter, faster, and on a neutral ground so photographs
+   are judged against grey rather than against warm paper. */
+[data-mode='admin'] {
+  --canvas: #f8f7f5;
+  --surface: #ffffff;
+  --canvas-sunken: #efedea;
+  --ink: #141413;
+  --ink-soft: #6b645c;
+  --rule: #e2e0dc;
+  --space-section: 24px;
+  --motion-transition: 150ms;
+}
+
+[data-mode='admin-dark'] {
+  --canvas: #141413;
+  --surface: #1e1e1c;
+  --canvas-sunken: #0d0d0c;
+  --ink: #f8f7f5;
+  --ink-soft: #a8a29a;
+  --rule: #33322f;
+  --brand: #ef4a44; /* the brand red lifted to stay legible on ink; the same hue */
+  --focus-ring: 2px solid var(--ink);
+  --space-section: 24px;
+  --motion-transition: 150ms;
+}
+
+/* ---- bridge to the pre-brief names ----
+ * The catalogue's components were written against --paper / --accent / --focus. Rather than sweep
+ * every rule at once, those names now RESOLVE to the semantic tokens above, so a mode switch moves
+ * the whole page and the components keep reading a semantic name. New CSS should use the semantic
+ * names directly.
+ */
+:root {
+  --paper: var(--canvas);
+  --paper-deep: var(--canvas-sunken);
+  --paper-90: color-mix(in srgb, var(--canvas) 92%, transparent);
+  --accent: var(--brand);
+  --text-md: var(--text-lg); /* the earlier name for 15px, kept so nothing breaks mid-migration */
+  --green: var(--success);
+  --focus: var(--focus-ring);
+}

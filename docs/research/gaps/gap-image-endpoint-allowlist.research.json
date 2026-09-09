@@ -1,0 +1,134 @@
+{
+  "topic": "image-endpoint-allowlist — scoping Astro 7.3's /_image (and host image CDNs) to the studio's own Drive images via a custom image.endpoint entrypoint that validates href at request time against a sheet-derived allow-list",
+  "findings": [
+    {
+      "claim": "Astro 7.3.1 exposes `image.endpoint` as `{ route: string, entrypoint: string | undefined }` (default `{ route: '/_image', entrypoint: undefined }`, added astro@3.1.0); `entrypoint` points at your own route handler file, e.g. `entrypoint: 'src/my_endpoint.ts'`.",
+      "evidence": "Configuration reference quotes: Type Object, Default `{route: '/_image', entrypoint: undefined}`, Added in astro@3.1.0, example `image: { endpoint: { route: '/custom_endpoint', entrypoint: 'src/my_endpoint.ts' } }`. astro@7.3.1 is the npm `latest` tag (published 2026-09-03).",
+      "source_url": "https://docs.astro.build/en/reference/configuration-reference/",
+      "confidence": "high"
+    },
+    {
+      "claim": "Core injects the image endpoint as an internal, non-prerendered endpoint route at the highest routing priority; when `entrypoint` is undefined it defaults to `astro/assets/endpoint/dev` in dev and `astro/assets/endpoint/generic` in build.",
+      "evidence": "packages/astro/src/assets/endpoint/config.ts on main: `injectImageEndpoint()` does `manifest.routes.unshift(...)` with `type: 'endpoint', origin: 'internal', prerender: false`; pattern comes from `settings.config.image.endpoint.route`; default entrypoint selected by mode ('dev' vs 'build').",
+      "source_url": "https://raw.githubusercontent.com/withastro/astro/main/packages/astro/src/assets/endpoint/config.ts",
+      "confidence": "high"
+    },
+    {
+      "claim": "@astrojs/node 11.1.5 only fills `image.endpoint.entrypoint` when it is undefined (`config.image.endpoint.entrypoint ?? (command === 'dev' ? 'astro/assets/endpoint/dev' : 'astro/assets/endpoint/node')`), so a user-supplied entrypoint is honoured in both dev and production and must itself handle both modes.",
+      "evidence": "packages/integrations/node/src/index.ts, 'astro:config:setup' hook: `image: { endpoint: { route: config.image.endpoint.route ?? '_image', entrypoint: config.image.endpoint.entrypoint ?? (command === 'dev' ? 'astro/assets/endpoint/dev' : 'astro/assets/endpoint/node') } }`.",
+      "source_url": "https://raw.githubusercontent.com/withastro/astro/main/packages/integrations/node/src/index.ts",
+      "confidence": "high"
+    },
+    {
+      "claim": "The official Image Service reference documents writing your own endpoint: import `getConfiguredImageService` and `imageConfig` from `astro:assets` and `isLocalService` from `astro/assets`, call `parseURL(new URL(request.url), imageConfig, logger)` then `transform(inputBuffer, imageTransform, imageConfig, logger)`, and it links generic.ts as 'the built-in endpoint ... for a full example'. No third-party example of a dynamic (request-time) allow-list was found in two web searches; the docs example leaves fetching (`getImageBuffer`) to you.",
+      "evidence": "Docs paragraph: 'If you implement your own endpoint as an Astro endpoint, you can use getConfiguredImageService and imageConfig to call your service's parseURL and transform methods and provide the image config.' Code block exports `GET: APIRoute = async ({ request, logger }) => {...}`. `astro:assets` reference lists `getConfiguredImageService(): Promise<ImageService>` and `imageConfig: AstroConfig['image']` as public exports.",
+      "source_url": "https://docs.astro.build/en/reference/image-service-reference/",
+      "confidence": "high"
+    },
+    {
+      "claim": "The built-in endpoints are all importable from the published package: astro@7.3.1 package.json exports `./assets/endpoint/*` -> `./dist/assets/endpoint/*.js`, and the dist contains `generic.js`, `node.js`, `dev.js` and `shared.js`. `node.js` and `dev.js` each export `GET({ request, logger })` and delegate to `handleImageRequest({ request, loadLocalImage, logger })` from `shared.js`; `shared.js` also exports `loadRemoteImage`. Only `generic`/`node`/`dev` are referenced by docs/adapters; `shared` is an undocumented internal.",
+      "evidence": "package.json exports list (fetched from GitHub main, version 7.3.1). jsDelivr astro@7.3.1/dist/assets/endpoint/shared.js exports handleImageRequest and loadRemoteImage and imports imageConfig from 'astro:assets'; node.js imports handleImageRequest from './shared.js'; dev.js guards with `if (!import.meta.env.DEV) { ... return new Response('Invalid endpoint', { status: 500 }) }`.",
+      "source_url": "https://cdn.jsdelivr.net/npm/astro@7.3.1/dist/assets/endpoint/shared.js",
+      "confidence": "high"
+    },
+    {
+      "claim": "The built-in handler already does the security-relevant work after your check: parseURL reads `href`, `w`, `h`, `f`, `q`, `fit`, `position`; remote `href` must pass `isRemoteAllowed(transform.src, imageConfig)` (else 403); non-SVG->SVG is refused (403); remote fetch goes through `fetchWithRedirects` and the allow-list is re-checked on the final URL; then `transform()` and `Cache-Control: public, max-age=31536000` + ETag. Wrapping (not replacing) it keeps the hardening from #15569 (reject redirects, allow-list on inferSize), #16544 (v6.3.2, control chars in local paths) and the Cloudflare `/_image` data:-URL XSS fix (GHSA-fvmw-cj7j-j39q, Nov 2025).",
+      "evidence": "shared.ts source on main (quoted verbatim in this session); baseService.parseURL/getURL in services/service.ts; commit e01e98b 'Respect remote image allowlists (#15569)': 'Respect image allowlists when inferring remote image sizes and reject remote redirects', fetch uses `{ redirect: 'manual' }`; PR #16544 merged 2026-05-08 released in v6.3.2; advisory GHSA-fvmw-cj7j-j39q (CVSS 5.4) root cause: isRemoteAllowed 'unconditionally allows data: URLs' then 302.",
+      "source_url": "https://raw.githubusercontent.com/withastro/astro/main/packages/astro/src/assets/endpoint/shared.ts",
+      "confidence": "high"
+    },
+    {
+      "claim": "Config-level allow-listing cannot scope to the studio's files, confirming the gap's premise: `image.domains` is an exact-hostname match and `image.remotePatterns` only supports `**`/`*` wildcards on hostname and pathname, so the best static pattern is `{ protocol: 'https', hostname: 'lh3.googleusercontent.com', pathname: '/d/**' }`, which admits any public Drive file ID. `isRemoteAllowed` accepts only `http:`, `https:` and `data:` protocols.",
+      "evidence": "@astrojs/internal-helpers remote.ts: `matchHostname(url, domain)` without wildcard is `hostname === url.hostname`; `matchPathname` handles `/**` (startsWith) and `/*` (exactly one extra segment); `isRemoteAllowed` returns false unless protocol in ['http:', 'https:', 'data:'] and a domain or pattern matches.",
+      "source_url": "https://raw.githubusercontent.com/withastro/astro/main/packages/internal-helpers/src/remote.ts",
+      "confidence": "high"
+    },
+    {
+      "claim": "If lh3 is simply left out of `image.domains`, `<Image>` renders the raw lh3 URL unoptimized (no proxy, no format/size conversion), so the allow-list must be enforced at the endpoint, not by removing the domain.",
+      "evidence": "Images guide: 'Remote images from other sources will not be optimized, but using the <Image /> component for these images will prevent Cumulative Layout Shift (CLS).' baseService.getURL: `if (isRemoteAllowed(options.src, imageConfig)) {...} else return options.src`.",
+      "source_url": "https://docs.astro.build/en/guides/images/",
+      "confidence": "high"
+    },
+    {
+      "claim": "Middleware is a workable but weaker alternative: Astro middleware runs for endpoints, and the request handler only bypasses middleware for `routeData.type === 'redirect'` (and internal `skipMiddleware` state), with no exemption for `origin: 'internal'` routes such as `/_image`. The endpoint wrapper is preferred because it is explicit, testable in isolation, and unaffected by the route-cache caveat raised in the contradictions (cache hits bypass middleware).",
+      "evidence": "Middleware guide: middleware lets you 'intercept requests and responses ... every time a page or endpoint is about to be rendered'. packages/astro/src/core/routing/handler.ts: `if (routeData.type === 'redirect') { ... }` path skips middleware; otherwise `response = await handleMiddleware(state, actionsAndPages)` guarded by `if (!state.skipMiddleware)`. The `/_image` route is not opted into the Astro 7 route cache unless you export a cache config from your own entrypoint.",
+      "source_url": "https://raw.githubusercontent.com/withastro/astro/main/packages/astro/src/core/routing/handler.ts",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Netlify: with the default `imageCDN: true`, @astrojs/netlify 8.2.5 sets `image.service.entrypoint` to `@astrojs/netlify/image-service.js`, an ExternalImageService whose `getURL` returns `/.netlify/images?url=...&w=...&fm=...`; `/_image` is not used in production and `image.endpoint` is never touched. `image.domains` is converted to a static regex (`^https?:\\/\\/lh3\\.googleusercontent\\.com\\/.*$`) in `.netlify/v1/config.json` `images.remote_images`, and Netlify documents that `remote_images` 'Cannot be changed at runtime'. So on Netlify Image CDN the open proxy is Netlify's CDN (not your sharp process) and cannot be ID-scoped; the custom endpoint only applies with `imageCDN: false` (sharp in the function via `astro/assets/endpoint/generic`).",
+      "evidence": "netlify/src/index.ts: service entrypoint set unless `imageCDN === false`; `remoteImagesFromAstroConfig()` builds `^https?:\\/\\/${escapedDomain}\\/.*$` per domain and `remotePatternToRegex()` per pattern; output written to '.netlify/v1/config.json'. image-service.ts `getURL` returns `/.netlify/images?${query}` and performs no isRemoteAllowed check. Netlify docs: '[images] remote_images = [...]' accepts regex, 'Cannot be changed at runtime'; transformed results are 'uniquely cached on our edge'.",
+      "source_url": "https://docs.netlify.com/build/image-cdn/overview/",
+      "confidence": "high"
+    },
+    {
+      "claim": "Vercel: @astrojs/vercel 11.0.10 never sets `image.endpoint`; with the default `imageService: false` sharp runs in the function behind the core `generic` endpoint so the custom entrypoint applies unchanged; with `imageService: true` images go through `/_vercel/image?url=...` and `domains`/`remotePatterns` are copied statically into `.vercel/output/config.json` (same static-allow-list limitation as Netlify Image CDN).",
+      "evidence": "Vercel adapter docs: imageService boolean 'When enabled, an Image Service powered by the Vercel Image Optimization API will be automatically configured and used in production'; 'domains and remotePatterns properties will automatically be filled using the Astro corresponding image settings'. vercel/src/index.ts writes `images = { ...imagesConfig, domains: [...], remotePatterns: [...] }` to .vercel/output/config.json and does not set image.endpoint.",
+      "source_url": "https://docs.astro.build/en/guides/integrations-guide/vercel/",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Cloudflare: @astrojs/cloudflare 14.3.0 externalizes sharp from the server build (`external = ['sharp']`), defaults to `imageService: 'cloudflare-binding'`, and references its own `@astrojs/cloudflare/image-endpoint`; whether a user `image.endpoint.entrypoint` can wrap that module was not verified, so the recommended design is not confirmed for Cloudflare.",
+      "evidence": "Cloudflare adapter docs list imageService values cloudflare | cloudflare-binding (default) | passthrough | compile | custom; cloudflare/src/index.ts sets `vite.build.rolldownOptions.external = ['sharp']` and mentions '@astrojs/cloudflare/image-endpoint' but the fetched summary could not show an `image.endpoint` assignment.",
+      "source_url": "https://docs.astro.build/en/guides/integrations-guide/cloudflare/",
+      "confidence": "low"
+    },
+    {
+      "claim": "The AVIF RCE the critic cites is libheif GHSA-g89c-p67h-r497 / CVE-2026-84383 (CVSS 3.1 9.8; libheif 1.22.0–1.23.1; fixed 1.23.2; published 2026-08-25), surfaced via sharp in Next.js advisory GHSA-2xp9-vwfh-vxw4 (CVSS 4.0 9.5, Next 15.5.24/16.3.3 mitigate by disabling AVIF optimization). sharp-libvips v1.3.3 (2026-08-26) bundles heif 1.23.2 (v1.3.2 had 1.23.1); sharp 0.35.4 (npm 2026-08-26) pulls @img/sharp-libvips 1.3.3; Astro 7.2.8 (npm 2026-08-26, PR #17837) 'Updates the minimum supported version of Sharp to 0.35.4'. So the critic's '7.2.8' is Astro 7.2.8 and the fix is in effect, although neither the sharp changelog nor PR #17837 names the advisory — pin `sharp@^0.35.4` explicitly because sharp is an optional peer you install yourself.",
+      "evidence": "libheif advisory: CVE-2026-84383, CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H, affected v1.22.0 through v1.23.1, patched v1.23.2, duplicate Alpha planes in HeifPixelImage::scale_nearest_neighbor(). sharp-libvips releases page: v1.3.3 heif 1.23.2, v1.3.2 heif 1.23.1. @img/sharp-libvips-linux-x64@latest versions.json: heif 1.23.2, vips 8.18.6. PR #17837 dependency list includes @img/sharp-libvips-linux-x64@1.3.3 and sharp@0.35.4. Astro 7.2.8 release notes: '#17837 Updates the minimum supported version of Sharp to 0.35.4'.",
+      "source_url": "https://github.com/strukturag/libheif/security/advisories/GHSA-g89c-p67h-r497",
+      "confidence": "high"
+    },
+    {
+      "claim": "Beyond the allow-list, cap CPU/memory per request: sharp's `limitInputPixels` defaults to 268402689 and can be lowered through `image.service.config`; and restricting the `w` query to the fixed `widths` your `<Image>` emits stops attackers minting unlimited distinct transforms of an allowed image.",
+      "evidence": "sharp constructor docs: limitInputPixels 'Do not process input images where the number of pixels (width x height) exceeds this limit', default 268402689; docs advise the default failOn 'warning' 'with untrusted input'. Astro config reference example passes `config: { limitInputPixels: false, ... }` to the sharp service. baseService.parseURL reads `w` as an integer.",
+      "source_url": "https://sharp.pixelplumbing.com/api-constructor/",
+      "confidence": "high"
+    },
+    {
+      "claim": "`logger` on the endpoint context (required by the built-in handlers' `({ request, logger })` signature) exists since astro@7.0.0, so the wrapper must forward the full context object, not just `request`.",
+      "evidence": "API reference: logger, Type AstroRuntimeLogger, Added in astro@7.0.0.",
+      "source_url": "https://docs.astro.build/en/reference/api-reference/",
+      "confidence": "high"
+    }
+  ],
+  "code_snippets": [
+    {
+      "purpose": "astro.config.mjs — keep lh3 allowed (so <Image> still emits /_image?href=... URLs) but route every /_image request through a custom entrypoint; lower sharp's pixel cap.",
+      "code": "// astro.config.mjs  (astro 7.3.1, @astrojs/node 11.1.5, sharp 0.35.4)\nimport { defineConfig } from 'astro/config';\nimport node from '@astrojs/node';\n\nexport default defineConfig({\n  output: 'server',\n  adapter: node({ mode: 'standalone' }),\n  image: {\n    // Still required: without it baseService.getURL() returns the raw lh3 URL (no optimisation, no proxy).\n    domains: ['lh3.googleusercontent.com'],\n    endpoint: {\n      route: '/_image',                    // default, shown for clarity\n      entrypoint: 'src/image-endpoint.ts', // honoured in dev AND build; adapters only fill it when undefined\n    },\n    service: {\n      entrypoint: 'astro/assets/services/sharp',\n      config: { limitInputPixels: 30_000_000 }, // sharp default is 268402689\n    },\n  },\n});\n// Netlify variant: adapter: netlify({ imageCDN: false }) — otherwise /_image is bypassed by /.netlify/images.\n// Vercel variant: leave imageService at its default (false).",
+      "source_url": "https://docs.astro.build/en/reference/configuration-reference/"
+    },
+    {
+      "purpose": "src/image-endpoint.ts — request-time allow-list, then delegate to Astro's own endpoint (dev or node) so all built-in checks, redirect handling, sharp transform and cache headers stay intact.",
+      "code": "// src/image-endpoint.ts\nimport type { APIRoute } from 'astro';\nimport { GET as devGET } from 'astro/assets/endpoint/dev';   // refuses to run outside dev\nimport { GET as nodeGET } from 'astro/assets/endpoint/node'; // reads local assets from dist/, fetches remote\nimport { ALLOWED_WIDTHS, getAllowedImageHrefs } from './lib/catalogue-cache';\n\nconst delegate: APIRoute = import.meta.env.DEV ? devGET : nodeGET;\n\nexport const GET: APIRoute = async (ctx) => {\n  const { searchParams } = new URL(ctx.request.url);\n  const href = searchParams.get('href') ?? '';\n  const w = searchParams.get('w');\n\n  // Positive check for same-origin assets: exactly one leading slash (e.g. /_astro/logo.abc.png).\n  // Anything else (https:, data:, //host/..) must be an href the catalogue itself emitted.\n  const isSameOriginAsset = /^\\/(?!\\/)/.test(href);\n  if (!isSameOriginAsset) {\n    const allowed = await getAllowedImageHrefs(); // Set<string> from the TTL-cached sheet snapshot\n    if (!allowed.has(href)) return new Response('Forbidden', { status: 403 });\n    if (w !== null && !ALLOWED_WIDTHS.has(Number(w))) return new Response('Forbidden', { status: 403 });\n  }\n  // Built-in path: parseURL -> isRemoteAllowed -> fetchWithRedirects (no redirects, allow-list re-checked)\n  //                -> sharp transform -> Cache-Control: public, max-age=31536000 + ETag\n  return delegate(ctx);\n};",
+      "source_url": "https://raw.githubusercontent.com/withastro/astro/main/packages/astro/src/assets/endpoint/shared.ts"
+    },
+    {
+      "purpose": "src/lib/catalogue-cache.ts (excerpt) — derive the allow-list from the same TTL cache (+bust()) that renders pages, so the set is exactly the hrefs the site emits and refreshes on POST /api/revalidate.",
+      "code": "// src/lib/catalogue-cache.ts (excerpt)\nexport const ALLOWED_WIDTHS = new Set([320, 640, 960, 1280, 1600]);\n\n// Single source of truth for the URL string: used by <Image src=...> AND by the allow-list.\nexport function driveImageUrl(fileId: string, size = 1600): string {\n  return `https://lh3.googleusercontent.com/d/${fileId}=s${size}`;\n}\n\nlet allowlist: { snapshotId: number; set: Set<string> } | undefined;\n\nexport async function getAllowedImageHrefs(): Promise<Set<string>> {\n  const snap = await getCatalogue(); // TTL cache; returns last-good snapshot if Sheets is down\n  if (!allowlist || allowlist.snapshotId !== snap.loadedAt) {\n    const set = new Set<string>();\n    for (const rug of snap.rugs) for (const id of rug.imageIds) set.add(driveImageUrl(id));\n    allowlist = { snapshotId: snap.loadedAt, set };\n  }\n  return allowlist.set;\n}\n\n// In a page:  <Image src={driveImageUrl(id)} widths={[...ALLOWED_WIDTHS]} width={1600} height={h} alt={...} />",
+      "source_url": "https://docs.astro.build/en/reference/modules/astro-assets/"
+    },
+    {
+      "purpose": "tests/image-endpoint.test.ts — Vitest coverage for the allow-list (delegates mocked so no sharp/network).",
+      "code": "import { describe, expect, it, vi } from 'vitest';\n\nvi.mock('astro/assets/endpoint/node', () => ({ GET: vi.fn(async () => new Response('ok', { status: 200 })) }));\nvi.mock('astro/assets/endpoint/dev', () => ({ GET: vi.fn(async () => new Response('ok', { status: 200 })) }));\nvi.mock('../src/lib/catalogue-cache', () => ({\n  ALLOWED_WIDTHS: new Set([640]),\n  getAllowedImageHrefs: async () => new Set(['https://lh3.googleusercontent.com/d/KNOWN=s1600']),\n}));\n\nimport { GET } from '../src/image-endpoint';\nconst call = (qs: string) => GET({ request: new Request(`http://localhost/_image?${qs}`) } as any);\n\ndescribe('/_image allow-list', () => {\n  it('403 for a Drive id not in the sheet', async () => {\n    expect((await call('href=https://lh3.googleusercontent.com/d/UNKNOWN=s1600&w=640')).status).toBe(403);\n  });\n  it('403 for an unlisted width', async () => {\n    expect((await call('href=https://lh3.googleusercontent.com/d/KNOWN=s1600&w=641')).status).toBe(403);\n  });\n  it('403 for protocol-relative and data: hrefs', async () => {\n    expect((await call('href=//evil.example/x.png&w=640')).status).toBe(403);\n    expect((await call('href=data:image/svg%2Bxml,%3Csvg%3E&w=640')).status).toBe(403);\n  });\n  it('delegates for a known id and width', async () => {\n    expect((await call('href=https://lh3.googleusercontent.com/d/KNOWN=s1600&w=640')).status).toBe(200);\n  });\n  it('delegates same-origin /_astro assets untouched', async () => {\n    expect((await call('href=/_astro/logo.abc123.png&w=640')).status).toBe(200);\n  });\n});",
+      "source_url": "https://docs.astro.build/en/reference/image-service-reference/"
+    }
+  ],
+  "package_versions": [
+    { "name": "astro", "latest_version": "7.3.1", "checked_url": "https://registry.npmjs.org/astro/latest" },
+    { "name": "sharp", "latest_version": "0.35.4", "checked_url": "https://registry.npmjs.org/sharp/latest" },
+    { "name": "@astrojs/node", "latest_version": "11.1.5", "checked_url": "https://registry.npmjs.org/@astrojs/node/latest" },
+    { "name": "@astrojs/netlify", "latest_version": "8.2.5", "checked_url": "https://registry.npmjs.org/@astrojs/netlify/latest" },
+    { "name": "@astrojs/vercel", "latest_version": "11.0.10", "checked_url": "https://registry.npmjs.org/@astrojs/vercel/latest" },
+    { "name": "@astrojs/cloudflare", "latest_version": "14.3.0", "checked_url": "https://registry.npmjs.org/@astrojs/cloudflare/latest" }
+  ],
+  "recommendation": "1. Set `image.endpoint.entrypoint: 'src/image-endpoint.ts'` and keep `image.domains: ['lh3.googleusercontent.com']`; the entrypoint reads `href`/`w`, rejects (403) any non-same-origin href that is not in a `Set` built from the TTL-cached catalogue (the exact `driveImageUrl(id)` strings the pages emit) or any `w` outside the fixed `widths` list, then delegates to `GET` from `astro/assets/endpoint/node` (prod) or `astro/assets/endpoint/dev` (dev) so Astro's own allow-list, no-redirect fetch, sharp transform and cache headers remain.\n2. This is exact on Node self-hosted (@astrojs/node 11.1.5) and on Vercel with the default `imageService: false`; on Netlify it only works with `imageCDN: false` — the default Netlify Image CDN bypasses `/_image` and its `remote_images` regex is static, so it cannot be ID-scoped. Do not adopt this design on Cloudflare without first verifying the adapter's own image endpoint (unverified).\n3. Pin `sharp@^0.35.4` in package.json (Astro 7.2.8+ requires it; bundles libheif 1.23.2 which fixes CVE-2026-84383) and set `image.service.config.limitInputPixels` to ~30M.\n4. Use the endpoint wrapper rather than middleware: it is unit-testable with mocked delegates and immune to the route-cache/middleware-bypass caveat.\n5. Ship the Vitest cases above (unknown id 403, unlisted width 403, protocol-relative/data: 403, known id 200, /_astro passthrough) and one integration test that `GET /_image?href=<lh3 id not in sheet>` returns 403 on the built server.\n6. Keep `driveImageUrl()` as the single place that formats lh3 URLs so the allow-list and the rendered `href` can never drift.",
+  "open_questions": [
+    "Netlify Image CDN: can `/.netlify/images?url=<relative path>` fetch a path served by a Netlify Function (which would enable a same-origin validating proxy under imageCDN:true)? Netlify docs only say 'relative path to an image on the site's domain'; unverified.",
+    "Does sharp 0.35.4's native binary load inside Netlify Functions under @astrojs/netlify 8.2.5 with `imageCDN: false`? Not tested in this session.",
+    "Cloudflare: does a user `image.endpoint.entrypoint` compose with `@astrojs/cloudflare/image-endpoint` / the Images binding service? The adapter source summary did not show the wiring; treat as unsupported until tested.",
+    "`astro/assets/endpoint/shared` (handleImageRequest) is exported by the `./assets/endpoint/*` pattern but undocumented; the recommendation re-exports the documented-by-adapters `node`/`dev` GETs instead, but a minor Astro release could still rename them — the Vitest suite plus a build-time smoke test should catch that.",
+    "The critic's phrase 'CVSS 9.8 AVIF RCE class patched in 7.2.8' is confirmed as Astro 7.2.8 raising the sharp floor to 0.35.4; the sharp changelog itself does not mention libheif/CVE-2026-84383, so the linkage rests on the sharp-libvips 1.3.3 dependency table and versions.json, not on a sharp advisory.",
+    "Whether lh3 size suffixes (`=s1600`) are stable enough to be part of the allow-listed string is covered by the separate drive-hotlink-reliability gap; if the suffix scheme changes, only `driveImageUrl()` needs updating."
+  ]
+}

@@ -1,0 +1,220 @@
+{
+  "topic": "google-spreadsheet 5.3.0 vs google-auth-library/@googleapis/sheets: can the chosen client set valueRenderOption=UNFORMATTED_VALUE + dateTimeRenderOption=FORMATTED_STRING and retry 429s?",
+  "verified_on": "2026-09-05",
+  "method": "Every cited registry JSON and tarball was downloaded in this session (curl) and the exact source lines were read with sed/grep; every cited Google/GitHub doc page was fetched with WebFetch. Behavioural claims about URL serialisation were executed locally with Node v24.8.0. No call was made against the live Sheets API (would require the owner's credentials).",
+  "verdicts": [
+    {
+      "claim": "[F1] google-spreadsheet latest is 5.3.0 (published 2026-06-03); runtime deps only ky ^2.0.2 and es-toolkit ^1.47.0; google-auth-library >=8.8.0 optional peerDependency; no engines field.",
+      "verdict": "confirmed",
+      "correction": "Registry /latest: version 5.3.0, dependencies {ky:^2.0.2, es-toolkit:^1.47.0}, peerDependencies {google-auth-library:>=8.8.0} with peerDependenciesMeta optional:true, engines absent. Full registry doc: time['5.3.0'] = 2026-06-03T22:29:48Z; dist-tags.latest = 5.3.0; 5.x line is 5.0.0-5.0.3, 5.1.0, 5.2.0, 5.3.0. CHANGELOG 5.3.0 <sub>2026-06-03</sub> '#754 upgrade ky from v1 to v2'.",
+      "source_url": "https://registry.npmjs.org/google-spreadsheet/latest"
+    },
+    {
+      "claim": "[F2] getRows() in 5.3.0 accepts only { offset?, limit? } and calls getCellsInRange()/batchGetCellsInRange() with no options, so it always uses the API default valueRenderOption=FORMATTED_VALUE; docs table lists only options.offset and options.limit.",
+      "verdict": "confirmed",
+      "correction": "Tarball src/lib/GoogleSpreadsheetWorksheet.ts L503-535 matches verbatim: `async getRows<T ...>(options?: { offset?: number, limit?: number })`, `rawRows = await this.getCellsInRange(\\`A${firstRow}:${lastColumn}${lastRow}\\`)` and `this.batchGetCellsInRange([this._headerRange, ...])` with no second argument. Docs page google-spreadsheet-worksheet.md getRows table has exactly options.offset and options.limit.",
+      "source_url": "https://registry.npmjs.org/google-spreadsheet/-/google-spreadsheet-5.3.0.tgz"
+    },
+    {
+      "claim": "[F3] GoogleSpreadsheetRow stores the values array as _rawData, pads missing cells with '' and get()/toObject() return raw entries unchanged.",
+      "verdict": "confirmed",
+      "correction": "src/lib/GoogleSpreadsheetRow.ts L14 `private _rawData: any[]`, L19-23 pad loop `this._rawData.push('')`, L61-63 `get(key)` returns `this._rawData[index]`, L77-82 toObject `o[key] = this._rawData[i]`. CHANGELOG 5.2.0 patch fd12a3b: 'ensure empty cells always return '' instead of undefined'.",
+      "source_url": "https://registry.npmjs.org/google-spreadsheet/-/google-spreadsheet-5.3.0.tgz"
+    },
+    {
+      "claim": "[F4] Worksheet exposes public typed getCellsInRange(a1Range, options?) -> GET values/{sheet}!{range} and batchGetCellsInRange(a1Ranges, options?) -> GET values:batchGet?ranges=..., with options spread into ky searchParams; both in dist/index.d.ts L833-834.",
+      "verdict": "confirmed",
+      "correction": "GoogleSpreadsheetWorksheet.ts L742-757 matches verbatim; dist/index.d.ts L833 `getCellsInRange(a1Range: A1Range, options?: GetValuesRequestOptions): Promise<any>;` L834 `batchGetCellsInRange(...)`. Caveat the report under-states: neither method appears on the official docs page (google-spreadsheet-worksheet.md documents loadCells/getCell/getCellByA1 but not these), and the source comment above them says 'it is used internally when loading header cells' — public in the .d.ts, undocumented, so pin the version and cover with a test.",
+      "source_url": "https://raw.githubusercontent.com/theoephraim/node-google-spreadsheet/master/docs/classes/google-spreadsheet-worksheet.md"
+    },
+    {
+      "claim": "[F5] GetValuesRequestOptions declares only majorDimension and valueRenderOption; dateTimeRenderOption is not in the type but works at runtime via searchParams pass-through; ValueRenderOption/DateTimeRenderOption aliases are not exported.",
+      "verdict": "confirmed",
+      "correction": "src/lib/types/sheets-types.ts L544-564: `type ValueRenderOption = ...` and `type DateTimeRenderOption = ...` (no export), `export type GetValuesRequestOptions = { majorDimension?: WorksheetDimension, valueRenderOption?: ValueRenderOption }`. `grep -rn dateTimeRenderOption src dist` returns no hits. dist/index.d.ts L370-376 identical. IMPORTANT extra fact the report missed: GetValuesRequestOptions itself is also NOT re-exported from the package entry — dist/index.d.ts L1571 is the only export line: `export { GoogleSpreadsheet, GoogleSpreadsheetCell, GoogleSpreadsheetCellErrorValue, GoogleSpreadsheetRow, GoogleSpreadsheetWorksheet };` (src/index.ts exports the same five classes). See snippet 3 verdict.",
+      "source_url": "https://registry.npmjs.org/google-spreadsheet/-/google-spreadsheet-5.3.0.tgz"
+    },
+    {
+      "claim": "[F6] ky v2 merges searchParams with query params already in the input URL (v1 replaced them), so batchGetCellsInRange's `values:batchGet?ranges=...` + searchParams yields both under google-spreadsheet 5.3.0.",
+      "verdict": "confirmed",
+      "correction": "Confidence can be raised from medium to high: ky v2.0.0 release notes list 'Merge searchParams with input URL instead of replacing'; ky readme searchParams: 'Setting this will merge with any existing search parameters in the input URL'; ky 2.1.0 distribution/core/Ky.js L324-351 implements it (`url.searchParams.append(key, value)` for each option entry, only deleting keys explicitly marked deleted). google-spreadsheet 5.3.0 depends on ky ^2.0.2 which resolves to 2.1.0 (published 2026-08-28).",
+      "source_url": "https://github.com/sindresorhus/ky/releases/tag/v2.0.0"
+    },
+    {
+      "claim": "[F7] loadCells() has no render options: with a service account it POSTs :getByDataFilter with includeGridData:true; cell.value returns effectiveValue and cell.formattedValue returns the display string.",
+      "verdict": "confirmed",
+      "correction": "GoogleSpreadsheet.ts L413-469 matches (API-key branch uses URLSearchParams with includeGridData + repeated ranges via GET ''; otherwise `this.sheetsApi.post(':getByDataFilter', { json: { includeGridData: true, dataFilters } })`). GoogleSpreadsheetCell.ts L75-80 `get value()` returns `_.values(this._rawData.effectiveValue)[0]`; L116-117 `/** The formatted value of the cell - this is the value as it's shown to the user */ get formattedValue(): string | null { return this._rawData?.formattedValue || null; }`; numberValue L134, boolValue L142, stringValue L150, valueType L109.",
+      "source_url": "https://registry.npmjs.org/google-spreadsheet/-/google-spreadsheet-5.3.0.tgz"
+    },
+    {
+      "claim": "[F8] Sheets API: CellData.effectiveValue is the calculated value, formattedValue is 'the value as it's shown to the user', ExtendedValue.numberValue carries dates as SERIAL_NUMBER doubles; spreadsheets.getByDataFilter has no valueRenderOption parameter.",
+      "verdict": "confirmed",
+      "correction": "Fetched all three pages. ExtendedValue.numberValue: 'Represents a double value. Note: Dates, Times and DateTimes are represented as doubles in SERIAL_NUMBER format.' CellData.effectiveValue: 'The effective value of the cell. For cells with formulas, this is the calculated value. For cells with literals, this is the same as the userEnteredValue. This field is read-only.' formattedValue: 'The formatted value of the cell. This is the value as it's shown to the user. This field is read-only.' getByDataFilter is POST .../spreadsheets/{id}:getByDataFilter with body fields dataFilters[], includeGridData, excludeTablesInBandedRanges and also commentsViewMode (omitted by the report); no valueRenderOption/dateTimeRenderOption.",
+      "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/getByDataFilter"
+    },
+    {
+      "claim": "[F9] google-spreadsheet 5.3.0 constructor accepts { retryConfig?: RetryOptions | number } passed straight to ky.create({ retry: retryConfig }) for sheetsApi and driveApi; added in 5.2.0.",
+      "verdict": "confirmed",
+      "correction": "GoogleSpreadsheet.ts L1 `import ky, { HTTPError, KyInstance, RetryOptions } from 'ky';` L122-165 constructor with `retryConfig?: RetryOptions | number`, `ky.create({ prefix: \\`${SHEETS_API_BASE_URL}/${spreadsheetId}\\`, timeout: 180_000, hooks: {...}, retry: retryConfig })` and same for driveApi. dist/index.d.ts L1433 `retryConfig?: RetryOptions | number;`. CHANGELOG 5.2.0 minor 71ee84d 'Add retryConfig parameter to allow customising error handling'.",
+      "source_url": "https://raw.githubusercontent.com/theoephraim/node-google-spreadsheet/master/CHANGELOG.md"
+    },
+    {
+      "claim": "[F10] ky defaults an undefined retry to its default policy, so google-spreadsheet already retries 429 on GET: limit 2, statusCodes [408,413,429,500,502,503,504], afterStatusCodes [413,429,503], delay 0.3*2^(n-1)s; POST not in default methods so loadCells/addRow/batchUpdate are not retried unless methods is customised.",
+      "verdict": "confirmed",
+      "correction": "ky 2.1.0 distribution/utils/normalize.js L3-17 defaults exactly as quoted (methods ['get','put','head','delete','options','trace','query']); L36 `export const normalizeRetryOptions = (retry = {}) =>` and the object branch spreads defaults under user keys. distribution/core/Ky.js L275 `retry: normalizeRetryOptions(options.retry)`; L389-391 `if (!retry.methods.includes(this.request.method.toLowerCase())) throw error;`. ky readme retry section matches.",
+      "source_url": "https://registry.npmjs.org/ky/-/ky-2.1.0.tgz"
+    },
+    {
+      "claim": "[F11] Official google-spreadsheet docs state the same default retry behaviour and that retryConfig customises it.",
+      "verdict": "confirmed",
+      "correction": "docs/classes/google-spreadsheet.md 'Automatic Request Retries' quoted verbatim by the report; constructor table row `options | { retryConfig: RetryConfig | number } | optional | Options for configuring library behaviour`.",
+      "source_url": "https://raw.githubusercontent.com/theoephraim/node-google-spreadsheet/master/docs/classes/google-spreadsheet.md"
+    },
+    {
+      "claim": "[F12] doc.sheetsApi is a public auth-attached ky instance prefixed to https://sheets.googleapis.com/v4/spreadsheets/{id}; arbitrary values:batchGet calls on it inherit retry/auth/error hooks.",
+      "verdict": "confirmed",
+      "correction": "GoogleSpreadsheet.ts L100-106 doc comment 'Sheets API ky instance / authentication is automatically attached / can be used if unsupported sheets calls need to be made' + `readonly sheetsApi: KyInstance;` (dist/index.d.ts L1409). L22 `const SHEETS_API_BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets'`. Note ky 2 renamed prefixUrl->prefix and changed hook signatures (CHANGELOG 5.3.0 warns users of doc.sheetsApi about exactly this).",
+      "source_url": "https://registry.npmjs.org/google-spreadsheet/-/google-spreadsheet-5.3.0.tgz"
+    },
+    {
+      "claim": "[F13] Sheets API: valueRenderOption defaults to FORMATTED_VALUE; UNFORMATTED_VALUE returns the number 1.23; dateTimeRenderOption defaults to SERIAL_NUMBER and is ignored when valueRenderOption is FORMATTED_VALUE.",
+      "verdict": "confirmed",
+      "correction": "values.get page: 'The default render option is FORMATTED_VALUE.' / 'This is ignored if valueRenderOption is FORMATTED_VALUE. The default dateTime render option is SERIAL_NUMBER.' ValueRenderOption and DateTimeRenderOption enum pages quote the $1.23 / 1.23 example and 'depends on the spreadsheet locale' verbatim.",
+      "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/get"
+    },
+    {
+      "claim": "[F14] values.batchGet is GET .../values:batchGet with ranges[] (repeatable), majorDimension, valueRenderOption, dateTimeRenderOption; valueRanges[] returned in request order.",
+      "verdict": "confirmed",
+      "correction": "Page quotes: 'GET https://sheets.googleapis.com/v4/spreadsheets/{spreadsheetId}/values:batchGet'; ranges[] 'The A1 notation or R1C1 notation of the range to retrieve values from.'; valueRanges[] 'The order of the ValueRanges is the same as the order of the requested ranges.'",
+      "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/batchGet"
+    },
+    {
+      "claim": "[F15] Sheets API quota: 300 read / 300 write per minute per project, 60 per minute per user per project; 429 on excess; exponential backoff recommended; 'After 1 minute, you can execute requests again.'",
+      "verdict": "confirmed",
+      "correction": "Limits page table matches exactly; backoff formula min(((2^n)+random_number_milliseconds), maximum_backoff). Note the page documents NO Retry-After header for 429 (see additional findings).",
+      "source_url": "https://developers.google.com/workspace/sheets/api/limits"
+    },
+    {
+      "claim": "[F16] google-auth-library latest is 11.0.2 (node >=22, gaxios ^7.1.4); OAuth2Client.requestAsync hands options to gaxios unchanged; RETRY_CONFIG is only spread into token/cert calls; repo moved to google-cloud-node-core, old repo archived 2025-11-20.",
+      "verdict": "confirmed",
+      "correction": "Registry: 11.0.2, engines node >=22, gaxios ^7.1.4. Tarball build/src/auth/oauth2client.js L455-463 `async requestAsync(opts, reAuthRetried = false) { ... return await this.transporter.request(opts); }` — no retry keys added; `...OAuth2Client.RETRY_CONFIG` appears only at L198/252/413/553 (token, refresh, revoke, cert paths). authclient.js L68 transporter construction, L266-283 RETRY_CONFIG comment and getter verbatim. jwtclient.js L22 `class JWT extends OAuth2Client`. GitHub API: archived:true, pushed_at 2025-11-20T21:08:50Z; repo page notice 'THIS REPOSITORY IS DEPRECATED. ALL OF ITS CONTENT AND HISTORY HAS BEEN MOVED TO GOOGLE-CLOUD-NODE-CORE'. Minor nuance: the 11.0.2 package.json repository field reads url https://github.com/googleapis/google-cloud-node.git, directory core/packages/google-auth-library-nodejs.",
+      "source_url": "https://api.github.com/repos/googleapis/google-auth-library-nodejs"
+    },
+    {
+      "claim": "[F17] gaxios 7.3.0 (the version range google-auth-library/googleapis-common resolve) performs no retries unless retry:true or retryConfig is set; when enabled defaults are retry=3, GET/HEAD/PUT/OPTIONS/DELETE, statusCodesToRetry [[100,199],[408,408],[429,429],[500,599]], retryDelay 100ms, multiplier 2, noResponseRetries 2.",
+      "verdict": "refuted",
+      "correction": "Only the version-resolution detail is wrong; every behavioural statement is confirmed. google-auth-library 11.0.2's `gaxios ^7.1.4` and googleapis-common 9.0.4's `^7.3.0` resolve today to gaxios 7.3.1 (published 2026-08-12, dist-tag legacy-18), not 7.3.0 — registry 7.x line: 7.0.0, 7.1.0-7.1.6, 7.2.0, 7.3.0, 7.3.1; latest is 8.0.0 (node >=22). I downloaded 7.3.1 and diffed build/cjs/src/retry.js against 7.3.0: byte-identical, so the quoted lines hold (L18-20 early return `if (!err || !err.config || (!config && !err.config.retry)) return { shouldRetry: false }`, L24 retry 3, L25-31 httpMethodsToRetry ['GET','HEAD','PUT','OPTIONS','DELETE'], L32-35 noResponseRetries 2, L36-38 multiplier 2, retryRanges, L156 `config.retryDelay ?? 100`). googleapis-common 8.0.3 pins gaxios exactly 7.1.3 (not inspected; not claimed).",
+      "source_url": "https://registry.npmjs.org/gaxios"
+    },
+    {
+      "claim": "[F18] @googleapis/sheets latest is 14.0.0; typed values.batchGet params include valueRenderOption and dateTimeRenderOption; MethodOptions extends GaxiosOptions; depends on googleapis-common ^8.0.0 -> 8.0.3 which force-enables gaxios retries by default.",
+      "verdict": "confirmed",
+      "correction": "Registry: 14.0.0, engines node >=12.0.0, deps {googleapis-common:^8.0.0}. Tarball build/v4.d.ts L6666-6687 Params$Resource$Spreadsheets$Values$Batchget with dateTimeRenderOption?, majorDimension?, ranges?: string[], spreadsheetId?, valueRenderOption? and doc comments as quoted; L6130 batchGet signature as quoted. googleapis-common 8.x line is 8.0.0-8.0.3 (+rc), so ^8.0.0 -> 8.0.3 (published 2026-07-23, dist-tag legacy-18); its build/src/apirequest.js L260 `options.retry = options.retry === undefined ? true : options.retry;` and build/src/api.d.ts L29 `export interface MethodOptions extends GaxiosOptions`.",
+      "source_url": "https://registry.npmjs.org/@googleapis/sheets/-/sheets-14.0.0.tgz"
+    },
+    {
+      "claim": "[F19] googleapis-common 8.0.3 pins exact gaxios 7.1.3 and google-auth-library 10.5.0 (node >=18); googleapis-common 9.0.4 has gaxios ^7.3.0, google-auth-library ^11.0.0, node >=22; so @googleapis/sheets 14.0.0 next to google-auth-library 11.0.2 yields two auth-library majors.",
+      "verdict": "confirmed",
+      "correction": "googleapis-common 8.0.3 package.json: gaxios '7.1.3', google-auth-library '10.5.0', google-logging-utils '1.1.3', engines node >=18. 9.0.4 package.json: gaxios ^7.3.0, google-auth-library ^11.0.0, engines node >=22. google-auth-library 10.5.0 registry: engines node >=18, gaxios ^7.0.0. Duplicate-major conclusion follows from the exact pin.",
+      "source_url": "https://registry.npmjs.org/googleapis-common/8.0.3"
+    },
+    {
+      "claim": "[F20] Choosing google-spreadsheet 5.3.0 implies Node >= 22 because ky 2.x declares engines node >=22 (google-auth-library 11.x also >=22); local machine runs Node v24.8.0 / npm 11.6.0.",
+      "verdict": "confirmed",
+      "correction": "ky /latest: 2.1.0, engines {node:'>=22'}; ky v2.0.0 release notes 'Require Node.js 22'; google-auth-library 11.0.2 engines node >=22. Local `node -v` v24.8.0, `npm -v` 11.6.0 (run this session). See additional findings: Astro 7 itself already requires Node >=22.12.0, so this adds no new constraint.",
+      "source_url": "https://registry.npmjs.org/ky/latest"
+    },
+    {
+      "claim": "[F21] google-spreadsheet's error hook rewrites Google API errors to `Google API error - [code] message` and passes ky HTTPError through, so an exhausted 429 surfaces as HTTPError with error.response.status === 429.",
+      "verdict": "confirmed",
+      "correction": "GoogleSpreadsheet.ts L192-211 matches verbatim (uses pre-parsed `error.data`, sets message, returns the same HTTPError instance; only the apiKey+403 case throws a new Error). ky HTTPError.d.ts: `response: KyResponse<T>; request: KyRequest; data: T | string | undefined`.",
+      "source_url": "https://registry.npmjs.org/google-spreadsheet/-/google-spreadsheet-5.3.0.tgz"
+    },
+    {
+      "claim": "[package_versions] google-spreadsheet 5.3.0; ky 2.1.0; google-auth-library 11.0.2; gaxios 8.0.0 latest (7.3.0 inspected); @googleapis/sheets 14.0.0; googleapis-common 9.0.4 (sheets 14.0.0 -> 8.0.3).",
+      "verdict": "confirmed",
+      "correction": "All six /latest values re-fetched and match. Additional: es-toolkit latest 1.52.0 (satisfies ^1.47.0). The gaxios version actually installed under google-auth-library 11.0.2 is 7.3.1, not 7.3.0 (retry code identical).",
+      "source_url": "https://registry.npmjs.org/gaxios/latest"
+    },
+    {
+      "claim": "[S1] Constructor snippet: retryConfig with methods ['get','put','delete','post'] and `shouldRetry: ({ request, error }) => request.method !== 'POST' || (error instanceof HTTPError && [429, 503].includes(error.response.status))`.",
+      "verdict": "refuted",
+      "correction": "ky 2.1.0's shouldRetry receives `ShouldRetryState = { error: Error; retryCount: number }` (distribution/types/retry.d.ts L2-11, exported from 'ky' index.d.ts L6); there is NO `request` property, so `request.method` throws `TypeError: Cannot read properties of undefined` inside shouldRetry on the first failed request of ANY method, aborting the retry with a TypeError (and it is a TS compile error). It is repairable because both error classes carry the request: HTTPError.d.ts `request: KyRequest` and NetworkError.d.ts `request: KyRequest`; ky also exports `NetworkError` (index.d.ts L15) and type guards `isHTTPError(e): e is HTTPError`, `isNetworkError(e): e is NetworkError` (index.d.ts L18; type-guards.d.ts L49, L68). Corrected body:\n```ts\nimport { GoogleSpreadsheet } from 'google-spreadsheet';\nimport { isHTTPError, isNetworkError } from 'ky';\nretryConfig: {\n  limit: 3,\n  methods: ['get', 'put', 'delete', 'post'],\n  backoffLimit: 10_000,\n  shouldRetry: ({ error }) => {\n    if (!isHTTPError(error) && !isNetworkError(error)) return false; // unknown error types: never retry\n    if (error.request.method !== 'POST') return undefined;          // GET/PUT/DELETE: ky default logic (status codes, Retry-After, network errors)\n    return isHTTPError(error) && [429, 503].includes(error.response.status); // POST: only when the server rejected it; NetworkError on POST -> false\n  },\n}\n```\nSemantics verified in Ky.js L389-404 and retry.d.ts L122-131: shouldRetry runs only after the limit and `methods` checks; `true` forces, `false` prevents, `undefined` falls through to the default checks. statusCodes/afterStatusCodes may be omitted since the snippet's values equal ky's defaults. Alternative that needs no shouldRetry: keep ky's default methods (no POST) and wrap only the idempotent POSTs (loadCells, saveUpdatedCells) in an application-level retry on HTTPError 429/503.",
+      "source_url": "https://registry.npmjs.org/ky/-/ky-2.1.0.tgz"
+    },
+    {
+      "claim": "[S2] Recommended read path: URLSearchParams with repeated ranges + valueRenderOption=UNFORMATTED_VALUE + dateTimeRenderOption=FORMATTED_STRING + majorDimension=ROWS passed as `searchParams` to `doc.sheetsApi.get('values:batchGet', ...)`, then `res.json<...>()` and destructure valueRanges in request order.",
+      "verdict": "confirmed",
+      "correction": "Every component verified: ky SearchParamsOption accepts URLSearchParams (types/options.d.ts L4-5) and ky 2 appends each entry to the URL (Ky.js L324-351) so repeated `ranges` survive; `prefix` joins to https://sheets.googleapis.com/v4/spreadsheets/{id}/values:batchGet (GoogleSpreadsheet.ts L22, L145; ky readme prefix semantics); the awaited KyResponse has `json: <J = T>() => Promise<J>` (types/response.d.ts) — the library itself uses `response.json<any>()`; auth and _errorHook run via hooks on the same instance; the API documents ranges[] as repeatable and valueRanges in request order. Not executed against the live API in this session, but nothing in the snippet depends on undocumented behaviour. Reminder from the API docs: a valueRange whose range is empty omits `values`, hence the `?? []`.",
+      "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/batchGet"
+    },
+    {
+      "claim": "[S3] Per-sheet alternative: `import type { GetValuesRequestOptions } from 'google-spreadsheet'` and cast `{ valueRenderOption, dateTimeRenderOption } as GetValuesRequestOptions & { dateTimeRenderOption: 'FORMATTED_STRING' }` into sheet.getCellsInRange / sheet.batchGetCellsInRange.",
+      "verdict": "refuted",
+      "correction": "`GetValuesRequestOptions` is not exported by the package: dist/index.d.ts L1571 (the only export statement) and src/index.ts export exactly GoogleSpreadsheet, GoogleSpreadsheetWorksheet, GoogleSpreadsheetRow, GoogleSpreadsheetCell, GoogleSpreadsheetCellErrorValue — so the import fails with 'Module \"google-spreadsheet\" has no exported member GetValuesRequestOptions'. Derive it from the method instead:\n```ts\nimport type { GoogleSpreadsheetWorksheet } from 'google-spreadsheet';\ntype GetValuesOpts = NonNullable<Parameters<GoogleSpreadsheetWorksheet['getCellsInRange']>[1]>;\nconst opts = { valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'FORMATTED_STRING' } as GetValuesOpts;\n```\nThe rest of the snippet is correct: method signatures at GoogleSpreadsheetWorksheet.ts L742/L750 and dist/index.d.ts L833-834; options are forwarded verbatim as ky searchParams so dateTimeRenderOption reaches the URL at runtime.",
+      "source_url": "https://registry.npmjs.org/google-spreadsheet/-/google-spreadsheet-5.3.0.tgz"
+    },
+    {
+      "claim": "[S4] Write path: loadCells('A1:Z200'), getCellByA1, cell.value/numberValue/formattedValue, `likes.value = (likes.numberValue ?? 0) + 1`, saveUpdatedCells(); Votes tab via addRow({...}).",
+      "verdict": "confirmed",
+      "correction": "APIs exist as used: loadInfo L300 and sheetsByTitle L333 (GoogleSpreadsheet.ts); loadCells L413; getCellByA1 L221, saveUpdatedCells L271 -> _makeBatchUpdateRequest (GoogleSpreadsheetWorksheet.ts); value setter L84-100 and numberValue getter L134-137 (GoogleSpreadsheetCell.ts); addRow L493 -> addRows -> POST `values/{sheet}!A{headerRow}:append` with searchParams valueInputOption USER_ENTERED (unless {raw:true}) and insertDataOption OVERWRITE (unless {insert:true}) at L440-458. Two design caveats the report did not raise (see additional findings): the counter update is a read-modify-write with no atomic increment in the Sheets API, and addRow's default USER_ENTERED lets Sheets reinterpret the ISO timestamp / hash strings.",
+      "source_url": "https://registry.npmjs.org/google-spreadsheet/-/google-spreadsheet-5.3.0.tgz"
+    },
+    {
+      "claim": "[S5] Fallback via google-auth-library: `client.request({ url: .../values:batchGet, params: { ranges: ['Rugs!A1:Z','FX!A1:C'], valueRenderOption, dateTimeRenderOption }, retry: true, retryConfig: {...} })`.",
+      "verdict": "refuted",
+      "correction": "The `params` object is serialised by gaxios 7.3.x with `new URLSearchParams(opts.params)` (build/cjs/src/gaxios.js L319-323, identical in 7.3.0 and 7.3.1), which stringifies an array by joining with commas. Executed locally on Node 24: `new URLSearchParams({ranges:['Rugs!A1:Z','FX!A1:C'], valueRenderOption:'UNFORMATTED_VALUE'}).toString()` -> `ranges=Rugs%21A1%3AZ%2CFX%21A1%3AC&valueRenderOption=UNFORMATTED_VALUE` — a single `ranges` value 'Rugs!A1:Z,FX!A1:C' instead of the repeated ranges[] the API documents, so the request does not fetch two ranges (the API will reject or mis-parse the range). gaxios's `paramsSerializer` escape hatch is marked @deprecated in common.d.ts L167-170. Fix: build the query string yourself and leave `params` out:\n```ts\nconst qs = new URLSearchParams();\nfor (const r of ['Rugs!A1:Z', 'FX!A1:C']) qs.append('ranges', r);\nqs.set('valueRenderOption', 'UNFORMATTED_VALUE');\nqs.set('dateTimeRenderOption', 'FORMATTED_STRING');\nconst res = await client.request<{ valueRanges: { values?: unknown[][] }[] }>({\n  url: `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchGet?${qs}`,\n  retry: true,\n  retryConfig: { retry: 3, retryDelay: 500, maxRetryDelay: 10_000, statusCodesToRetry: [[429, 429], [500, 599]] },\n});\n```\nThe retry half of the snippet is correct: `request<T>(opts: GaxiosOptions)` (oauth2client.d.ts L548), JWT extends OAuth2Client (jwtclient.js L22), requestAsync forwards opts unchanged (oauth2client.js L455-463), gaxios retry.js L18-20 requires retry/retryConfig.",
+      "source_url": "https://registry.npmjs.org/gaxios/-/gaxios-7.3.1.tgz"
+    },
+    {
+      "claim": "[S6] Second fallback: `sheets({ version: 'v4', auth: new JWT(...) }).spreadsheets.values.batchGet({ spreadsheetId, ranges: [...], valueRenderOption, dateTimeRenderOption }, { retryConfig: {...} })`.",
+      "verdict": "confirmed",
+      "correction": "@googleapis/sheets 14.0.0 build/index.d.ts L7-8 exports `sheets(options: sheets_v4.Options)`; v4.d.ts L4-6 Options extends GlobalOptions with version 'v4' and L11 `auth?: string | OAuth2Client | JWT | ...`; params typed at L6666-6687; L6130 second arg MethodOptions extends GaxiosOptions (googleapis-common api.d.ts L29). Unlike raw gaxios, googleapis-common 8.0.3 serialises arrays correctly: apirequest.js L138-139 `options.paramsSerializer = params => qs.stringify(params, { arrayFormat: 'repeat' })` -> `ranges=...&ranges=...`; L260 enables retry by default. Dependency-hygiene caveat from F19 still applies.",
+      "source_url": "https://registry.npmjs.org/googleapis-common/-/googleapis-common-8.0.3.tgz"
+    }
+  ],
+  "additional_findings": [
+    {
+      "claim": "Answers the report's open question 1: ky 2.1.0 DOES retry network errors for every method listed in retry.methods, so adding 'post' without a guard makes the non-idempotent Votes append (POST values:append) replayable after a dropped connection.",
+      "evidence": "distribution/core/Ky.js #calculateRetryDelay tail: `// Only retry known retriable error types ... if (!isNetworkError(error)) { throw error; } return this.#calculateDelay(retry);` reached after the `retry.methods.includes(this.request.method.toLowerCase())` check (L389-391). NetworkError.d.ts: 'Network errors are automatically retried (for retriable methods).' Guard it in shouldRetry via `error.request.method` (both HTTPError and NetworkError expose `request: KyRequest`), or leave 'post' out of methods.",
+      "source_url": "https://registry.npmjs.org/ky/-/ky-2.1.0.tgz",
+      "confidence": "high"
+    },
+    {
+      "claim": "The Sheets API v4 has no atomic increment: all 74 batchUpdate request types (updateCells, appendCells, repeatCell, ...) set absolute values, so snippet 4's per-rug likes/dislikes counter (read cell -> +1 -> write) is a read-modify-write race: two concurrent votes can both read 41 and both write 42. Prefer counters as sheet formulas over the Votes tab (e.g. =COUNTIFS(Votes!rugId, A2, Votes!vote, \"like\")) so the site performs only appends, or serialise counter writes behind a single in-process queue on a Node host.",
+      "evidence": "Request union page lists every request type; updateCells: 'Updates all cells in a range with new data.'; appendCells: 'Adds new cells after the last row with data in a sheet, inserting new rows into the sheet if necessary.' No increment/add-to-value operation exists. values.append (used by addRow) is append-only and therefore safe under concurrency.",
+      "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/request",
+      "confidence": "high"
+    },
+    {
+      "claim": "addRow/addRows default to valueInputOption=USER_ENTERED, under which Sheets may reinterpret strings (an ISO timestamp becomes a date serial, a numeric-looking visitor hash becomes a number, leading zeros are dropped). Pass `{ raw: true }` on the Votes append to store values verbatim (RAW).",
+      "evidence": "GoogleSpreadsheetWorksheet.ts L457 `valueInputOption: options.raw ? 'RAW' : 'USER_ENTERED'`. ValueInputOption reference: RAW 'The values the user has entered will not be parsed and will be stored as-is.'; USER_ENTERED 'strings may be converted to numbers, dates, etc. following the same rules that are applied when entering text into a cell via the Google Sheets UI.'",
+      "source_url": "https://developers.google.com/workspace/sheets/api/reference/rest/v4/ValueInputOption",
+      "confidence": "high"
+    },
+    {
+      "claim": "The Node >= 22 floor is not a new constraint: Astro's current release (7.3.1) already declares engines node >=22.12.0, so any deployment target that runs Astro 7 SSR already satisfies ky 2.x and google-auth-library 11.x.",
+      "evidence": "registry astro/latest: version 7.3.1, engines {node: '>=22.12.0', npm: '>=9.6.5', pnpm: '>=7.1.0'}. Adapter versions fetched the same way: @astrojs/node 11.1.5, @astrojs/vercel 11.0.10, @astrojs/netlify 8.2.5, @astrojs/cloudflare 14.3.0 (no engines fields). Cloudflare Workers compatibility of ky/google-auth-library remains unverified, as the report says.",
+      "source_url": "https://registry.npmjs.org/astro/latest",
+      "confidence": "high"
+    },
+    {
+      "claim": "Answers open question 2 as far as documentation allows: the Sheets API limits page documents no Retry-After header on 429, and its guidance is a per-minute quota window ('After 1 minute, you can execute requests again'). With ky's defaults a 429 is retried after 0.3 s and 0.6 s and then thrown — i.e. all three attempts land inside the same quota minute. For the revalidate/read path, catch HTTPError 429 and serve the cached snapshot; raising retry limits alone will not help.",
+      "evidence": "Limits page: quota per minute; '429: Too many requests ... you should use an exponential backoff algorithm. After 1 minute, you can execute requests again.'; no Retry-After mentioned. ky defaults delay = 0.3*2^(n-1) s, limit 2 (normalize.js L3-17); Retry-After honoured only if the header is present (Ky.js retry-timing branch). Whether Google actually sends Retry-After on 429 was not tested (needs live credentials).",
+      "source_url": "https://developers.google.com/workspace/sheets/api/limits",
+      "confidence": "medium"
+    },
+    {
+      "claim": "ky 2 changed `.json()` to throw on empty bodies and 204 responses; any direct doc.sheetsApi call whose response may be empty must not call .json() unconditionally. values:batchGet always returns a JSON body, so the recommended read path is unaffected.",
+      "evidence": "ky v2.0.0 release notes: 'Make .json() throw on empty bodies and 204 responses instead of returning an empty string'.",
+      "source_url": "https://github.com/sindresorhus/ky/releases/tag/v2.0.0",
+      "confidence": "high"
+    },
+    {
+      "claim": "ky's `retry` option validates its shape at request time: a non-array `methods`/`statusCodes`/`afterStatusCodes` or a non-integer/negative `limit` throws (TypeError/Error), and `methods` is lower-cased, so 'POST' and 'post' are both accepted.",
+      "evidence": "normalize.js L26-35 normalizeRetryLimit ('`retry.limit` must be a finite, non-negative integer'), L45-63 array checks and `methods.map(method => method.toLowerCase())`.",
+      "source_url": "https://registry.npmjs.org/ky/-/ky-2.1.0.tgz",
+      "confidence": "high"
+    }
+  ],
+  "summary": "24 confirmed, 4 refuted, 0 unverifiable. All 21 substantive findings about google-spreadsheet 5.3.0, ky 2.1.0, the Sheets API render options/quota, google-auth-library 11.0.2, gaxios 7.x and @googleapis/sheets 14.0.0 check out against the downloaded tarballs and fetched docs, with one version-resolution slip (gaxios ^7.1.4 resolves to 7.3.1, not 7.3.0; retry code identical). The core recommendation — use google-spreadsheet 5.3.0 and call values:batchGet through doc.sheetsApi with UNFORMATTED_VALUE + FORMATTED_STRING, relying on ky's built-in 429 retries — stands. Three of the six code snippets are broken as written and need the corrections given: (S1) ky's shouldRetry receives {error, retryCount}, not {request, error} — use error.request.method via the exported isHTTPError/isNetworkError guards; (S3) GetValuesRequestOptions is not exported from 'google-spreadsheet' — derive it with Parameters<GoogleSpreadsheetWorksheet['getCellsInRange']>[1]; (S5) gaxios serialises an array `params.ranges` as one comma-joined value — build the query string with URLSearchParams.append. Adjacent facts the researcher missed: ky retries network errors for any method in retry.methods (so a naive POST retry can double-append votes); the Sheets API has no atomic increment, making the read-modify-write counter racy (prefer COUNTIFS formulas over the Votes tab); addRow defaults to USER_ENTERED (pass raw:true for the Votes append); Astro 7.3.1 already requires Node >=22.12.0 so the Node 22 floor costs nothing; the limits page documents no Retry-After, so exhausted 429s should fall back to the cache rather than longer retries."
+}

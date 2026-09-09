@@ -1,0 +1,93 @@
+---
+// One card, reference lines 172-196, with the design pass (docs/DESIGN.md §3.6): the photo sits on
+// a plate ([data-plate]) whose loading/missing state photos.ts drives, price and rating share one
+// row, and the first featured landscape rug of a collection may span two columns (`lead`). Server
+// renders cm and USD (en-US grouping); prepaint.js and prefs.ts re-render dims/prices from data
+// attributes. The <ul class="meta"> is omitted when every line is blank, like the reference (195).
+import { money, type RateTable } from '../lib/currency.ts';
+import { baseCurrency } from '../lib/runtime.ts';
+import { dims } from '../lib/units.ts';
+import { ratingText, type CardView } from '../lib/view.ts';
+import RugPhoto from './RugPhoto.astro';
+import VoteButtons from './VoteButtons.astro';
+
+interface Props {
+  card: CardView;
+  rates: RateTable;
+  hidden?: boolean;
+  /** The first cards of the active tab load eagerly; the very first also gets fetchpriority=high. */
+  eager?: boolean;
+  priority?: boolean;
+  /** Related cards on the detail page carry no data-card, so tabs and prepaint never touch them. */
+  related?: boolean;
+  /** Where the card links. The private preview uses `/{customer}/{productId}` (brief §7). */
+  href?: string;
+}
+const {
+  card,
+  rates,
+  hidden = false,
+  eager = false,
+  priority = false,
+  related = false,
+  href: hrefProp,
+} = Astro.props;
+const dimText = dims(card.widthCm, card.lengthCm, 'cm');
+const priceText = money(card.priceUsd, baseCurrency, rates, 'en-US');
+const rating = ratingText(card.likes, card.dislikes, card.rating);
+const hasMeta = Boolean(dimText || card.material || card.age || card.origin);
+const href = hrefProp ?? `/rugs/${card.slug}`;
+---
+
+<div
+  class:list={['card', { lead: card.lead === true }]}
+  data-card={related ? undefined : ''}
+  data-collection={card.collectionSlug}
+  data-slug={card.slug}
+  hidden={hidden}
+>
+  <div class="photo" data-plate data-empty={card.photoUrl ? undefined : ''} data-alt={card.altPhotoUrl}>
+    <RugPhoto
+      src={card.photoUrl}
+      alt={card.name}
+      rot={card.rot}
+      ar={card.ar}
+      widthCm={card.widthCm}
+      lengthCm={card.lengthCm}
+      eager={eager}
+      priority={priority}
+    />
+    <a class="photo-link" href={href} tabindex="-1" aria-hidden="true"></a>
+    <VoteButtons rugId={card.id} name={card.name} />
+  </div>
+  <div class="nm"><a class="nm-link" href={href}>{card.name}</a></div>
+  {
+    hasMeta && (
+      <ul class="meta">
+        <li data-dims data-w={card.widthCm ?? ''} data-l={card.lengthCm ?? ''} hidden={!dimText}>
+          {dimText}
+        </li>
+        {card.material && <li>{card.material}</li>}
+        {card.age && <li>{card.age}</li>}
+        {card.origin && <li>{card.origin}</li>}
+      </ul>
+    )
+  }
+  <div class="price-row">
+    <div class="price" data-price data-usd={card.priceUsd ?? ''} hidden={!priceText}>{priceText}</div>
+    <div class="rating" data-rating-for={card.id} hidden={!rating}>{rating}</div>
+  </div>
+</div>
+
+<style>
+  /* Invisible link over the photo (below the vote pill at z-index 3): no visual change at rest. */
+  .photo-link {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+  }
+  .nm-link {
+    color: inherit;
+    text-decoration: none;
+  }
+</style>

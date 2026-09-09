@@ -1,0 +1,730 @@
+/* Design pass (docs/DESIGN.md §3–§6): layout, typography and components layered over
+   catalogue.css by cascade order. catalogue.css stays byte-identical as the parity record.
+   No inline styles anywhere: per-element variation goes through data-* attributes and classes. */
+
+/* ---- global ---- */
+:focus-visible {
+  outline: var(--focus);
+  outline-offset: 3px;
+  border-radius: var(--radius-1);
+}
+nav#nav button:focus-visible {
+  outline-offset: -4px; /* not clipped by the nav's overflow-x */
+}
+html {
+  scroll-padding-top: calc(var(--nav-h) + 12px);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- collection tabs (sticky, with a sliding ink bar) ---- */
+nav#nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--paper);
+}
+nav#nav .ink {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100px;
+  background: var(--accent);
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  pointer-events: none;
+}
+nav#nav.has-ink button.on {
+  border-bottom-color: transparent; /* the bar replaces the underline */
+}
+nav button .n {
+  font-size: 10px;
+  opacity: 1;
+  color: var(--ink-soft); /* was 9px at .5 opacity, about 2.3:1 */
+}
+nav button:hover {
+  color: var(--ink);
+}
+.lede {
+  padding: 34px 5vw 0;
+}
+.lede .lede-text {
+  max-width: 52ch;
+  margin-top: 12px;
+  font: 400 15px/1.6 var(--body);
+  color: var(--ink);
+  text-wrap: pretty;
+}
+.standfirst[hidden] {
+  display: none;
+}
+
+/* ---- grid ---- */
+main {
+  padding: 34px 5vw 96px;
+}
+.grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 52px 32px;
+}
+@media (min-width: 700px) {
+  .card.lead {
+    grid-column: span 2;
+  }
+  .card.lead .photo {
+    aspect-ratio: 3 / 2;
+    --plate: 3 / 2;
+    --plate-n: 1.5;
+  }
+}
+footer {
+  margin-top: 40px;
+  padding: 34px 5vw 56px;
+}
+
+/* ---- card ---- */
+.card {
+  gap: 12px;
+}
+.photo {
+  background: var(--paper-deep);
+  border-radius: var(--radius-1);
+  isolation: isolate;
+}
+.photo img {
+  filter: drop-shadow(var(--shadow-plate)); /* static, never transitioned */
+}
+.photo::before {
+  /* contact shadow, revealed on hover */
+  content: '';
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 9%;
+  height: 8%;
+  z-index: 0;
+  background: var(--shadow-contact);
+  opacity: 0;
+  scale: 0.9;
+  pointer-events: none;
+}
+.nm {
+  font-size: 15px;
+}
+.nm-link {
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-size: 0% 1px;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+}
+.card:hover .nm-link,
+.card:focus-within .nm-link {
+  background-size: 100% 1px;
+}
+.price-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-top: 6px;
+}
+.price {
+  margin-top: 0;
+}
+.rating {
+  margin-left: auto;
+  line-height: 1.5;
+}
+
+/* ---- vote pill ---- */
+.like {
+  padding: 2px;
+  gap: 0;
+  border: 1px solid var(--rule);
+  background: var(--paper-90);
+  backdrop-filter: blur(6px);
+  box-shadow: var(--shadow-pill);
+}
+.like button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+}
+.like svg {
+  width: 18px;
+  height: 18px;
+}
+.like button:hover {
+  color: var(--ink);
+  background: var(--paper-deep);
+}
+.like button[aria-busy='true'] {
+  opacity: 0.7;
+}
+
+/* ---- plates: loading is a silent beige plate, missing shows the proportion diagram ---- */
+.hero .ph,
+.thumb .ph,
+.lb-stage .ph,
+.plate-empty .ph {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.hero img.loaded ~ .ph,
+.thumb img.loaded ~ .ph {
+  display: none;
+}
+.photo .ph,
+.hero .ph,
+.thumb .ph,
+.lb-stage .ph,
+.plate-empty .ph {
+  background-color: transparent;
+  background-image: none;
+  border-color: transparent;
+  color: transparent;
+}
+[data-plate][data-empty] .ph,
+[data-plate].is-empty .ph {
+  border-color: var(--rule);
+  color: var(--ink-soft);
+  background-image:
+    repeating-linear-gradient(0deg, transparent 0 3px, rgba(0, 0, 0, 0.035) 3px 4px),
+    repeating-linear-gradient(90deg, transparent 0 3px, rgba(0, 0, 0, 0.035) 3px 4px);
+  align-items: flex-end;
+  padding-bottom: 12%;
+}
+.ph-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+}
+[data-plate][data-empty] .ph-art,
+[data-plate].is-empty .ph-art {
+  display: flex;
+}
+.ph-rug {
+  width: min(64%, calc(74% * var(--plate-n)));
+  aspect-ratio: var(--plate);
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  outline: 1px solid rgba(0, 0, 0, 0.08);
+  outline-offset: -5px;
+}
+.ph-dims {
+  font: 400 10px/1 var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+}
+.ph-dims[hidden] {
+  display: none;
+}
+
+/* ---- rotation: one rule for every plate ratio (identical numbers to the reference for 3/4) ---- */
+.photo img.rot,
+.hero img.rot,
+.thumb img.rot,
+.lb-img.rot {
+  position: absolute;
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  width: calc(100% / var(--plate-n));
+  height: calc(100% * var(--plate-n));
+  transform: translate(-50%, -50%) rotate(90deg);
+  transform-origin: center;
+}
+
+/* ---- empty catalogue, ghost grids, retry ---- */
+.plate-empty {
+  position: relative;
+  width: min(240px, 100%);
+  aspect-ratio: 3 / 4;
+  margin-bottom: 18px;
+  background: var(--paper-deep);
+  border-radius: var(--radius-1);
+  overflow: hidden;
+}
+.ghost .sk-plate {
+  aspect-ratio: 3 / 4;
+}
+.ghost .w60 {
+  width: 60%;
+}
+.ghost .w40 {
+  width: 40%;
+}
+.ghost .w30 {
+  width: 30%;
+}
+.ghost .w20 {
+  width: 20%;
+  margin-top: 18px;
+}
+.state .retry {
+  margin-left: 12px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--ink);
+  text-decoration: none;
+}
+.state .retry:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.ghost-spread {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(300px, 5fr);
+  column-gap: clamp(40px, 6vw, 88px);
+  align-items: start;
+  margin-top: 24px;
+}
+.ghost-spread .sk-plate {
+  aspect-ratio: 3 / 4;
+  width: min(100%, calc(72svh * 0.75));
+  margin-inline: auto;
+}
+.ghost-spread .sk-line {
+  height: 14px;
+  margin-top: 16px;
+}
+@media (max-width: 899px) {
+  .ghost-spread {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- detail page: breadcrumb row + pager ---- */
+.nav-detail {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.nav-detail .back,
+.pager a,
+.pager span {
+  padding: 12px 0;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nav-detail .back:hover,
+.pager a:hover {
+  color: var(--accent);
+}
+.pager {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+.pager .is-off {
+  visibility: hidden; /* the slot stays, the row never jumps */
+}
+@media (max-width: 480px) {
+  .pager .word {
+    display: none;
+  }
+}
+
+/* ---- detail page: the spread ---- */
+main.detail {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(300px, 5fr);
+  column-gap: clamp(40px, 6vw, 88px);
+  row-gap: 40px;
+  padding: 40px 5vw 96px;
+  align-items: start;
+}
+@media (max-width: 899px) {
+  main.detail {
+    grid-template-columns: 1fr;
+    row-gap: 28px;
+    padding-top: 24px;
+  }
+}
+@media (min-width: 900px) and (min-height: 680px) {
+  .info {
+    position: sticky;
+    top: calc(var(--nav-h) + 28px);
+  }
+}
+.stage {
+  margin: 0;
+  min-width: 0;
+}
+.hero {
+  position: relative;
+  width: min(100%, calc(72vh * var(--plate-n)));
+  width: min(100%, calc(72svh * var(--plate-n)));
+  aspect-ratio: var(--plate);
+  margin-inline: auto;
+  background: var(--paper-deep);
+  border-radius: var(--radius-1);
+  overflow: hidden;
+  isolation: isolate;
+}
+.hero img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(var(--shadow-plate));
+  z-index: 1;
+}
+.hero .hero-full {
+  opacity: 0;
+  z-index: 2;
+}
+.hero .hero-full.loaded {
+  opacity: 1;
+}
+.hero-open {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: none;
+  border: 0;
+  cursor: zoom-in;
+}
+.hero-cap {
+  margin-top: 12px;
+  font: 400 10px/1.6 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.thumbs {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 3px;
+}
+.thumb {
+  flex: 0 0 64px;
+  aspect-ratio: 3 / 4;
+  --plate: 3 / 4;
+  --plate-n: 0.75;
+  position: relative;
+  overflow: hidden;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-1);
+  padding: 0;
+  cursor: pointer;
+  scroll-snap-align: start;
+  isolation: isolate;
+}
+.thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.thumb[aria-pressed='true'] {
+  border-color: var(--ink);
+  box-shadow:
+    0 0 0 2px var(--paper),
+    0 0 0 3px var(--ink);
+}
+
+/* ---- lightbox: a paper room, not a black box ---- */
+.lb {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  width: 100vw;
+  height: 100vh;
+  height: 100svh;
+  max-width: none;
+  max-height: none;
+}
+.lb::backdrop {
+  background: rgba(255, 253, 242, 0.96);
+}
+.lb-stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: min(calc(100vw - 96px), calc((100svh - 96px) * var(--plate-n)));
+  aspect-ratio: var(--plate);
+  background: var(--paper-deep);
+  border-radius: var(--radius-1);
+  overflow: hidden;
+  isolation: isolate;
+}
+.lb-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(var(--shadow-plate));
+}
+.lb-close,
+.lb-prev,
+.lb-next {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--rule);
+  background: var(--paper-90);
+  border-radius: var(--radius-pill);
+  font: 400 22px/1 var(--body);
+  color: var(--ink);
+  cursor: pointer;
+}
+.lb-close {
+  top: 16px;
+  right: 16px;
+}
+.lb-prev {
+  left: 16px;
+  top: 50%;
+  translate: 0 -50%;
+}
+.lb-next {
+  right: 16px;
+  top: 50%;
+  translate: 0 -50%;
+}
+.lb-count {
+  position: absolute;
+  left: 20px;
+  bottom: 16px;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+}
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
+/* ---- detail page: the spec column ---- */
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.info .eyebrow {
+  text-decoration: none;
+}
+.info h1.nm {
+  font: 500 clamp(20px, 2.2vw, 26px) / 1.25 var(--body);
+  letter-spacing: -0.01em;
+  max-width: 22ch;
+}
+.info .price {
+  font-size: 16px;
+  margin-top: 0;
+}
+.vote-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.vote-row .like {
+  position: static; /* the same pill, in flow */
+}
+.vote-row .rating {
+  margin-left: 0;
+}
+.specs {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  margin-top: 6px;
+  border-top: 1px solid var(--rule);
+}
+.specs dt {
+  font: 500 10.5px/1 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding: 13px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.specs dd {
+  font: 400 13.5px/1.5 var(--body);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.specs dd.ref {
+  font: 500 12px/1.6 var(--mono);
+  letter-spacing: 0.04em;
+}
+.desc {
+  font: 400 15px/1.65 var(--body);
+  max-width: var(--measure);
+  text-wrap: pretty;
+  margin-top: 6px;
+}
+.tags {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tags a {
+  display: inline-block;
+  padding: 6px 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-1);
+  font: 500 10px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.tags a:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.enquire {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+}
+.enquire a {
+  font: 500 11px/1.6 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--ink);
+}
+.enquire a:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---- related rugs ---- */
+.related {
+  margin: 0 5vw;
+  padding: 40px 0 72px;
+  border-top: 1px solid var(--rule);
+}
+.related .grid {
+  margin-top: 24px;
+}
+.related .back-all {
+  display: inline-block;
+  margin-top: 34px;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.related .back-all:hover {
+  color: var(--accent);
+}
+@media (max-width: 700px) {
+  .related .grid {
+    grid-auto-flow: column;
+    grid-auto-columns: 72%;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 8px;
+  }
+  .related .card {
+    scroll-snap-align: start;
+  }
+}
+
+/* ---- reactions (brief §7) ----
+   The circle stays 32 px on every device; on a coarse pointer the tap target is padded out to the
+   44 px WCAG 2.2 target size with a negative margin, so nothing moves visually. The detail page
+   shows dislike + like side by side; a card shows the like alone. */
+.like button {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+}
+.like-detail {
+  position: static;
+  display: inline-flex;
+  gap: 4px;
+  background: var(--paper-deep, rgba(255, 253, 242, 0.9));
+}
+@media (pointer: coarse) {
+  .like button::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: inherit;
+  }
+}
+
+/* ---- collection standfirst clamp (brief §7) ----
+   One line by default with an inline "See more"; the class is toggled by src/scripts/lede.ts, never
+   an inline style (the CSP forbids those). Without JavaScript the button stays hidden and the full
+   description is shown, which is the safer failure. */
+.lede-text[data-lede] {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.lede-text[data-lede] .lede-body {
+  min-width: 0;
+}
+.lede-text.clamped .lede-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lede-more {
+  flex: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

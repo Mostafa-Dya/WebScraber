@@ -1,0 +1,44 @@
+---
+// Prev / position / next within the collection (docs/DESIGN.md §4.2). A missing neighbour keeps its
+// slot (visibility hidden) so the row never jumps; below 480 px only the glyphs remain.
+import type { CardView } from '../lib/view.ts';
+
+interface Props {
+  prev?: CardView;
+  next?: CardView;
+  index: number;
+  total: number;
+  /** Link builder; the private preview points neighbours at `/{customer}/{productId}` (brief §7). */
+  hrefFor?: (card: CardView) => string;
+}
+const { prev, next, index, total, hrefFor } = Astro.props;
+const href = (c: CardView): string => (hrefFor ? hrefFor(c) : `/rugs/${c.slug}`);
+---
+
+<div class="pager">
+  {
+    prev ? (
+      <a rel="prev" href={href(prev)} aria-label={`Previous: ${prev.name}`}>
+        ‹ <span class="word">Prev</span>
+      </a>
+    ) : (
+      <span class="is-off" aria-hidden="true">
+        ‹ <span class="word">Prev</span>
+      </span>
+    )
+  }
+  <span class="pos">
+    {index} / {total}
+  </span>
+  {
+    next ? (
+      <a rel="next" href={href(next)} aria-label={`Next: ${next.name}`}>
+        <span class="word">Next</span> ›
+      </a>
+    ) : (
+      <span class="is-off" aria-hidden="true">
+        <span class="word">Next</span> ›
+      </span>
+    )
+  }
+</div>

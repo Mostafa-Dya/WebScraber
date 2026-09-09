@@ -1,0 +1,330 @@
+/* Design pass (docs/DESIGN.md §6–§8): skeletons, reveals, hover, entrances, vote feedback and
+   cross-document view transitions. Only transform/opacity move; everything that moves sits under
+   prefers-reduced-motion: no-preference, and the reduced path keeps opacity dissolves ≤ 160 ms. */
+
+/* ---- skeleton primitive ---- */
+.sk,
+[data-plate].is-pending {
+  position: relative;
+  overflow: hidden;
+}
+.sk {
+  background: var(--sk-base);
+  border: 1px solid var(--sk-edge);
+  border-radius: var(--radius-1);
+}
+.sk::after,
+[data-plate].is-pending::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 60%;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 0%, var(--sk-sheen) 50%, transparent 100%);
+  transform: translateX(-170%);
+}
+@keyframes sk-sweep {
+  to {
+    transform: translateX(270%);
+  }
+}
+.sk-line {
+  height: 12px;
+  margin-top: 12px;
+}
+
+/* ---- image reveal (B) ---- */
+[data-plate].is-pending img[data-plate-img] {
+  opacity: 0;
+}
+[data-plate].is-loaded img {
+  opacity: 1;
+}
+img[data-rug-img],
+.hero .hero-full {
+  transition: opacity var(--dur-3) var(--ease-out);
+}
+
+/* ---- navigation loading state (K, L) ---- */
+#progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  width: 100%;
+  height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  pointer-events: none;
+}
+html.is-navigating #progress {
+  transform: scaleX(0.7);
+  transition: transform 1200ms var(--ease-out) 120ms;
+}
+html.is-navigating .card:not(.is-leaving) {
+  opacity: 0.55;
+  transition: opacity var(--dur-2) var(--ease-out);
+}
+
+/* ---- links, chips, buttons (R): never `all` ---- */
+footer a,
+.tags a,
+.enquire a,
+nav button,
+.nav-detail .back,
+.pager a,
+.like button,
+.like svg,
+.toggle button,
+.related .back-all,
+.state .retry,
+.nm-link {
+  transition:
+    color var(--dur-1) linear,
+    border-color var(--dur-1) linear,
+    background-color var(--dur-1) linear,
+    fill var(--dur-1) linear;
+}
+.thumb {
+  transition:
+    border-color 160ms linear,
+    box-shadow 160ms linear;
+}
+
+/* ---- keyframes ---- */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@keyframes rise-sm {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes pop {
+  35% {
+    transform: scale(1.28);
+  }
+}
+@keyframes nod {
+  40% {
+    transform: rotate(-12deg) translateY(1px);
+  }
+}
+@keyframes tick {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes lb-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+@keyframes vt-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vt-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes vt-in-back {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+/* ---- everything that moves ---- */
+@media (prefers-reduced-motion: no-preference) {
+  /* C: skeleton sweep */
+  [data-plate].is-pending::after,
+  .sk.is-live::after {
+    animation: sk-sweep 1.6s var(--ease-inout) infinite;
+  }
+  /* D: ink bar slides between tabs (placed by tabs.ts through the CSSOM) */
+  nav#nav.has-ink .ink {
+    transition: transform var(--dur-3) var(--ease-inout);
+  }
+  /* E: standfirst swap */
+  .standfirst:not([hidden]) {
+    animation: fade var(--dur-2) var(--ease-out) both;
+  }
+  /* H: name hairline */
+  .nm-link {
+    transition: background-size var(--dur-2) var(--ease-out);
+  }
+  /* A: card entrance on a fresh grid page (never after a view transition, never twice) */
+  html:not(.vt) .grid:not(.is-settled):not(.ghost) > .card {
+    animation: rise var(--dur-4) var(--ease-out) both;
+  }
+  html:not(.vt) .grid:not(.is-settled) > .card:nth-child(2 of :not([hidden])) {
+    animation-delay: calc(var(--stagger) * 1);
+  }
+  html:not(.vt) .grid:not(.is-settled) > .card:nth-child(3 of :not([hidden])) {
+    animation-delay: calc(var(--stagger) * 2);
+  }
+  html:not(.vt) .grid:not(.is-settled) > .card:nth-child(4 of :not([hidden])) {
+    animation-delay: calc(var(--stagger) * 3);
+  }
+  html:not(.vt) .grid:not(.is-settled) > .card:nth-child(5 of :not([hidden])) {
+    animation-delay: calc(var(--stagger) * 4);
+  }
+  html:not(.vt) .grid:not(.is-settled) > .card:nth-child(6 of :not([hidden])) {
+    animation-delay: calc(var(--stagger) * 5);
+  }
+  html:not(.vt) .grid:not(.is-settled) > .card:nth-child(7 of :not([hidden])) {
+    animation-delay: calc(var(--stagger) * 6);
+  }
+  html:not(.vt) .grid:not(.is-settled) > .card:nth-child(8 of :not([hidden])) {
+    animation-delay: calc(var(--stagger) * 7);
+  }
+  html:not(.vt) .grid:not(.is-settled) > .card:nth-child(9 of :not([hidden])) {
+    animation-delay: calc(var(--stagger) * 8);
+  }
+  html:not(.vt) .grid:not(.is-settled) > .card:nth-child(10 of :not([hidden])) {
+    animation-delay: calc(var(--stagger) * 9);
+  }
+  html:not(.vt) .grid:not(.is-settled) > .card:nth-child(11 of :not([hidden])) {
+    animation-delay: calc(var(--stagger) * 10);
+  }
+  html:not(.vt) .grid:not(.is-settled) > .card:nth-child(12 of :not([hidden])) {
+    animation-delay: calc(var(--stagger) * 11);
+  }
+  .grid.is-flipping > .card {
+    animation: none; /* Flip owns the motion */
+  }
+  /* O: detail entrance */
+  html:not(.vt) .stage {
+    animation: fade var(--dur-3) var(--ease-out) both;
+  }
+  html:not(.vt) .info > * {
+    animation: rise-sm var(--dur-3) var(--ease-out) both;
+  }
+  html:not(.vt) .info > :nth-child(2) {
+    animation-delay: 40ms;
+  }
+  html:not(.vt) .info > :nth-child(3) {
+    animation-delay: 80ms;
+  }
+  html:not(.vt) .info > :nth-child(4) {
+    animation-delay: 120ms;
+  }
+  html:not(.vt) .info > :nth-child(5) {
+    animation-delay: 160ms;
+  }
+  html:not(.vt) .info > :nth-child(6) {
+    animation-delay: 200ms;
+  }
+  html:not(.vt) .info > :nth-child(7) {
+    animation-delay: 240ms;
+  }
+  html:not(.vt) .info > :nth-child(8) {
+    animation-delay: 280ms;
+  }
+  /* I, J: vote feedback, user clicks only */
+  .like button.just[aria-pressed='true'][data-vote='like'] svg {
+    animation: pop 360ms var(--ease-spring);
+  }
+  .like button.just[aria-pressed='true'][data-vote='dislike'] svg {
+    animation: nod 280ms var(--ease-out);
+  }
+  .rating.tick {
+    animation: tick 280ms var(--ease-out);
+  }
+  /* Q: lightbox open (close is always instant) */
+  .lb[open] {
+    animation: lb-in var(--dur-2) var(--ease-out) both;
+  }
+  .lb[open]::backdrop {
+    animation: fade var(--dur-2) var(--ease-out) both;
+  }
+}
+
+/* G: hover lift + contact shadow, pointer devices only */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .photo img {
+    transition:
+      translate var(--dur-3) var(--ease-out),
+      opacity var(--dur-3) var(--ease-out);
+  }
+  .photo::before {
+    transition:
+      opacity var(--dur-3) var(--ease-out),
+      scale var(--dur-3) var(--ease-out);
+  }
+  .card:hover .photo img,
+  .card:focus-within .photo img {
+    translate: 0 -4px;
+  }
+  .card:hover .photo::before,
+  .card:focus-within .photo::before {
+    opacity: 1;
+    scale: 1;
+  }
+  .card.is-leaving .photo img {
+    translate: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  img[data-rug-img],
+  .hero .hero-full {
+    transition-duration: 160ms;
+  }
+  .lb[open] {
+    animation: fade 120ms linear both;
+  }
+}
+
+/* ---- cross-document view transitions (M, N): no client router, the browser does the work ---- */
+@view-transition {
+  navigation: auto;
+}
+::view-transition-old(root) {
+  animation: vt-out 200ms var(--ease-out) both;
+}
+::view-transition-new(root) {
+  animation: vt-in 320ms var(--ease-out) both;
+}
+html.vt-back::view-transition-new(root) {
+  animation-name: vt-in-back;
+}
+::view-transition-group(rug-hero) {
+  animation-duration: var(--dur-vt);
+  animation-timing-function: var(--ease-inout);
+  z-index: 2;
+}
+::view-transition-old(rug-hero),
+::view-transition-new(rug-hero) {
+  animation-duration: var(--dur-vt);
+  height: 100%;
+  object-fit: contain;
+  overflow: clip; /* the UA default (width 100%, height auto) stretches when the ratio changes */
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 120ms;
+  }
+  ::view-transition-new(root) {
+    animation-name: fade;
+  }
+}

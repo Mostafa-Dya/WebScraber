@@ -1,0 +1,33 @@
+---
+// POST /admin/logout (docs/ADMIN_SPEC.md §2.1): revokes the session id until its absolute expiry,
+// clears the cookie, audits `auth.logout`, redirects 303 to the login page. GET answers 405.
+// Public in the gate so an already-expired session can still log out cleanly.
+export const prerender = false;
+
+import { clearSessionCookie } from '../../lib/admin/auth.ts';
+import { adminRuntime, recordAuditEvent } from '../../lib/admin/http.ts';
+import { requestIpHash } from '../../lib/api.ts';
+
+if (!adminRuntime.configured) {
+  return new Response('Not found', { status: 404, headers: { 'cache-control': 'no-store' } });
+}
+if (Astro.request.method !== 'POST') {
+  return new Response('Method not allowed', {
+    status: 405,
+    headers: { allow: 'POST', 'cache-control': 'no-store', 'content-type': 'text/plain; charset=utf-8' },
+  });
+}
+const session = Astro.locals.admin;
+if (session) {
+  adminRuntime.revocations.revoke(session.sid, session.abs);
+  await recordAuditEvent({
+    action: 'auth.logout',
+    targetTab: '-',
+    targetId: session.user,
+    ipHash: requestIpHash(Astro.request),
+    requestId: Astro.locals.requestId ?? 'none',
+  });
+}
+clearSessionCookie(Astro.cookies, adminRuntime.isSecureSite);
+return Astro.redirect('/admin/login', 303);
+---

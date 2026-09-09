@@ -1,0 +1,27 @@
+---
+// "More from <collection>" on the detail page (docs/DESIGN.md §4.5): ordinary cards (lazy images,
+// working votes, morph candidates for the next click) without data-card, so tabs never touch them.
+import type { RateTable } from '../lib/currency.ts';
+import type { CardView } from '../lib/view.ts';
+import RugCard from './RugCard.astro';
+
+interface Props {
+  cards: CardView[];
+  rates: RateTable;
+  collection: string;
+  collectionSlug: string;
+  /** Card link builder; the private preview stays inside `/{customer}` (brief §7). */
+  hrefFor?: (card: CardView) => string;
+  /** Where "All <collection>" goes; defaults to the public catalogue's filtered grid. */
+  backHref?: string;
+}
+const { cards, rates, collection, collectionSlug, hrefFor, backHref } = Astro.props;
+---
+
+<section class="related" aria-labelledby="related-h">
+  <h2 id="related-h" class="eyebrow">More from {collection}</h2>
+  <div class="grid">
+    {cards.map((c) => <RugCard card={c} rates={rates} related href={hrefFor ? hrefFor(c) : undefined} />)}
+  </div>
+  <a class="back-all" href={backHref ?? `/?collection=${collectionSlug}`}>← All {collection}</a>
+</section>

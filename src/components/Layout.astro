@@ -1,0 +1,54 @@
+---
+// Document shell ported from reference/catalogue.html lines 1-9 (head) with the rates table
+// embedded for the client-side currency conversion, the design-pass stylesheets layered after the
+// verbatim catalogue.css, the inline pre-paint step at the end of the body (deep link, saved votes,
+// saved unit/currency correct before first paint, ADR D12) and the cross-document page transitions
+// (docs/DESIGN.md §8). `rel=expect` holds Chrome's first render until the pre-paint step has run, so
+// a return morph never captures a stale state; other browsers ignore it.
+import '../styles/tokens.css';
+import '../styles/modes.css';
+import '../styles/catalogue.css';
+import '../styles/editorial.css';
+import '../styles/motion.css';
+import prepaint from '../scripts/prepaint.js?raw';
+import type { RateTable } from '../lib/currency.ts';
+import { jsonForScript } from '../lib/view.ts';
+
+interface Props {
+  title: string;
+  rates: RateTable;
+  /**
+   * The signed-in customer slug, when this page is inside a private preview. It is published to the
+   * client so a reaction can name the realm it came from; the server still verifies that realm's
+   * cookie before it believes the name, so this attribute grants nothing (brief §7, §10).
+   */
+  customer?: string;
+}
+const { title, rates, customer } = Astro.props;
+---
+
+<html lang="en" data-mode="preview" data-customer={customer}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="expect" href="#sl-ready" blocking="render" />
+    <script is:inline type="application/json" id="sl-rates" set:html={jsonForScript(rates)} />
+  </head>
+  <body>
+    <div id="progress" aria-hidden="true"></div>
+    <slot />
+    <script is:inline set:html={prepaint} />
+    <span id="sl-ready" hidden></span>
+    <script>
+      import { initTransitions } from '../scripts/transitions.ts';
+      initTransitions();
+    </script>
+  </body>
+</html>

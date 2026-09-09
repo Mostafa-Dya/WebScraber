@@ -1,0 +1,44 @@
+---
+// Reactions (brief §7). Asymmetric by design: a grid card offers **like only**, because a buyer
+// scanning forty rugs should not be asked to reject them one by one; the detail page, where they
+// have actually looked, offers like and dislike. `data-source` records which surface the reaction
+// came from, and the server refuses a dislike that claims to come from a card.
+//
+// Each control is a real <button> whose accessible name is text content ("Like this rug" / "Not for
+// me"), visually hidden next to the icon — not an `aria-label` on an icon. That is what the brief
+// asks for, and it is what voice control needs: "click Like this rug" works, an aria-label does not
+// always. The circle stays 32 px; the tap target is padded to 44 px on coarse pointers.
+interface Props {
+  rugId: string;
+  name: string;
+  /** `card` renders the like only; `detail` renders dislike + like. */
+  mode?: 'card' | 'detail';
+}
+const { rugId, mode = 'card' } = Astro.props;
+---
+
+<div class:list={['like', { 'like-detail': mode === 'detail' }]}>
+  {
+    mode === 'detail' && (
+      <button type="button" aria-pressed="false" data-vote="dislike" data-source={mode} data-rug={rugId}>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M10 15v4a2 2 0 0 0 2 2l2.7-6.1c.2-.4.3-.8.3-1.2V6.4A2.4 2.4 0 0 0 12.6 4H6.2c-1.2 0-2.2.8-2.4 2l-1.1 6.4A2.4 2.4 0 0 0 5.1 15H10zm7-11h2.4c.9 0 1.6.7 1.6 1.6v6.8c0 .9-.7 1.6-1.6 1.6H17" />
+        </svg>
+        <span class="sr-only">Not for me</span>
+      </button>
+    )
+  }
+  <button type="button" aria-pressed="false" data-vote="like" data-source={mode} data-rug={rugId}>
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"
+      ><path
+        d="M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.3 5 6.8 5c2 0 3.4 1.1 4.2 2.3C11.8 6.1 13.2 5 15.2 5c3.5 0 5.6 3.6 4.3 6.8C19.5 16.4 12 21 12 21z"
+      ></path></svg
+    >
+    <span class="sr-only">Like this rug</span>
+  </button>
+</div>
+
+<script>
+  import { initVotes } from '../scripts/votes.ts';
+  initVotes();
+</script>

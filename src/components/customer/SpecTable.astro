@@ -1,0 +1,88 @@
+---
+// The specification block on the product detail page (Figma 57:266).
+//
+// A raised panel, 64px of padding, a label, then one row per fact: an uppercase key in the muted
+// grey and the value beside it, each row closed by a hairline. Six rows, in this order, which is the
+// order the brief also names: Size, Material, Method, Origin, Pile, Age. `Shape` is stored but
+// deliberately never shown.
+//
+// A row whose value is blank is dropped rather than rendered empty, so a half-catalogued rug does not
+// show a column of dashes to a buyer.
+interface Props {
+  rows: Array<{ key: string; value: string }>;
+  /** Rendered into the size row so the unit toggle can rewrite it; cm values from the sheet. */
+  widthCm?: number;
+  lengthCm?: number;
+}
+const { rows, widthCm, lengthCm } = Astro.props;
+const hasSize = Boolean(widthCm && lengthCm);
+// A row with nothing in it is dropped, Size included: a rug that has not been measured should show
+// five facts, not four facts and a gap.
+const shown = rows.filter((r) => (r.key === 'Size' ? hasSize : r.value.trim() !== ''));
+---
+
+<aside class="pv-spec">
+  <p class="pv-h4 pv-spec-title">Specification</p>
+  <dl class="pv-spec-list">
+    {
+      shown.map((row) => (
+        <div class="pv-spec-row">
+          <dt class="pv-label pv-muted">{row.key}</dt>
+          <dd
+            data-dims={row.key === 'Size' && hasSize ? '' : undefined}
+            data-w={row.key === 'Size' && hasSize ? widthCm : undefined}
+            data-l={row.key === 'Size' && hasSize ? lengthCm : undefined}
+            data-sep={row.key === 'Size' && hasSize ? '·' : undefined}
+          >
+            {row.value}
+          </dd>
+        </div>
+      ))
+    }
+  </dl>
+</aside>
+
+<style>
+  /* Takes the rest of the row beside the fixed 620 text column: 612 at 1440. */
+  .pv-spec {
+    flex: 1 1 auto;
+    align-self: stretch;
+    background: var(--surface);
+    padding: var(--section-gap);
+  }
+  .pv-spec-title {
+    margin-bottom: var(--stack-md);
+  }
+  .pv-spec-list {
+    margin: 0;
+  }
+  .pv-spec-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--stack-md);
+    padding-block: var(--stack-sm);
+    border-bottom: var(--rule-width) solid var(--rule);
+  }
+  .pv-spec-row dt {
+    flex: 0 0 120px;
+  }
+  .pv-spec-row dd {
+    margin: 0;
+    flex: 1 1 auto;
+    font-size: var(--text-base);
+    color: var(--ink);
+  }
+
+  @media (max-width: 767px) {
+    .pv-spec {
+      padding: var(--stack-lg);
+    }
+    .pv-spec-row {
+      gap: var(--stack-sm);
+      padding-block: var(--stack-xs);
+    }
+    .pv-spec-row dt {
+      flex-basis: 110px;
+    }
+  }
+</style>

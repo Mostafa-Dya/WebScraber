@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Serio Ludere rug catalogue: Astro 7 site with a Google Sheet as CMS and vote store",
   "engines": {
-    "node": ">=24.16.0 <25"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "dev": "astro dev",

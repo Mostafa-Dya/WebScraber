@@ -9,10 +9,43 @@ import node from '@astrojs/node';
 
 // The inline pre-paint step (src/scripts/prepaint.js) is the only hand-written inline script; its
 // hash is registered so the CSP can stay hash-based. Astro hashes its own inlined modules itself.
+const PREPAINT_PATH = join(import.meta.dirname, 'src/scripts/prepaint.js');
+
+/**
+ * Read the pre-paint source, or explain why the build cannot continue.
+ *
+ * Without this the failure is a bare `ENOENT ... prepaint.js` thrown out of the CONFIG loader, before
+ * Astro has started — which reads as a broken config rather than a missing file, and says nothing
+ * about why one file out of four hundred is absent. It happened on a host whose build pipeline
+ * dropped it: `src/scripts/prepaint.js` is the only `.js` file under `src/` (everything else is
+ * `.ts`), so a pipeline that filters by extension takes exactly this one and nothing else.
+ *
+ * The file cannot simply be defaulted away: it is injected inline into every page and its SHA-256 is
+ * what the hash-based CSP allows, so a guessed hash would ship a page whose own script is blocked.
+ */
+function readPrepaint() {
+  try {
+    return readFileSync(PREPAINT_PATH, 'utf8');
+  } catch (cause) {
+    throw new Error(
+      [
+        `Cannot read ${PREPAINT_PATH}.`,
+        '',
+        'This file is inlined into every page and its hash is in the Content-Security-Policy, so the',
+        'build cannot continue without it. It IS committed — if it is missing here, the source tree',
+        'this build is running against is incomplete.',
+        '',
+        'It is the only .js file under src/ (all the rest are .ts), so a deploy pipeline that filters',
+        'source by extension will drop exactly this one. Either ship a complete checkout, or build',
+        'locally and deploy dist/ instead of building on the host.',
+      ].join('\n'),
+      { cause },
+    );
+  }
+}
+
 const prepaintHash = /** @type {import('astro').CspHashEntry} */ (
-  `sha256-${createHash('sha256')
-    .update(readFileSync(join(import.meta.dirname, 'src/scripts/prepaint.js'), 'utf8'))
-    .digest('base64')}`
+  `sha256-${createHash('sha256').update(readPrepaint()).digest('base64')}`
 );
 
 export default defineConfig({

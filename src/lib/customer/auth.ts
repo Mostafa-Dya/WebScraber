@@ -28,7 +28,9 @@ export const RESERVED_SLUGS: readonly string[] = [
   'tags',
 ];
 
-export const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+// Mirrors CLIENT_CODE_RE: `-` and `_` may appear inside a scrambled customer route, never at either
+// end. Kept within the sheet's customer_slug alphabet so a route that resolves is also a row that parses.
+export const SLUG_RE = /^[a-z0-9](?:[a-z0-9\-_]{0,38}[a-z0-9])?$/;
 
 export function isReservedSlug(slug: string): boolean {
   return RESERVED_SLUGS.includes(slug.toLowerCase());

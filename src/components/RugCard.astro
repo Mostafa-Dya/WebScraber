@@ -43,6 +43,7 @@ const href = hrefProp ?? `/rugs/${card.slug}`;
   class:list={['card', { lead: card.lead === true }]}
   data-card={related ? undefined : ''}
   data-collection={card.collectionSlug}
+  data-collections={card.collectionSlugs.join(' ')}
   data-slug={card.slug}
   hidden={hidden}
 >

@@ -84,7 +84,7 @@ describe('collections', () => {
       sortOrder: 4,
       row: 5,
     });
-    expect(body.collection.coverImageUrl).toContain('lh3.googleusercontent.com/d/1U8FwNPCdm');
+    expect(body.collection.coverImageUrl).toContain('/api/image/1U8FwNPCdm');
     expect(body.audit).toEqual({ row: 2, action: 'collection.create' });
     const created = sheet.row('Collections', 5);
     expect([created[0], created[1], created[2], created[3], created[5], created[6]]).toEqual([

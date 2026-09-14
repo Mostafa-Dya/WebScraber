@@ -179,7 +179,7 @@ describe('/admin/rugs', () => {
     expect(html).toContain('Yellow &lt;b&gt;x&lt;/b&gt;');
     expect(html).not.toContain('<b>x</b>');
     expect(html).toContain('data-search="winks sl-021 1389 winks"');
-    expect(html).toContain('lh3.googleusercontent.com/d/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb=w800');
+    expect(html).toContain('api/image/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb?w=800');
     expect(html).toContain('data-rot="0"');
     expect(html).toContain('135 × 190 cm');
     expect(html).toContain('$576');
@@ -192,9 +192,12 @@ describe('/admin/rugs/new', () => {
     state.down = false;
     const { status, html } = await render(NewPage, '/admin/rugs/new');
     expect(status).toBe(200);
-    expect(html).toMatch(/<a href="\/admin\/rugs\/new" class="on" aria-current="page">/);
+    expect(html).toContain(String.raw`href="/admin/rugs" aria-current="page"`);
     expect(html).toContain('id="yourName"');
-    expect(html).toMatch(/<option value="Kilims">/);
+    // The collection picker is a multi-select of checkboxes now, not a <select> of options.
+    expect(html).toMatch(
+      /<input class="check__box" type="checkbox" id="f_collection__Kilims"[^>]*value="Kilims">/,
+    );
     expect(html).toMatch(/data-value="Kilim" aria-pressed="false"/);
     expect(html).toContain('id="url"');
     expect(html).toContain('id="btnFetch"');
@@ -220,10 +223,10 @@ describe('/admin/rugs/[id]', () => {
     expect(html).toContain('<title>Serio Ludere — Winks</title>');
     expect(html).toMatch(/id="f_id" value="SL-021" readonly/);
     expect(html).toMatch(/id="f_version" value="[a-f0-9]{16}"/);
-    expect(html).toMatch(/<option value="Kilims" selected>/);
+    expect(html).toMatch(/id="f_collection__Kilims"[^>]*value="Kilims" checked>/);
     expect(html).toMatch(/data-value="Kilim" aria-pressed="true"/);
     expect(html).toMatch(/data-value="Denizli" aria-pressed="true"/); // the fixture rug carries both tags
-    expect(html).toContain('lh3.googleusercontent.com/d/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb=w800');
+    expect(html).toContain('api/image/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb?w=800');
     expect(html).toContain('id="btnSave"');
     expect(html).toContain('id="btnArchive"');
     expect(html).toMatch(/id="btnRestore"[^>]*hidden/);
@@ -253,9 +256,9 @@ describe('/admin/collections', () => {
     const { status, html } = await render(CollectionsPage, '/admin/collections');
     expect(status).toBe(200);
     expect(html.indexOf('data-id="kilims"')).toBeLessThan(html.indexOf('data-id="tulu"'));
-    expect(html).toMatch(/<tr data-id="kilims" data-version="[a-f0-9]{16}" data-name="Kilims">/);
+    expect(html).toMatch(/<li class="crow" data-id="kilims" data-version="[a-f0-9]{16}" data-name="Kilims"/);
     expect(html).toContain('data-field="description" value="Flat &quot;weaves&quot;"');
-    expect(html).toMatch(/<td class="n">1<\/td>\s*<td class="acts">/); // one rug in Kilims
+    expect(html.replace(/\s+/g, ' ')).toContain('<span class="crow__count"> 1 product </span>'); // one rug in Kilims
     expect(html).toContain('data-act="up"');
     expect(html).toContain('id="btnAddCollection"');
     expect(html).toMatch(
@@ -277,7 +280,8 @@ describe('/admin/clients', () => {
     expect(html).toContain('Nadia &lt;i&gt;');
     expect(html).toContain('https://catalogue.example.test/nadia-k7m2pq');
     expect(html).not.toContain('https://old/?c=x'); // never the stored link
-    expect(html).toContain('data-act="revoke"');
+    expect(html).toContain(String.raw`data-act="toggle"`);
+    expect(html).toContain(String.raw`role="switch"`);
     expect(html).toContain('id="btnReport"');
     expect(html).toContain('"siteOrigin":"https://catalogue.example.test"');
     expectCspClean(html);

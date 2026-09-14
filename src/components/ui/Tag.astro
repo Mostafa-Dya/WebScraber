@@ -1,0 +1,46 @@
+---
+// Tag — Figma set 17:53. Style = Default | Selected | Outline | Removable.
+//
+// SQUARE, not a pill. radius/pill is reserved for circle icon buttons and the like/dislike control;
+// the file draws chips at radius 0, which resolves a brief-vs-file conflict in the file's favour
+// (ADR D18). Removable is 18px wider to hold the 10px Close glyph.
+//
+// Renders as a <button> when it filters (so it is operable and announces pressed state) and as a
+// plain <span> when it is only a label.
+import Icon from './Icon.astro';
+
+interface Props {
+  style?: 'default' | 'selected' | 'outline';
+  /** Makes the tag a filter toggle rather than a static label. */
+  pressed?: boolean;
+  /** Adds the trailing close glyph and its own button. */
+  removable?: boolean;
+  href?: string;
+  value?: string;
+  class?: string;
+}
+const { style = 'default', pressed, removable = false, href, value, class: className } = Astro.props;
+const classes = ['tag', style !== 'default' && `tag--${style}`, className];
+---
+
+{
+  pressed !== undefined ? (
+    <button type="button" class:list={classes} aria-pressed={pressed ? 'true' : 'false'} data-tag={value}>
+      <slot />
+    </button>
+  ) : href ? (
+    <a class:list={classes} href={href}>
+      <slot />
+    </a>
+  ) : (
+    <span class:list={classes}>
+      <slot />
+      {removable && (
+        <button type="button" class="tag__remove" data-remove={value}>
+          <Icon name="close" />
+          <span class="sr-only">Remove</span>
+        </button>
+      )}
+    </span>
+  )
+}

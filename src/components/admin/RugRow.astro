@@ -1,0 +1,58 @@
+---
+// Inline Row — Figma set 78:325, as used on P2 (79:1461…79:1530).
+//
+// "A products row that edits in place. Click a cell, it becomes an input; Enter commits, Esc
+// reverts, Tab moves on. Saving dims the row rather than replacing it with a spinner."
+//
+// Columns match the P2 header exactly: ID 110 · Title 280 · Collection 150 · Size 140 · Price 130,
+// then a flexible spacer, then the action slot. The read state is server-rendered; the editing,
+// saving and error states are applied by src/scripts/admin/inline-row.ts, which is what keeps the
+// row in place throughout — the thing the footnote on P2 is careful to promise.
+//
+// NOT used on mobile: "inline table editing on a phone is a trap. Mobile uses cards, and editing
+// opens the same drawer." The table is hidden below 768 in admin.css.
+//
+// Filtering reuses the same data-* contract as RugCardAdmin so one filter drives both views.
+import type { AdminRug } from '../../lib/admin/read.ts';
+import { dims } from '../../lib/units.ts';
+import { collectionSlug, collectionSlugs } from '../../lib/text.ts';
+import type { Collection } from '../../lib/sheets/types.ts';
+
+interface Props {
+  rug: AdminRug;
+  collections: readonly Collection[];
+}
+const { rug, collections } = Astro.props;
+
+const slug = rug.collection.trim() ? collectionSlug(rug.collection, collections) : '';
+// Every slug the rug belongs to, so one chip filter drives cards and rows alike.
+const slugs = rug.collections.length ? collectionSlugs(rug.collections, collections).join(' ') : '';
+const size = dims(rug.widthCm, rug.lengthCm, 'cm');
+const price = rug.priceUsd ? `$${rug.priceUsd.toLocaleString('en-US')}` : '';
+const search = [rug.name, rug.id, rug.supplierRef, rug.slug].join(' ').toLowerCase().replace(/[<>]/g, ' ');
+---
+
+<div
+  class="irow"
+  data-card
+  data-row
+  data-id={rug.id}
+  data-collection={slug}
+  data-collections={slugs}
+  data-status={rug.status}
+  data-search={search}
+>
+  <div class="irow__line">
+    <span class="irow__id">{rug.id}</span>
+    <span class="irow__title" data-cell="name">{rug.name}</span>
+    <span class="irow__collection">{rug.collection}</span>
+    <span class="irow__size">{size}</span>
+    <span class="irow__price">{price}</span>
+    <span class="irow__spacer"></span>
+    <span class="irow__action">
+      <a href={`/admin/rugs/${encodeURIComponent(rug.id)}`}>Open</a>
+      <button type="button" data-edit={rug.id}>Edit</button>
+    </span>
+  </div>
+  <p class="irow__message" hidden></p>
+</div>

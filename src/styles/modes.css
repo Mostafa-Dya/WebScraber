@@ -1,138 +1,442 @@
-/* Brief §5 — the three-mode token set.
+/* Design tokens — generated against Figma `07 · Handoff` (file Zzv9aXvSad5NTZc9rFRFxx, page 1:8).
  *
- * Source of truth caveat: the brief names the Figma file (`07 · Handoff`) as the authority for UI,
- * and forbids re-deriving token values from screenshots. Every value here is one the brief's own
- * text states outright; nothing is eyeballed. What is still missing without the Figma file is the
- * component inventory and the frame specs, not these primitives — see docs/BRIEF_GAP.md §5.
+ * Two layers, exactly as the handoff structures them:
  *
- * Structure the brief asks for, and the rule that makes it worth having:
- *   - three custom-property sets selected by `[data-mode]` on <html>: preview, admin, admin-dark;
- *   - components read SEMANTICS only (--canvas, --surface, --brand, --focus-ring, …) and never a
- *     primitive, so a mode switch is a one-line change rather than a sweep through the components.
+ *   01 Primitives  (frame 66:2)  — one mode, raw values. Every entry names the settings_data key or
+ *                                  CSS custom property it came from, or is marked NO SOURCE.
+ *                                  Components MUST NOT read these.
+ *   02 Semantic    (frame 66:367) — three modes, every value an alias into a primitive. This is the
+ *                                  only layer components read, so a mode switch is one attribute.
  *
- * The pre-brief palette in tokens.css is still the fallback for anything not yet mapped, which is
- * why this file is imported after it: same specificity, later wins.
+ * The live theme is Prestige v11.4.0 by Maestrooo ("wishlist theme cards", role MAIN), read through
+ * the Shopify Admin API from config/settings_data.json, config/settings_schema.json and
+ * snippets/css-variables.liquid. Nothing here is eyeballed from a screenshot.
+ *
+ * Where Preview and Admin differ, that difference IS the design decision — see the per-token notes.
  */
 
-:root,
-[data-mode='preview'] {
-  /* ---- surfaces ----
-     Every value below is read from the Figma file's own variables, not inferred from the brief's
-     prose, which is why some differ slightly from the earlier pass. */
-  --canvas: #fefcf0; /* --page-background */
-  --surface: #fffff5; /* bg/surface, bg/inset */
-  --surface-raised: #ffffff; /* bg/surface-raised */
-  --canvas-sunken: #f6f0dc;
-  --subtle: #efefef; /* action/subtle: the unselected chip and the photo plate */
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════
+   01 PRIMITIVES — mode-invariant. Never read these from a component.
+   ═══════════════════════════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ---- colour · brand ---- */
+  --color-brand-red: #b80d09; /* scheme-4.background AND scheme-1.primary_button_hover_background */
+  --color-brand-red-dark: #9c0b08; /* DERIVED: brand-red mixed 15% #000000 */
+  --color-brand-red-tint: #f6e2d9; /* DERIVED: brand-red mixed 12% #FFFFF5 */
+  --color-accent-sale: #e32c2b; /* product_on_sale_accent */
 
-  /* ---- ink ---- */
-  --ink: #000000; /* --text-color */
-  --ink-soft: #403f3c; /* text/secondary */
-  --ink-muted: #8c8b84; /* text/muted */
-  --rule: #d8d6cc; /* --border-color */
-  --rule-width: 1px;
+  /* ---- colour · neutral ramp ----
+     50 is the storefront canvas; 0 is the paper behind every rug image. 400/600/900 are Prestige's
+     own color_mix derivations of #000000 against #FEFCF0 at 30 / 60 / 92. */
+  --color-neutral-0: #fffff5; /* custom_css product-card image wrapper; scheme-1 button text */
+  --color-neutral-50: #fefcf0; /* scheme-1.background — the storefront canvas */
+  --color-neutral-100: #f8f7f5; /* scheme-3.background */
+  --color-neutral-200: #efefef; /* product_sold_out_badge_background */
+  --color-neutral-300: #d8d6cc; /* Prestige's own --border-color: text mixed 15% background */
+  --color-neutral-400: #b2b0a8;
+  --color-neutral-500: #8c8b84;
+  --color-neutral-600: #666560;
+  --color-neutral-700: #403f3c;
+  --color-neutral-800: #1c1c1c; /* product_custom_badge_background, product_rating_color — the ink */
+  --color-neutral-900: #141413;
+  --color-neutral-950: #000000; /* scheme-1.text_color and .primary_button_background */
 
-  /* ---- brand and feedback ---- */
-  --brand: #b80d09;
-  --success: #307a07;
-  --warning: #ed8a00;
-  --danger: #cb2b2b;
+  /* ---- colour · static ---- */
+  --color-static-black: #000000;
+  --color-static-white: #ffffff; /* scheme-1.circle_button_background — true white, not neutral-0 */
+  --color-static-overlay: rgb(0 0 0 / 0.4); /* css-variables.liquid --page-overlay */
 
-  /* ---- type ---- */
-  --body: 'Inter', system-ui, sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-base: 13px;
-  --text-lg: 15px;
-  --text-xl: 19px;
-  /* Body line-height is 1.65 everywhere; headings are 1.2. */
-  --leading-body: 1.65;
-  --leading-heading: 1.2;
-  --h1: 28.8px;
-  --h2: 25.2px;
-  --h3: 19.8px;
-  --h4: 16.2px;
-  --h5: 12.6px;
-  --h6: 11.2px;
+  /* ---- colour · feedback ----
+     info has NO SOURCE: Prestige ships no info colour, so it maps onto the ink rather than
+     introducing a hue that exists nowhere on the storefront. */
+  --color-feedback-success: #307a07; /* success_color */
+  --color-feedback-success-bg: #d4e3cb; /* DERIVED by Prestige: success mixed 21% #ffffff */
+  --color-feedback-warning: #ed8a00; /* warning_color */
+  --color-feedback-warning-bg: #fdf1e0; /* DERIVED by Prestige: warning mixed 12% #ffffff */
+  --color-feedback-danger: #cb2b2b; /* error_color */
+  --color-feedback-danger-bg: #f3cccc; /* DERIVED by Prestige: error mixed 24% #ffffff */
+  --color-feedback-info: #1c1c1c; /* NO SOURCE — mapped onto the ink */
+  --color-feedback-info-bg: #efefef; /* NO SOURCE — reuses the sold-out badge grey */
+
+  /* ---- type · families ----
+     There is no display serif. The store runs Inter 700 for headings and Inter 400 for body — one
+     family, two weights. mono has NO SOURCE: the theme ships none, and Product IDs need one. */
+  --font-family-body: 'Inter', system-ui, sans-serif; /* text_font = inter_n4 */
+  --font-family-heading: 'Inter', system-ui, sans-serif; /* heading_font = inter_n7 */
+  --font-family-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace; /* NO SOURCE */
+  --font-weight-body: 400;
+  --font-weight-heading: 700;
+  --font-weight-medium: 500; /* NO SOURCE — Bold at 12px is too heavy for admin table headers */
+  --font-weight-mono: 400;
+
+  /* ---- type · sizes ----
+     Derived by Prestige's own formulas from text_font_size_desktop = 13. Headings are the fluid
+     clamps multiplied by the 0.9 heading_font_size_factor; *-min is the 375px floor of each clamp.
+     Type is exempt from the 4pt grid by nature — a type scale is not a spacing grid. */
+  --size-body-xs: 11px; /* base 13 - 2, floored at 11 */
+  --size-body-sm: 12px; /* base 13 - 1, floored at 12. Also the button size. */
+  --size-body-base: 13px; /* text_font_size_desktop = text_font_size_mobile = 13 */
+  --size-body-lg: 15px; /* base 13 + 2 */
+  --size-body-xl: 19px; /* desktop: base 13 + 6 */
+  --size-body-xl-min: 17px; /* mobile: base 13 + 4 */
+  --size-h1: 28.8px; /* clamp max 2rem x 0.9 */
+  --size-h1-min: 19.8px; /* clamp min 1.375rem x 0.9 */
+  --size-h2: 25.2px; /* clamp max 1.75rem x 0.9 */
+  --size-h2-min: 18px; /* clamp min 1.25rem x 0.9 */
+  --size-h3: 19.8px; /* clamp max 1.375rem x 0.9 */
+  --size-h3-min: 16.2px; /* clamp min 1.125rem x 0.9 */
+  --size-h4: 16.2px; /* clamp max 1.125rem x 0.9 */
+  --size-h4-min: 14.4px; /* clamp min 1rem x 0.9 */
+  --size-h5: 12.6px; /* calc(0.875rem x 0.9), not fluid */
+  --size-h6: 11.2px; /* calc(0.75rem x 0.9) = 10.8, raised by the max(0.70rem) floor */
+
+  /* ---- space · 4pt scale ---- */
+  --space-0: 0;
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px; /* --checkbox-control-gap */
+  --space-16: 16px; /* --fieldset-gap */
+  --space-20: 20px; /* --container-gutter mobile; --form-gap */
+  --space-24: 24px;
+  --space-32: 32px; /* --container-gutter >=700px */
+  --space-36: 36px; /* --section-stack-gap-tight <1000px */
+  --space-40: 40px; /* --section-vertical-spacing-tight <1000px */
+  --space-48: 48px; /* --container-gutter >=1000px */
+  --space-64: 64px; /* --section-vertical-spacing <1000px; all four section tokens >=1000px */
+  --space-80: 80px;
+  --space-96: 96px;
+  --space-112: 112px; /* --section-vertical-spacing >=1000px — the editorial rhythm */
+
+  /* ---- space · 4pt deviations ----
+     Prestige's real values. Carried, never rounded: rounding input-y to 12 would make every input
+     3.2px taller than the storefront's and break the visual match on the preview. */
+  --space-deviation-input-y: 10.4px; /* --input-padding-block: 0.65rem */
+  --space-deviation-input-x: 12.8px; /* --input-padding-inline: 0.8rem */
+  --space-deviation-control-gap: 10px; /* --form-control-gap */
+
+  /* ---- inset · iOS chrome ----
+     NO PRESTIGE SOURCE. Platform constants for the mobile admin, namespaced away from space/* so
+     they can never be read as scale steps. Snapping them to 4pt would be a lie dressed as
+     consistency. */
+  --ios-status-bar: 44px;
+  --ios-home-indicator: 34px;
+  --ios-tab-bar-y: 10px;
+  --ios-tab-bar-bottom: 20px;
+
+  /* ---- size · controls and containers ---- */
+  --size-checkbox: 14px; /* --checkbox-size: 0.875rem. OFF 4pt GRID — carried, not rounded. */
+  --size-container-xxs: 440px; /* --container-xxs-max-width: 27.5rem */
+  --size-container-xs: 680px; /* --container-xs-max-width: 42.5rem */
+  --size-container-sm: 980px; /* --container-sm-max-width: 61.25rem */
+  --size-container-md: 1150px; /* --container-md-max-width: 71.875rem. OFF 4pt GRID. */
+  --size-container-lg: 1260px; /* --container-lg-max-width: 78.75rem */
+  --size-container-xl: 1360px; /* --container-xl-max-width: 85rem */
 
   /* ---- shape ----
-     Square by default. The pill is for chips and the reaction circles only; nothing else. */
-  --radius: 0;
-  --radius-pill: 9999px;
+     Both radii resolve to 0 from settings_schema defaults — the keys are absent from settings_data.
+     The storefront has no rounded corners. */
+  --radius-none: 0;
+  --radius-full: 9999px;
 
-  /* ---- focus ----
-     Ink, never the brand red: a red ring next to a red destructive action reads as an error. */
-  --focus-ring: 2px solid var(--ink);
+  /* ---- border ----
+     focus-width has NO SOURCE: Prestige has no focus treatment at all. 2px so focus is
+     distinguishable from a 1px error border. */
+  --border-hairline: 1px; /* icon_stroke_width = 1 — the only stroke weight the theme uses */
+  --border-focus-width: 2px; /* NO SOURCE */
+
+  /* ---- motion ---- */
+  --duration-fast: 0.15s; /* serio-password.css hover and quiet-control transitions */
+  --duration-frame: 0.5s; /* password.json frame_duration — the coming-soon sequence step */
+  --duration-slow: 0.6s; /* product_card_image_zoom_duration */
+  --easing-linear: cubic-bezier(0, 0, 1, 1);
+  --easing-out: cubic-bezier(0, 0, 0.58, 1); /* product_card_image_zoom_easing = ease_out */
+
+  /* ---- opacity ---- */
+  --opacity-full: 1;
+  --opacity-muted: 0.45; /* the theme's own 'quiet chrome' opacity */
+  --opacity-overlay: 0.4; /* --page-overlay */
+  --opacity-shadow: 0.05; /* all three --shadow-* use rgb(0 0 0 / 0.05) */
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════
+   02 SEMANTIC — three modes, every value an alias. Components read ONLY this layer.
+   Preview is the default: it inherits the storefront's ivory verbatim.
+   ═══════════════════════════════════════════════════════════════════════════════════════════════ */
+:root,
+[data-mode='preview'] {
+  /* ---- background ---- */
+  --canvas: var(--color-neutral-50); /* the page ground — the storefront's ivory */
+  --surface: var(--color-neutral-0); /* cards, panels — the paper behind every rug image */
+  --surface-raised: var(--color-static-white); /* modals, popovers, the credential panel */
+  --bg-inset: var(--color-neutral-0); /* the ground behind rug imagery */
+  --bg-overlay: var(--color-static-overlay); /* modal scrim */
+  --subtle: var(--color-neutral-200); /* ghost/secondary hover wash, table row hover */
+
+  /* ---- text ---- */
+  --ink: var(--color-neutral-950); /* body and headings */
+  --ink-soft: var(--color-neutral-700); /* supporting copy, spec labels, table meta */
+  --ink-muted: var(--color-neutral-500); /* placeholders, timestamps, quiet chrome */
+  --text-on-action: var(--color-neutral-0); /* text on action/primary */
+  --text-on-brand: var(--color-neutral-0); /* text on the brand red, exactly as scheme-4 sets it */
+
+  /* ---- action ---- */
+  --action-primary: var(--color-neutral-950);
+  --action-primary-hover: var(--color-brand-red); /* the storefront's real hover */
+  --action-danger: var(--color-brand-red);
+  --action-danger-hover: var(--color-brand-red-dark);
+
+  /* ---- border ----
+     Focus is ink, deliberately NOT the brand red: red is the error colour, and a red focus ring on
+     a red-bordered invalid field is unreadable. They differ in hue AND in weight. */
+  --rule: var(--color-neutral-300);
+  --border-strong: var(--color-neutral-800); /* selected rows, focused cards */
+  --border-focus: var(--color-neutral-950);
+  --rule-width: var(--border-hairline);
+  --border-width-focus: var(--border-focus-width);
+  --focus-ring: var(--border-width-focus) solid var(--border-focus);
   --focus-offset: 2px;
 
+  /* ---- feedback ---- */
+  --success: var(--color-feedback-success);
+  --success-bg: var(--color-feedback-success-bg);
+  --warning: var(--color-feedback-warning);
+  --warning-bg: var(--color-feedback-warning-bg);
+  --danger: var(--color-feedback-danger);
+  --danger-bg: var(--color-feedback-danger-bg);
+  --info: var(--color-feedback-info);
+  --info-bg: var(--color-feedback-info-bg);
+  --brand: var(--color-brand-red);
+
+  /* ---- type ----
+     Preview labels take the heading Bold the theme uses for buttons. */
+  --body: var(--font-family-body);
+  --heading: var(--font-family-heading);
+  --mono: var(--font-family-mono);
+  --weight-body: var(--font-weight-body);
+  --weight-heading: var(--font-weight-heading);
+  --weight-label: var(--font-weight-heading);
+  --weight-mono: var(--font-weight-mono);
+
+  /* Line height is mode-invariant, and sits in the semantic layer because components read it
+     directly. Body 165% IS sourced — it is --button-font's. Heading 120% has NO SOURCE: Prestige
+     sets line-height: normal, which is font-dependent (handoff 67:62). */
+  --leading-heading: 1.2;
+  --leading-body: 1.65;
+
+  --text-xs: var(--size-body-xs); /* caption — timestamps, helper text */
+  --text-sm: var(--size-body-sm); /* dense rows, secondary meta */
+  --text-base: var(--size-body-base);
+  --text-lg: var(--size-body-lg); /* lead paragraph */
+  --text-xl: var(--size-body-xl);
+  --size-label: var(--size-body-sm); /* form labels and buttons — what --button-font resolves to */
+  --size-mono: var(--size-body-sm); /* product IDs, copyable lists */
+  --size-icon: var(--space-16); /* icon box, 16 square */
+
+  --h1: var(--size-h1); /* page title */
+  --h2: var(--size-h2); /* section heading */
+  --h3: var(--size-h3); /* subsection */
+  --h4: var(--size-h4); /* card title, table group */
+  --h5: var(--size-h5);
+  --h6: var(--size-h6);
+  /* the 375px floor of Prestige's fluid clamp at each level — mode-invariant */
+  --h1-mobile: var(--size-h1-min);
+  --h2-mobile: var(--size-h2-min);
+  --h3-mobile: var(--size-h3-min);
+  --h4-mobile: var(--size-h4-min);
+
+  /* ---- shape ---- */
+  --radius: var(--radius-none); /* buttons, inputs, cards — square in every mode */
+  --radius-pill: var(--radius-full); /* chips, circle buttons, the like/dislike control */
+
+  /* ---- space ----
+     space/section is the single alias that makes the preview breathe and the tool dense. Preview
+     inherits the storefront's real desktop rhythm (--section-vertical-spacing at >=1000px). */
+  --space-section: var(--space-112);
+  --section-gap: var(--space-64); /* between blocks inside a section */
+  --gutter: var(--space-48); /* container side padding */
+  --space-inline: var(--space-20); /* between adjacent elements on a row */
+  --tight: var(--space-12); /* label-to-control, icon-to-text */
+  --space-field: var(--space-16); /* between inputs in a fieldset */
+  --space-form: var(--space-20); /* fieldset to submit */
+  --control-x: var(--space-24); /* horizontal padding inside a button */
+
+  /* off-grid, mode-invariant — Prestige's own values */
+  --control-y: var(--space-deviation-input-y); /* buttons and inputs share a height */
+  --input-y: var(--space-deviation-input-y);
+  --input-x: var(--space-deviation-input-x);
+  --control-gap: var(--space-deviation-control-gap);
+  --checkbox: var(--size-checkbox);
+
+  /* iOS chrome — identical in all three modes: the device does not care which mode the app is in */
+  --inset-status-bar: var(--ios-status-bar);
+  --inset-home-indicator: var(--ios-home-indicator);
+  --inset-tab-bar-y: var(--ios-tab-bar-y);
+  --inset-tab-bar-bottom: var(--ios-tab-bar-bottom);
+
+  /* intra-component steps — mode-invariant by design: a table row, a chip rail and a documentation
+     grid must keep the same rhythm whichever mode they sit in */
+  --stack-xs: var(--space-4);
+  --stack-sm: var(--space-8);
+  --stack-md: var(--space-12);
+  --stack-lg: var(--space-16);
+  --stack-xl: var(--space-24);
+  --stack-2xl: var(--space-48);
+
   /* ---- containers ---- */
-  --container-xs: 440px;
-  --container-sm: 680px;
-  --container-md: 980px;
-  --container-lg: 1150px;
-  --container-xl: 1260px;
-  --container-2xl: 1360px;
+  --container-xxs: var(--size-container-xxs);
+  --container-xs: var(--size-container-xs);
+  --container-sm: var(--size-container-sm);
+  --container-md: var(--size-container-md);
+  --container-lg: var(--size-container-lg);
+  --container-xl: var(--size-container-xl);
 
-  /* ---- off-grid values the brief says to carry rather than round ---- */
-  --input-y: 10.4px; /* --space/control-y */
-  --input-x: 12.8px; /* --input-padding-inline */
-  --control-x: 24px; /* --space/control-x, the button's horizontal padding */
-  --control-gap: 10px;
-  --checkbox: 14px;
+  /* ---- motion ----
+     Preview gets the storefront's real 600ms image reveal; the brief's motion asymmetry as one
+     token. motion/quick is the same in both modes. */
+  --motion-transition: var(--duration-slow);
+  --motion-quick: var(--duration-fast);
+  --motion-ease: var(--easing-out);
+  --motion-linear: var(--easing-linear);
+  --duration-frame-step: var(--duration-frame);
 
-  /* ---- spacing scale (space/stack-*) ---- */
-  --stack-xs: 4px;
-  --stack-sm: 8px;
-  --stack-md: 12px;
-  --stack-lg: 16px;
-  --tight: 12px;
-  --gutter: 48px; /* --container-gutter */
-  --section-gap: 64px; /* --section-stack-gap */
-
-  /* ---- mode-scoped aliases: the same name means something different per realm ---- */
-  --space-section: 112px;
-  --motion-transition: 600ms;
+  /* ---- opacity ---- */
+  --opacity-disabled: var(--opacity-muted);
+  --opacity-quiet: var(--opacity-muted);
+  --scrim-alpha: var(--opacity-overlay);
 }
 
-/* The admin is a working tool: tighter, quieter, faster, and on a neutral ground so photographs
-   are judged against grey rather than against warm paper. */
+/* ───────────────────────────────────────────────────────────────────────────────────────────────
+   ADMIN — same palette, same families, same aliases. Only the spacing table and the heading steps
+   change; that is the whole asymmetry. Canvas drops to the theme's own grey so white surfaces read
+   as raised, and bg/inset stays the storefront's paper in BOTH modes so a photo is judged the way
+   the buyer will see it.
+   ─────────────────────────────────────────────────────────────────────────────────────────────── */
 [data-mode='admin'] {
-  --canvas: #f8f7f5;
-  --surface: #ffffff;
-  --canvas-sunken: #efedea;
-  --ink: #141413;
-  --ink-soft: #6b645c;
-  --rule: #e2e0dc;
-  --space-section: 24px;
-  --motion-transition: 150ms;
+  --canvas: var(--color-neutral-100);
+  --surface: var(--color-static-white);
+  --bg-inset: var(--color-neutral-50);
+
+  /* Admin drops the label to Medium, legible at 12px without shouting across a dense table. */
+  --weight-label: var(--font-weight-medium);
+
+  /* heading steps compress one full level */
+  --h1: var(--size-h3); /* 19.8 */
+  --h2: var(--size-h4); /* 16.2 */
+  --h3: var(--size-body-lg); /* 15 */
+  --h4: var(--size-body-base); /* 13 */
+  --text-lg: var(--size-body-base); /* lead paragraph drops to body */
+
+  /* spacing compresses — this is what makes the tool dense */
+  --space-section: var(--space-24);
+  --section-gap: var(--space-16);
+  --gutter: var(--space-24);
+  --space-inline: var(--space-8);
+  --tight: var(--space-4);
+  --space-field: var(--space-12);
+  --space-form: var(--space-16);
+  --control-x: var(--space-16);
+
+  /* functional only — hover, focus, disclosure. Nothing decorative. */
+  --motion-transition: var(--duration-fast);
 }
 
+/* ───────────────────────────────────────────────────────────────────────────────────────────────
+   ADMIN DARK — the optional third mode for long sessions. Prestige has no dark feedback tints, so
+   those fall back to surface and carry their meaning on the hue alone.
+   ─────────────────────────────────────────────────────────────────────────────────────────────── */
 [data-mode='admin-dark'] {
-  --canvas: #141413;
-  --surface: #1e1e1c;
-  --canvas-sunken: #0d0d0c;
-  --ink: #f8f7f5;
-  --ink-soft: #a8a29a;
-  --rule: #33322f;
-  --brand: #ef4a44; /* the brand red lifted to stay legible on ink; the same hue */
-  --focus-ring: 2px solid var(--ink);
-  --space-section: 24px;
-  --motion-transition: 150ms;
+  --canvas: var(--color-neutral-900);
+  --surface: var(--color-neutral-800);
+  --surface-raised: var(--color-neutral-700);
+  --bg-inset: var(--color-neutral-950);
+  --subtle: var(--color-neutral-700);
+
+  --ink: var(--color-neutral-50);
+  --ink-soft: var(--color-neutral-300);
+  --text-on-action: var(--color-neutral-950);
+
+  --action-primary: var(--color-neutral-0); /* paper on dark */
+  --rule: var(--color-neutral-700);
+  --border-strong: var(--color-neutral-500);
+  --border-focus: var(--color-neutral-0);
+
+  --success-bg: var(--color-neutral-800);
+  --warning-bg: var(--color-neutral-800);
+  --danger-bg: var(--color-neutral-800);
+  --info: var(--color-neutral-300);
+  --info-bg: var(--color-neutral-800);
+
+  --weight-label: var(--font-weight-medium);
+
+  --h1: var(--size-h3);
+  --h2: var(--size-h4);
+  --h3: var(--size-body-lg);
+  --h4: var(--size-body-base);
+  --text-lg: var(--size-body-base);
+
+  --space-section: var(--space-24);
+  --section-gap: var(--space-16);
+  --gutter: var(--space-24);
+  --space-inline: var(--space-8);
+  --tight: var(--space-4);
+  --space-field: var(--space-12);
+  --space-form: var(--space-16);
+  --control-x: var(--space-16);
+
+  --motion-transition: var(--duration-fast);
 }
 
-/* ---- bridge to the pre-brief names ----
- * The catalogue's components were written against --paper / --accent / --focus. Rather than sweep
- * every rule at once, those names now RESOLVE to the semantic tokens above, so a mode switch moves
- * the whole page and the components keep reading a semantic name. New CSS should use the semantic
- * names directly.
- */
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════
+   BREAKPOINTS — the handoff's responsive intent (frame 67:87).
+   1440 is the designed-for width and needs no query. 810 is specified in prose but NOT drawn;
+   its values come from the responsive table, not from a frame, so they are marked as such.
+   ═══════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* Preview at 810: gutter drops to Prestige's own >=700 value; section rhythm falls to the theme's
+   sub-1000px value. Neither is an invented step. SPEC-DERIVED — no frame drawn. */
+@media (max-width: 1023px) {
+  :root:not([data-mode='admin']):not([data-mode='admin-dark']),
+  [data-mode='preview'] {
+    --gutter: var(--space-32);
+    --space-section: var(--space-64);
+  }
+}
+
+/* Preview at 390: one column, not two. Cards run full-bleed to a 16px gutter. */
+@media (max-width: 767px) {
+  :root:not([data-mode='admin']):not([data-mode='admin-dark']),
+  [data-mode='preview'] {
+    --gutter: var(--space-16);
+    --space-section: var(--space-64);
+    --text-lg: var(--size-body-base);
+    --h1: var(--h1-mobile);
+    --h2: var(--h2-mobile);
+    --h3: var(--h3-mobile);
+    --h4: var(--h4-mobile);
+    --text-xl: var(--size-body-xl-min);
+  }
+
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════════
+   BRIDGE to the pre-brief names. The catalogue's components were written against --paper /
+   --accent / --focus; those names RESOLVE to the semantics above rather than holding their own
+   values, so a mode switch moves the whole page. New CSS should use the semantic names directly.
+   ═══════════════════════════════════════════════════════════════════════════════════════════════ */
 :root {
   --paper: var(--canvas);
   --paper-deep: var(--canvas-sunken);
   --paper-90: color-mix(in srgb, var(--canvas) 92%, transparent);
   --accent: var(--brand);
-  --text-md: var(--text-lg); /* the earlier name for 15px, kept so nothing breaks mid-migration */
+  --text-md: var(--text-lg); /* the earlier name for the lead step, kept mid-migration */
   --green: var(--success);
   --focus: var(--focus-ring);
+
+  /* --canvas-sunken has no Figma semantic; it is the catalogue's own sunken paper, kept so the
+     skeleton base and the plate wells do not lose their ground. */
+  --canvas-sunken: var(--color-neutral-200);
+}
+
+[data-mode='admin-dark'] {
+  --canvas-sunken: var(--color-neutral-950);
 }

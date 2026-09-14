@@ -4,9 +4,10 @@
 // files may take a moment to propagate) before the id is accepted. `uploadFromUrl` never throws.
 
 import { randomBytes } from 'node:crypto';
-import { DRIVE_ID_RE, driveImageUrl } from '../images.ts';
+import { lh3Url, DRIVE_ID_RE } from '../images.ts';
 import { scrub } from '../sheets/errors.ts';
-import { DRIVE_UPLOAD_API, DriveApiError, describeDriveError, type DriveHttp } from './client.ts';
+import { DRIVE_API, DRIVE_UPLOAD_API, DriveApiError, describeDriveError, type DriveHttp } from './client.ts';
+import { applyTransforms } from './transform.ts';
 import {
   DOWNLOAD_HOSTS,
   MAX_UPLOAD_BYTES,
@@ -216,7 +217,7 @@ export async function waitForLh3(
 ): Promise<boolean> {
   const attempts = opts.attempts ?? LH3_ATTEMPTS;
   const delayMs = opts.delayMs ?? LH3_RETRY_DELAY_MS;
-  const url = driveImageUrl(id, 800);
+  const url = lh3Url(id, 800);
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const res = await fetchImpl(url, {
@@ -256,11 +257,18 @@ function classifyDriveError(
 export function createUploader(
   http: DriveHttp,
   deps: UploaderDeps,
-): (url: string, name: string) => Promise<UploadResult> {
-  return async (url, name) => {
+): (
+  url: string,
+  name: string,
+  intoFolderId?: string,
+  opts?: { supplier?: string; index?: number },
+) => Promise<UploadResult> {
+  return async (url, name, intoFolderId, opts) => {
+    // `intoFolderId` is the rug's own "All Images" folder (brief §12). Without it the photo lands in
+    // the flat root, which is what a plain import outside a product commit still does.
     let folderId: string;
     try {
-      folderId = await deps.ensureFolder();
+      folderId = intoFolderId ?? (await deps.ensureFolder());
     } catch (e) {
       const out = classifyDriveError(e, 'folder_failed');
       http.logger.error('photo import: folder unavailable', { error: describeDriveError(e) });
@@ -278,6 +286,18 @@ export function createUploader(
     }
     const mime = mimeOf(downloaded.contentType);
     if (!isImageType(mime)) return { error: 'not_image', detail: mime || 'missing content-type' };
+
+    // Per-supplier fixes on the way in (owner, 2026-09-13). Never fatal: a photo that could not be
+    // rotated is still a photo the studio wants, so a failure here logs and stores the original.
+    const fixed = await applyTransforms(downloaded, {
+      supplier: opts?.supplier ?? '',
+      index: opts?.index ?? 0,
+    });
+    if (fixed.skipped) {
+      http.logger.warn('photo import: transform skipped, storing the original', { detail: fixed.skipped });
+    }
+    downloaded = { bytes: fixed.bytes, contentType: fixed.contentType };
+
     const size = downloaded.bytes.byteLength;
     if (size === 0) return { error: 'download_failed', detail: 'empty body' };
     if (size > MAX_UPLOAD_BYTES) return { error: 'too_large', detail: `${size} bytes > ${MAX_UPLOAD_BYTES}` };
@@ -315,5 +335,35 @@ export function createUploader(
     }
     http.logger.info(`photo import: uploaded ${fileName} as ${id}`, { bytes: size, mime });
     return { id, name: created.name ?? fileName };
+  };
+}
+
+/**
+ * Copies a file that is already in Drive into another folder under a new name — the "primary
+ * duplicated deliberately" of brief §12.
+ *
+ * It is a copy rather than a second parent because a shortcut or a multi-parent file behaves oddly
+ * in the Drive UI and the studio browses these folders by hand. One extra copy of one image per rug
+ * is a price worth paying for a folder that reads like a folder.
+ */
+export function createCopier(
+  http: DriveHttp,
+): (fileId: string, name: string, intoFolderId: string) => Promise<UploadResult> {
+  return async (fileId, name, intoFolderId) => {
+    try {
+      const created = await http.request<{ id?: string; name?: string }>({
+        method: 'POST',
+        url: `${DRIVE_API}/files/${encodeURIComponent(fileId)}/copy`,
+        query: [['fields', 'id,name']],
+        body: { json: { name, parents: [intoFolderId] } },
+        policy: 'write',
+      });
+      if (!created.id) return { error: 'upload_failed', detail: 'files.copy returned no id' };
+      return { id: created.id, name: created.name ?? name };
+    } catch (e) {
+      const out = classifyDriveError(e, 'upload_failed');
+      http.logger.warn('photo import: copy failed', { error: describeDriveError(e) });
+      return out;
+    }
   };
 }

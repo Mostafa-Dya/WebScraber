@@ -94,13 +94,18 @@ describe('/admin/login', () => {
     });
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('<form method="post" action="/admin/login" class="login">');
-    expect(html).toContain('<input type="hidden" name="next" value="/admin/rugs/SL-030">');
+    // A1 (Figma 47:3). The form still posts without JavaScript — that is the property under test,
+    // not the class names, so these assert the contract rather than the markup of the day.
+    expect(html).toMatch(/<form method="post" action="\/admin\/login"/);
+    expect(html).toMatch(/<input type="hidden" name="next" value="\/admin\/rugs\/SL-030"/);
     expect(html).toMatch(
-      /<input id="password" name="password" type="password" autocomplete="current-password" required autofocus>/,
+      /<input class="input input--password" type="password" id="password" name="password"[^>]*required[^>]*autocomplete="current-password"/,
     );
-    expect(html).toContain('<button class="go" type="submit">Log in</button>');
-    expect(html).toMatch(/<div id="m1" class="msg err" role="alert"><\/div>/);
+    expect(html).toContain('<label class="field__label" for="password">Password</label>');
+    expect(html).toMatch(/<button type="submit" class="btn btn--primary[^"]*"[^>]*>\s*Enter\s*<\/button>/);
+    // Resting state says nothing: no message element at all, rather than an empty one.
+    expect(html).not.toContain('field__message');
+    expect(html).not.toContain('aria-invalid');
     expect(html).not.toContain('class="tabs"');
     expect(html).not.toMatch(/\son[a-z]+=/i);
     const evil = await container.renderToResponse(Login, {
@@ -110,7 +115,7 @@ describe('/admin/login', () => {
     });
     expect(await evil.text()).toContain('name="next" value="/admin"');
   });
-  it('POST with a wrong password answers 401 with the generic message and no cookie', async () => {
+  it('POST with a wrong password answers 401, marks the field invalid, and sets no cookie', async () => {
     const container = await AstroContainer.create();
     const res = await container.renderToResponse(Login, {
       request: form({ password: 'wrong password!!', next: '/admin' }),
@@ -119,7 +124,15 @@ describe('/admin/login', () => {
     });
     expect(res.status).toBe(401);
     const html = await res.text();
-    expect(html).toContain('<div id="m1" class="msg err on" role="alert">Login failed.</div>');
+    // A2 (47:28/47:44): the message is the field's own description, announced, and the field is
+    // marked invalid. Copy is Figma's — ADMIN_SPEC records why it supersedes the old generic line.
+    expect(html).toMatch(
+      /<p class="field__message field__message--danger" id="password-error" role="alert">/,
+    );
+    expect(html).toContain('That password is not correct.');
+    expect(html).toContain('aria-describedby="password-error"');
+    expect(html).toContain('aria-invalid="true"');
+    // Whatever the message says, it must never echo what was typed.
     expect(html).not.toContain('wrong password');
     expect([...App.getSetCookieFromResponse(res)]).toHaveLength(0);
   });
@@ -164,7 +177,13 @@ describe('/admin/login', () => {
     });
     expect(res.status).toBe(429);
     expect(res.headers.get('retry-after')).toMatch(/^\d+$/);
-    expect(await res.text()).toMatch(/Login failed\. Try again in \d+ s\./);
+    // A3 (47:51/47:67). Locked, not invalid: the attempt never reached the password, so the field
+    // is disabled with a WARNING-toned line and the button reads "Locked" rather than "Enter".
+    const throttled = await res.text();
+    expect(throttled).toMatch(/Too many attempts — wait 60s\. \d+s remaining\./);
+    expect(throttled).toMatch(/<p class="field__message field__message--warning"/);
+    expect(throttled).not.toContain('aria-invalid');
+    expect(throttled).toMatch(/<button type="submit"[^>]*disabled[^>]*>\s*Locked\s*<\/button>/);
     // the session cookie is not minted while throttled, even with the right password
     expect([...App.getSetCookieFromResponse(res)]).toHaveLength(0);
     adminRuntime.throttle.succeed('a'.repeat(32)); // not this ip; state is per ip hash

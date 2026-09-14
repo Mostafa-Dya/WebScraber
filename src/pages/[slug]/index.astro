@@ -106,7 +106,7 @@ const title = customer ? `Serio Ludere — ${customer.displayName}` : 'Serio Lud
             <div class="pv-title-row">
               <h1 class="pv-h1">The collection</h1>
               <span class="pv-spacer" aria-hidden="true" />
-              <PreviewControls rates={rates} />
+              <PreviewControls rates={rates} sort />
             </div>
             <p class="pv-lede">
               <span class="pv-wide-only">Every rug we have available. </span>Mark what draws you — and what
@@ -128,6 +128,7 @@ const title = customer ? `Serio Ludere — ${customer.displayName}` : 'Serio Lud
                     data-card
                     data-rug={card.id}
                     data-tags={card.tags.map((t) => t.slug || tagSlug(t.name, catalogue.tags)).join(' ')}
+                    data-likes={card.likes}
                   >
                     <ProductCard
                       card={card}
@@ -166,7 +167,10 @@ const title = customer ? `Serio Ludere — ${customer.displayName}` : 'Serio Lud
     column-gap: var(--stack-lg);
     row-gap: var(--section-gap);
     align-items: start;
-    /* The grid band's own bottom padding, which is what puts the footer 176 clear of the last row. */
+    /* The grid band's own bottom padding. --space-section is 112 at >=1024 and 64 at <=767, which is
+       what Figma 58:250 draws below the last mobile row. Together with .pv-footer's margin-top of
+       --section-gap (64 at both widths) that is 176 of clearance on desktop and 128 at 390 — Figma
+       58:230: grid ends y=2026, footer starts y=2090. */
     padding-bottom: var(--space-section);
   }
 
@@ -197,7 +201,6 @@ const title = customer ? `Serio Ludere — ${customer.displayName}` : 'Serio Lud
       gap: var(--stack-sm);
     }
     .pv-title-row .pv-h1 {
-      font-size: var(--h3);
       white-space: nowrap;
     }
     .pv-title-row .pv-spacer {

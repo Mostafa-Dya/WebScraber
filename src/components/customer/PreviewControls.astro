@@ -20,8 +20,13 @@ import { SUPPORTED_CURRENCIES, type RateTable } from '../../lib/currency.ts';
 
 interface Props {
   rates: RateTable;
+  /**
+   * Offer the sort control (owner, 2026-09-13: sort by like count). Only the grid can be sorted, so
+   * the detail page renders the same control strip without it rather than showing a dead select.
+   */
+  sort?: boolean;
 }
-const { rates } = Astro.props;
+const { rates, sort = false } = Astro.props;
 const fromSheet = Object.keys(rates.rates).filter((c) => c in rates.symbols);
 const currencies = fromSheet.length
   ? ['USD', ...fromSheet.filter((c) => c !== 'USD')]
@@ -35,6 +40,26 @@ const currencies = fromSheet.length
       <span class="pv-seg-long">ft / in</span><span class="pv-seg-short">ft</span>
     </button>
   </div>
+  {
+    sort && (
+      <div class="pv-select">
+        {/* Native <select> for the same reason the currency picker is one: the platform's keyboard
+            handling, mobile pickers and screen-reader support are not worth re-earning by hand. */}
+        <select id="sortBy" aria-label="Sort rugs">
+          <option value="featured">Featured</option>
+          <option value="liked">Most liked</option>
+        </select>
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false">
+          <path
+            d="M4 6.5L8 10.5L12 6.5"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </div>
+    )
+  }
   <div class="pv-select">
     <select id="cur" aria-label="Currency">
       {currencies.map((c) => <option>{c}</option>)}
@@ -70,11 +95,17 @@ const currencies = fromSheet.length
     font-weight: 700;
     line-height: 1;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
+    /* Tracking 0, not an optical bump: the Label style (Inter 700 / 12 / uppercase) is drawn with
+       letter-spacing 0 on every run in this file, and the Unit Toggle's own segments in 130:260
+       carry none. Declared rather than omitted so it reads as the Figma value, and so it visibly
+       agrees with .pv-select select below and .pv-label / .pv-btn in preview.css. */
+    letter-spacing: 0;
     color: var(--ink-soft);
     cursor: pointer;
     /* No transition, deliberately: the Unit Toggle documentation says switching is instant and every
-       dimension on the surface reconverts at the same moment. */
+       dimension on the surface reconverts at the same moment. Animating the segment would put motion
+       between a question and its answer. Declared, not merely absent, so nobody "fixes" it later. */
+    transition: none;
   }
   .pv-seg button.on,
   .pv-seg button[aria-pressed='true'] {
@@ -115,7 +146,7 @@ const currencies = fromSheet.length
     right: var(--stack-md);
     width: 16px;
     height: 16px;
-    color: var(--ink-soft);
+    color: var(--ink);
     pointer-events: none;
   }
 
@@ -129,9 +160,7 @@ const currencies = fromSheet.length
     .pv-controls {
       gap: var(--stack-sm);
     }
-    .pv-seg button {
-      padding-inline: var(--stack-sm);
-    }
+
     .pv-seg-long {
       display: none;
     }
@@ -144,4 +173,9 @@ const currencies = fromSheet.length
 <script>
   import { initPrefs } from '../../scripts/prefs.ts';
   initPrefs();
+</script>
+
+<script>
+  import { initSort } from '../../scripts/customer/sort.ts';
+  initSort();
 </script>

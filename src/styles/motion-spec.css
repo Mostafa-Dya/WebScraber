@@ -1,0 +1,190 @@
+/* Motion — Figma `07 · Handoff` frame 67:118, the per-element spec.
+ *
+ * "Per element, not a global default. Every duration and curve below is either extracted from the
+ * live theme or reasoned from what the element is doing. Transform and opacity only — nothing
+ * animates layout."
+ *
+ * EXTRACTED from settings_data / the theme's own CSS:
+ *   card image hover 600ms ease-out (product_card_image_zoom_duration / _easing / _amount 130%)
+ *   coming-soon frame step 500ms linear (password.json frame_duration)
+ *   quiet control hover 150ms ease (serio-password.css)
+ *   button hover wipe — Prestige's own two-layer background wipe. DO NOT REIMPLEMENT IT; it is
+ *   already gated behind (pointer: fine) and (prefers-reduced-motion: no-preference).
+ *
+ * The page transition is the theme's @view-transition, which the preview inherits and the admin must
+ * NOT: "a view transition on a data table reads as lag". motion.css is imported only by Layout.astro
+ * and carries that rule, so the separation is already correct.
+ *
+ * Everything here collapses to instant under prefers-reduced-motion. Prestige already honours that —
+ * its coming-soon sequence freezes on frame 1 rather than hiding, and button hover is gated off — so
+ * this matches that posture rather than inventing a new one.
+ */
+
+/* ---- Product card image hover: 600ms ease-out, scale to 130% ----
+   EXTRACTED. The preview must feel identical to the storefront, so the numbers are the theme's. */
+@media (hover: hover) and (pointer: fine) {
+  [data-card-image] {
+    overflow: clip;
+  }
+  [data-card-image] img {
+    transition: transform var(--motion-transition) var(--motion-ease);
+  }
+  [data-card-image]:hover img {
+    transform: scale(1.3);
+  }
+}
+
+/* ---- Card grid entry: 400ms, 60ms stagger, opacity 0->1 and translateY 8px->0 ----
+   60ms sits mid-range of the 40-80ms band: fast enough that eight cards resolve in under half a
+   second, slow enough to read as sequence rather than jitter. The stagger caps at the first 12
+   cards; beyond that it is noise, so card 13 onward shares card 12's delay. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-grid-enter] > * {
+    animation: card-enter 400ms var(--motion-ease) both;
+  }
+  [data-grid-enter] > *:nth-child(1) { animation-delay: 0ms; }
+  [data-grid-enter] > *:nth-child(2) { animation-delay: 60ms; }
+  [data-grid-enter] > *:nth-child(3) { animation-delay: 120ms; }
+  [data-grid-enter] > *:nth-child(4) { animation-delay: 180ms; }
+  [data-grid-enter] > *:nth-child(5) { animation-delay: 240ms; }
+  [data-grid-enter] > *:nth-child(6) { animation-delay: 300ms; }
+  [data-grid-enter] > *:nth-child(7) { animation-delay: 360ms; }
+  [data-grid-enter] > *:nth-child(8) { animation-delay: 420ms; }
+  [data-grid-enter] > *:nth-child(9) { animation-delay: 480ms; }
+  [data-grid-enter] > *:nth-child(10) { animation-delay: 540ms; }
+  [data-grid-enter] > *:nth-child(11) { animation-delay: 600ms; }
+  [data-grid-enter] > *:nth-child(n + 12) { animation-delay: 660ms; }
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- Product detail hero: 500ms ease-out, OPACITY ONLY ----
+   No scale. The image is the product; moving it while the buyer is trying to judge it works against
+   the task. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-hero-reveal] {
+    animation: fade-in 500ms var(--motion-ease) both;
+  }
+}
+
+/* ---- Like/dislike tap: 120ms ease-out, scale 1 -> 0.92 -> 1 ----
+   Short because it must land before the finger lifts; any longer and the control feels laggy rather
+   than responsive. The pending dot is DELIBERATELY STATIC — the brief asks for a quiet pending mark,
+   not a spinner, and an animated dot on every card in a scrolling grid is exactly the nagging this
+   state must avoid. So there is no rule for it here, on purpose. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-react]:active {
+    animation: react-tap 120ms var(--motion-ease);
+  }
+}
+
+@keyframes react-tap {
+  50% {
+    transform: scale(0.92);
+  }
+}
+
+/* ---- Toast: in 200ms ease-out, out 150ms ease-in ----
+   Out is faster than in: arriving should be noticed, leaving should not. */
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    animation: toast-in 200ms var(--motion-ease) both;
+  }
+  .toast.is-leaving {
+    animation: toast-out 150ms cubic-bezier(0.42, 0, 1, 1) both;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+/* ---- Stepped progress advance: 200ms ease-out on the marker fill and the count ----
+   The BAR never animates: a moving bar under a real count implies false precision. */
+@media (prefers-reduced-motion: no-preference) {
+  .step__marker,
+  .step__detail {
+    transition:
+      background-color 200ms var(--motion-ease),
+      border-color 200ms var(--motion-ease),
+      color 200ms var(--motion-ease);
+  }
+}
+
+/* ---- Fetch: photo reveal 300ms ease-out, fields 200ms with a 40ms stagger ----
+   The photo lands BEFORE the fields so a wrong scrape can be cancelled without reading any metadata.
+   The field stagger is short — this is a form, not a gallery. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-fetch-photo] {
+    animation: fade-in 300ms var(--motion-ease) both;
+  }
+  [data-fetch-fields] > * {
+    animation: fade-in 200ms var(--motion-ease) both;
+  }
+  [data-fetch-fields] > *:nth-child(1) { animation-delay: 0ms; }
+  [data-fetch-fields] > *:nth-child(2) { animation-delay: 40ms; }
+  [data-fetch-fields] > *:nth-child(3) { animation-delay: 80ms; }
+  [data-fetch-fields] > *:nth-child(4) { animation-delay: 120ms; }
+  [data-fetch-fields] > *:nth-child(5) { animation-delay: 160ms; }
+  [data-fetch-fields] > *:nth-child(n + 6) { animation-delay: 200ms; }
+}
+
+/* ---- Collection description See more: 200ms ease-out ----
+   The one-line clamp is released and opacity carries the revealed lines, so rows below shift once,
+   not twice. */
+@media (prefers-reduced-motion: no-preference) {
+  .crow--expanded .crow__description {
+    animation: fade-in 200ms var(--motion-ease) both;
+  }
+}
+
+/* ---- Currency menu / unit toggle motion: REMOVED with their components ----
+   Both controls are PreviewControls.astro now (see components.css). The native <select> brings the
+   platform's own open animation, and PreviewControls keeps the "switching units is INSTANT" rule
+   as a `transition: none` on .pv-seg — the rule survived, the duplicate did not. */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---- prefers-reduced-motion: all of the above collapse to instant state changes ---- */
+@media (prefers-reduced-motion: reduce) {
+  [data-card-image] img,
+  [data-grid-enter] > *,
+  [data-hero-reveal],
+  [data-react]:active,
+  .toast,
+  .toast.is-leaving,
+  .step__marker,
+  .step__detail,
+  [data-fetch-photo],
+  [data-fetch-fields] > *,
+  .crow--expanded .crow__description {
+    animation: none;
+    transition: none;
+  }
+}

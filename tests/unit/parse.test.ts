@@ -173,7 +173,7 @@ describe('parseCollections / parseTags', () => {
       ['x', '', 'x', '', '', '', 2],
     ]);
     expect(dropped).toHaveLength(1); // nameless row
-    expect(items[0]?.coverImageUrl).toBe(`https://lh3.googleusercontent.com/d/${ID}=w1600`);
+    expect(items[0]?.coverImageUrl).toBe(`/api/image/${ID}?w=1600`);
     expect(items[1]?.coverImageUrl).toBeUndefined();
     expect(warnings[0]?.issues[0]).toMatch(/cover_image_url: host "evil.example" is not allow-listed/);
   });

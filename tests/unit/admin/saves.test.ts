@@ -36,6 +36,7 @@ function rug(id: string, name: string, status: Rug['status'] = 'active'): Rug {
     slug: name.toLowerCase(),
     name,
     description: '',
+    collections: [],
     collection: '',
     tags: [],
     photos: [],

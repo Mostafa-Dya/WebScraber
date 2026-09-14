@@ -1,0 +1,41 @@
+---
+// Image Gallery — Figma 24:261. Primary 520x640 plus a strip of 72x90 (4:5) thumbs.
+//
+// Only the primary image is written to the sheet; the rest live in Drive. The selected thumb takes a
+// 2px border/strong edge, the others a 1px hairline — the same 2px the focus ring uses, which is why
+// selection and focus must not land on the same element at once.
+//
+// No lightbox is drawn anywhere in the file, so none is built.
+interface Props {
+  images: { src: string; alt: string }[];
+  /** Index of the image shown in the primary slot. */
+  selected?: number;
+  class?: string;
+}
+const { images, selected = 0, class: className } = Astro.props;
+const primary = images[selected] ?? images[0];
+---
+
+<div class:list={['gallery', className]} data-gallery>
+  <div class="gallery__primary">
+    {primary && <img src={primary.src} alt={primary.alt} width="520" height="640" data-gallery-primary />}
+  </div>
+
+  {
+    images.length > 1 && (
+      <div class="gallery__strip" role="group" aria-label="Product images">
+        {images.map((img, i) => (
+          <button
+            type="button"
+            class="gallery__thumb"
+            aria-current={i === selected ? 'true' : 'false'}
+            data-gallery-thumb={i}
+          >
+            <img src={img.src} alt="" width="72" height="90" />
+            <span class="sr-only">{`Image ${i + 1} of ${images.length}`}</span>
+          </button>
+        ))}
+      </div>
+    )
+  }
+</div>

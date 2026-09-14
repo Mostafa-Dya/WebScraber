@@ -59,6 +59,7 @@ const rug: AdminRug = {
   slug: 'winks',
   name: 'Winks',
   description: 'A kilim',
+  collections: ['Kilims'],
   collection: 'Kilims',
   tags: ['Kilim'],
   photos: [PHOTO],
@@ -172,6 +173,29 @@ const scraped = {
   warnings: ['no cm on page; converted'],
 };
 
+/**
+ * Tick a collection in the multi-select, the way a user does.
+ *
+ * The control is no longer a <select> with a `.value` (owner requirement 2026-09-13: a rug can be in
+ * several collections), so the test has to check the box and let the change event reach the binder
+ * that maintains the summary line — exactly the path a click takes.
+ */
+function pickCollection(name: string, on = true): void {
+  const box = document.querySelector<HTMLInputElement>(
+    `#f_collection input[type="checkbox"][value="${name}"]`,
+  );
+  if (!box) throw new Error(`no collection option "${name}" in the multi-select`);
+  box.checked = on;
+  box.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/** The collections currently ticked, in DOM order. */
+function pickedCollections(): string[] {
+  return [...document.querySelectorAll<HTMLInputElement>('#f_collection input[type="checkbox"]')]
+    .filter((b) => b.checked)
+    .map((b) => b.value);
+}
+
 describe('parsePhotoLines', () => {
   it('accepts bare ids and Drive / lh3 links, de-duplicates, reports junk', () => {
     const r = parsePhotoLines(
@@ -181,6 +205,27 @@ describe('parsePhotoLines', () => {
     expect(r.bad).toEqual(['not-an-id']);
   });
 });
+
+/**
+ * The fetch modal (P5-P9) is server-rendered on the real pages but not in the `addHtml` fixture, so
+ * rug-form falls back to applying the scrape directly. These tests mount the modal too, which turns
+ * the GATED path on: nothing reaches the form until "Use these" is pressed.
+ */
+const FETCH_MODAL = `
+  <dialog id="fetch-result" class="fetch">
+    <h2 class="fetch__title" data-fetch-title>Fetching</h2>
+    <div class="fetch__bar" role="progressbar" data-fetch-bar hidden></div>
+    <div class="fetch__body" data-fetch-body></div>
+    <div class="fetch__footer" data-fetch-footer></div>
+  </dialog>`;
+
+function stubDialogs(): void {
+  for (const el of document.querySelectorAll('dialog')) {
+    const d = el as HTMLDialogElement & { showModal: () => void; close: () => void };
+    d.showModal = () => d.setAttribute('open', '');
+    d.close = () => d.removeAttribute('open');
+  }
+}
 
 describe('add mode', () => {
   let calls: Array<{ url: string; body: Record<string, unknown> }>;
@@ -362,7 +407,7 @@ describe('add mode', () => {
     await form.add();
     expect(cls('m2')).toBe('msg on err');
     expect(text('m2')).toContain('Pick a collection first');
-    (document.getElementById('f_collection') as HTMLSelectElement).value = 'Kilims';
+    pickCollection('Kilims');
     set('f_photos', `https://drive.google.com/file/d/1cccccccccccccccccccccccccccccccc/view`);
     (document.getElementById('f_notes') as HTMLTextAreaElement).value = 'note';
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true }));
@@ -370,13 +415,19 @@ describe('add mode', () => {
     expect((document.getElementById('btnAdd') as HTMLButtonElement).disabled).toBe(true);
     await vi.waitFor(() => expect(form.busy()).toBe(false));
     const photos = calls.find((c) => c.url === '/api/admin/photos');
-    expect(photos?.body).toEqual({ urls: scraped.photos.map((p) => p.url), namePrefix: 'khal-mohammadi' });
+    expect(photos?.body).toMatchObject({
+      urls: scraped.photos.map((p) => p.url),
+      namePrefix: 'khal-mohammadi',
+      productId: 'SL-030',
+    });
     const create = calls.find((c) => c.url === '/api/admin/rugs');
+    // Every photo landed, so the row is written complete rather than pending.
+    expect(create?.body).toMatchObject({ commitStatus: 'complete' });
     expect(create?.body).toMatchObject({
       id: 'SL-030',
       slug: 'khal-mohammadi',
       name: 'Khal Mohammadi',
-      collection: 'Kilims',
+      collections: ['Kilims'],
       tags: [],
       photos: [PHOTO, '1cccccccccccccccccccccccccccccccc'],
       widthCm: 130,
@@ -396,7 +447,7 @@ describe('add mode', () => {
     // reset: name/url cleared, collection kept, preview closed
     expect(val('yourName')).toBe('');
     expect(val('url')).toBe('');
-    expect((document.getElementById('f_collection') as HTMLSelectElement).value).toBe('Kilims');
+    expect(pickedCollections()).toEqual(['Kilims']);
     expect(cls('preview')).toBe('preview');
     expect(val('f_id')).toBe('SL-030');
   });
@@ -406,7 +457,7 @@ describe('add mode', () => {
       status: 400,
       body: { ok: false, error: 'invalid body', issues: [{ path: 'widthCm', message: 'Too small' }] },
     }));
-    (document.getElementById('f_collection') as HTMLSelectElement).value = 'Tulu';
+    pickCollection('Tulu');
     set('f_name', 'Small');
     (document.getElementById('savePhotos') as HTMLInputElement).checked = false;
     form.manualEntry();
@@ -516,5 +567,94 @@ describe('edit mode', () => {
     await form.setStatus('active');
     expect(calls[1]?.body).toEqual({ status: 'active', version: 'e'.repeat(16) });
     expect((document.getElementById('btnRestore') as HTMLButtonElement).hidden).toBe(true);
+  });
+});
+
+describe('the fetch modal gates the form (P5-P9)', () => {
+  let calls: Array<{ url: string; body: Record<string, unknown> }>;
+
+  const mountWithModal = (handler: Handler): RugForm => {
+    document.body.innerHTML =
+      stripStyles(addHtml) +
+      FETCH_MODAL +
+      dataBlock({
+        mode: 'add',
+        collections,
+        tags: tags.map((t) => ({ ...t, color: '' })),
+        nextId: 'SL-030',
+        defaultStatus: 'draft',
+        roundStep: 5,
+        driveScopeOk: true,
+      });
+    stubDialogs();
+    calls = [];
+    return initRugForm(document, { fetchImpl: fakeFetch(handler, calls), confirmImpl: () => true });
+  };
+
+  const ok = (): { status: number; body: unknown } => ({
+    status: 200,
+    body: { ok: true, data: scraped, via: 'impit', cached: false, ms: 12 },
+  });
+
+  it('shows P5 while the request is out, naming the product and the host', async () => {
+    const form = mountWithModal(ok);
+    set('url', scraped.sourceUrl);
+    const pending = form.fetchUrl();
+    // The modal opens before the response lands — that is what makes Cancel meaningful.
+    expect(document.getElementById('fetch-result')?.hasAttribute('open')).toBe(true);
+    expect(text('fetch-result')).toContain('Reaching ecarpetgallery.com');
+    await pending;
+  });
+
+  it('does NOT touch the form until the result is accepted', async () => {
+    const form = mountWithModal(ok);
+    set('url', scraped.sourceUrl);
+    await form.fetchUrl();
+
+    // P7 is on screen with the values…
+    expect(document.querySelector('[data-fetch-body]')?.textContent).toContain('Hand-knotted');
+    // …and the form behind it is still untouched. This is the whole point of the modal: a scrape of
+    // the wrong rug is thrown away before a single field has been read.
+    expect(val('f_material')).toBe('');
+    expect(val('f_method')).toBe('');
+
+    form.useFetched();
+    expect(val('f_material')).toBe('Wool');
+    expect(val('f_method')).toBe('Hand-knotted');
+    expect(document.getElementById('fetch-result')?.hasAttribute('open')).toBe(false);
+  });
+
+  it('cancelling leaves the form exactly as it was, and says nothing was written', async () => {
+    const form = mountWithModal(ok);
+    set('url', scraped.sourceUrl);
+    await form.fetchUrl();
+    document.querySelector<HTMLButtonElement>('[data-fetch-footer] .btn--ghost')!.click();
+    expect(val('f_material')).toBe('');
+    expect(text('m1')).toContain('nothing was written');
+    expect(document.getElementById('fetch-result')?.hasAttribute('open')).toBe(false);
+  });
+
+  it('a refused fetch shows P9 with the host named, and manual entry still works', async () => {
+    const form = mountWithModal(() => ({
+      status: 502,
+      body: {
+        ok: false,
+        error: 'blocked',
+        message: 'blocked the request.',
+        manual: { supplier: 'ecarpetgallery', supplierRef: '380114', sourceUrl: scraped.sourceUrl },
+      },
+    }));
+    set('url', scraped.sourceUrl);
+    await form.fetchUrl();
+
+    const modalText = text('fetch-result');
+    expect(modalText).toContain("Couldn't fetch that page");
+    expect(modalText).toContain('ecarpetgallery.com blocked the request.');
+    // Load-bearing reassurance: after a failure the natural assumption is that the typing is gone.
+    expect(modalText).toContain('still in the panel behind this');
+
+    document.querySelector<HTMLButtonElement>('[data-fetch-footer] .btn--ghost')!.click();
+    expect(cls('preview')).toBe('preview on');
+    expect(val('f_supplier')).toBe('ecarpetgallery');
   });
 });

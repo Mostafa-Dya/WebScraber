@@ -1,0 +1,31 @@
+---
+// Copy to Clipboard — Figma set 22:160. State = Default | Copied.
+//
+// The control changes icon, label AND colour, and holds the copied state for 2s. It also changes
+// width (133 -> 114), which is why anything hosting it must not be sized to its resting width.
+//
+// Both glyphs are rendered and swapped in CSS rather than replaced in JS, so the copied state cannot
+// flash an empty box while an icon loads.
+import Icon from './Icon.astro';
+
+interface Props {
+  /** The text placed on the clipboard. */
+  value: string;
+  label?: string;
+  copiedLabel?: string;
+  class?: string;
+}
+const { value, label = 'Copy link', copiedLabel = 'Copied', class: className } = Astro.props;
+---
+
+<button
+  type="button"
+  class:list={['copy', className]}
+  data-copy={value}
+  data-copied-label={copiedLabel}
+  data-label={label}
+>
+  <Icon name="copy" class="copy__icon--default" />
+  <Icon name="check" class="copy__icon--copied" />
+  <span data-copy-label>{label}</span>
+</button>

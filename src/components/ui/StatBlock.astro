@@ -1,0 +1,24 @@
+---
+// Stat Block — Figma set 23:224. Tone = Default | Positive | Muted.
+//
+// The value takes H3, which compresses 19.8 -> 15 automatically in Admin mode. Used on the Customer
+// detail header: visits, liked, disliked, not-yet-reviewed.
+//
+// Muted sets its colour on the CONTAINER and lets both texts inherit, where Default and Positive set
+// it per text node — three variants, two mechanisms. Matched rather than normalised, because the
+// inherited case is what makes a whole muted block read as one dimmed unit.
+// The class is `statblock`, not `stat`: src/styles/admin.css already owns `.stat` for the dashboard
+// tiles and both stylesheets load together on every admin page.
+interface Props {
+  label: string;
+  value: string | number;
+  tone?: 'default' | 'positive' | 'muted';
+  class?: string;
+}
+const { label, value, tone = 'default', class: className } = Astro.props;
+---
+
+<div class:list={['statblock', tone !== 'default' && `statblock--${tone}`, className]}>
+  <span class="statblock__label">{label}</span>
+  <span class="statblock__value">{value}</span>
+</div>

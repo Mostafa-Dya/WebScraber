@@ -29,44 +29,76 @@ export interface TagLike {
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
-export function collectionRow(
-  c: CollectionLike,
-  index: number,
-  doc: Document = document,
-): HTMLTableRowElement {
+export function collectionRow(c: CollectionLike, index: number, doc: Document = document): HTMLElement {
   const input = (field: string, value: string, label: string): HTMLInputElement =>
-    el('input', { 'data-field': field, value, 'aria-label': label }, [], doc);
-  return el(
-    'tr',
-    { 'data-id': c.id, 'data-version': c.version, 'data-name': c.name },
+    el('input', { 'data-field': field, value, 'aria-label': label, class: 'input' }, [], doc);
+
+  const ghost = (act: string, label: string, aria?: string): HTMLButtonElement =>
+    el(
+      'button',
+      { type: 'button', class: 'btn btn--ghost', 'data-act': act, ...(aria ? { 'aria-label': aria } : {}) },
+      label,
+      doc,
+    );
+
+  const description = c.description ?? '';
+
+  const head = el(
+    'div',
+    { class: 'crow__head' },
     [
-      el('td', { class: 'n' }, String(c.sortOrder ?? index + 1), doc),
-      el('td', {}, input('name', c.name, `Name of ${c.name}`), doc),
-      el('td', { class: 'mono' }, c.slug, doc),
-      el('td', {}, input('description', c.description, `Description of ${c.name}`), doc),
-      el('td', {}, input('cover', c.coverImageUrl ?? '', `Cover of ${c.name}`), doc),
-      el('td', { class: 'n' }, String(c.rugs ?? 0), doc),
+      el('span', { class: 'crow__name' }, c.name, doc),
+      el('span', { class: 'crow__rule' }, [], doc),
       el(
-        'td',
-        { class: 'acts' },
-        [
-          el(
-            'button',
-            { type: 'button', class: 'chip', 'data-act': 'up', 'aria-label': `Move ${c.name} up` },
-            '▲',
-            doc,
-          ),
-          el(
-            'button',
-            { type: 'button', class: 'chip', 'data-act': 'down', 'aria-label': `Move ${c.name} down` },
-            '▼',
-            doc,
-          ),
-          el('button', { type: 'button', class: 'chip', 'data-act': 'save' }, 'Save', doc),
-        ],
+        'span',
+        { class: 'crow__count' },
+        `${c.rugs ?? 0} ${(c.rugs ?? 0) === 1 ? 'product' : 'products'}`,
         doc,
       ),
+      ghost('up', '▲', `Move ${c.name} up`),
+      ghost('down', '▼', `Move ${c.name} down`),
+      ghost('edit', 'Edit'),
     ],
+    doc,
+  );
+
+  const children: HTMLElement[] = [head];
+
+  if (description) {
+    children.push(el('p', { class: 'crow__description' }, description, doc));
+    // "See more expands that row in place; it never navigates away, so comparing two collections'
+    // descriptions is a matter of expanding both."
+    children.push(
+      el('button', { type: 'button', class: 'crow__more', 'data-act': 'expand' }, 'See more', doc),
+    );
+  }
+
+  children.push(
+    el(
+      'div',
+      { class: 'crow__edit', hidden: 'hidden' },
+      [
+        input('name', c.name, `Name of ${c.name}`),
+        input('description', description, `Description of ${c.name}`),
+        input('cover', c.coverImageUrl ?? '', `Cover of ${c.name}`),
+        el('button', { type: 'button', class: 'btn btn--primary', 'data-act': 'save' }, 'Save', doc),
+        ghost('cancel', 'Cancel'),
+      ],
+      doc,
+    ),
+  );
+
+  return el(
+    'li',
+    {
+      class: 'crow',
+      'data-id': c.id,
+      'data-version': c.version,
+      'data-name': c.name,
+      'data-order': String(c.sortOrder ?? index + 1),
+      'data-slug': c.slug,
+    },
+    children,
     doc,
   );
 }
@@ -112,7 +144,7 @@ export function initCollections(doc: Document = document, api: ApiOptions = {}):
   let collections = new Map(data.collections.map((c) => [c.id, c]));
   let tags = new Map(data.tags.map((t) => [t.id, t]));
 
-  const tbody = byId<HTMLTableElement>('collectionTable', doc).querySelector('tbody')!;
+  const list = byId('collectionList', doc);
   const m5 = byId('m5', doc);
   const m6 = byId('m6', doc);
   const cName = byId<HTMLInputElement>('c_name', doc);
@@ -141,9 +173,9 @@ export function initCollections(doc: Document = document, api: ApiOptions = {}):
     );
 
   const renderCollections = (): void => {
-    clear(tbody);
+    clear(list);
     ordered().forEach((c, i) =>
-      tbody.appendChild(collectionRow({ ...c, rugs: rugCounts.get(c.id) ?? 0 }, i, doc)),
+      list.appendChild(collectionRow({ ...c, rugs: rugCounts.get(c.id) ?? 0 }, i, doc)),
     );
   };
 
@@ -169,24 +201,22 @@ export function initCollections(doc: Document = document, api: ApiOptions = {}):
     }
   };
 
-  const rowInputs = (tr: HTMLTableRowElement): { name: string; description: string; cover: string } => {
+  const rowInputs = (tr: HTMLElement): { name: string; description: string; cover: string } => {
     const v = (field: string): string =>
       tr.querySelector<HTMLInputElement>(`input[data-field="${field}"]`)?.value.trim() ?? '';
     return { name: v('name'), description: v('description'), cover: v('cover') };
   };
 
   const move = async (id: string, dir: 'up' | 'down'): Promise<void> => {
-    const rows = [...tbody.querySelectorAll<HTMLTableRowElement>('tr[data-id]')];
+    const rows = [...list.querySelectorAll<HTMLElement>('[data-id]')];
     const i = rows.findIndex((r) => r.dataset.id === id);
     const j = dir === 'up' ? i - 1 : i + 1;
     if (i < 0 || j < 0 || j >= rows.length) return;
     const me = rows[i]!;
     const other = rows[j]!;
-    if (dir === 'up') tbody.insertBefore(me, other);
-    else tbody.insertBefore(other, me);
-    const order = [...tbody.querySelectorAll<HTMLTableRowElement>('tr[data-id]')].map(
-      (r) => r.dataset.id ?? '',
-    );
+    if (dir === 'up') list.insertBefore(me, other);
+    else list.insertBefore(other, me);
+    const order = [...list.querySelectorAll<HTMLElement>('[data-id]')].map((r) => r.dataset.id ?? '');
     msg(m5, 'Saving the order…', 'busy');
     const r = await post<{ collections: CollectionLike[]; audit?: { row: number } }>(
       '/api/admin/collections/reorder',
@@ -201,13 +231,11 @@ export function initCollections(doc: Document = document, api: ApiOptions = {}):
     collections = new Map(r.data.collections.map((x) => [x.id, x]));
     renderCollections();
     msg(m5, r.data.audit ? `Order saved. Audit row ${r.data.audit.row}.` : 'Order unchanged.', 'ok');
-    tbody
-      .querySelector<HTMLButtonElement>(`tr[data-id="${CSS.escape(id)}"] button[data-act="${dir}"]`)
-      ?.focus();
+    list.querySelector<HTMLButtonElement>(`[data-id="${CSS.escape(id)}"] button[data-act="${dir}"]`)?.focus();
   };
 
   const saveCollection = async (id: string): Promise<void> => {
-    const tr = tbody.querySelector<HTMLTableRowElement>(`tr[data-id="${CSS.escape(id)}"]`);
+    const tr = list.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`);
     const current = collections.get(id);
     if (!tr || !current) return;
     const { name, description, cover } = rowInputs(tr);
@@ -365,17 +393,31 @@ export function initCollections(doc: Document = document, api: ApiOptions = {}):
     msg(m8, `Added ${r.data.tag.name}. Audit row ${r.data.audit.row}.`, 'ok');
   };
 
-  tbody.addEventListener('click', (e) => {
+  list.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-act]');
-    const tr = b?.closest<HTMLTableRowElement>('tr[data-id]');
+    const tr = b?.closest<HTMLElement>('[data-id]');
     if (!b || !tr?.dataset.id) return;
     const id = tr.dataset.id;
-    if (b.dataset.act === 'up' || b.dataset.act === 'down') void move(id, b.dataset.act);
-    else if (b.dataset.act === 'save') void saveCollection(id);
+    const act = b.dataset.act;
+    if (act === 'up' || act === 'down') void move(id, act);
+    else if (act === 'save') void saveCollection(id);
+    else if (act === 'edit' || act === 'cancel') {
+      const panel = tr.querySelector<HTMLElement>('.crow__edit');
+      if (!panel) return;
+      const opening = panel.hidden;
+      panel.hidden = !opening;
+      if (opening) panel.querySelector<HTMLInputElement>('input')?.focus();
+      else b.closest<HTMLElement>('.crow')?.querySelector<HTMLButtonElement>('[data-act="edit"]')?.focus();
+    } else if (act === 'expand') {
+      // The clamp is released in place and the label follows, so the control always says what it
+      // will do next rather than what it just did.
+      const expanded = tr.classList.toggle('crow--expanded');
+      b.textContent = expanded ? 'See less' : 'See more';
+    }
   });
-  tbody.addEventListener('keydown', (e) => {
+  list.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || !(e.target instanceof HTMLInputElement)) return;
-    const tr = e.target.closest<HTMLTableRowElement>('tr[data-id]');
+    const tr = e.target.closest<HTMLElement>('[data-id]');
     if (!tr?.dataset.id) return;
     e.preventDefault();
     void saveCollection(tr.dataset.id);

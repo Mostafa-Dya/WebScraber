@@ -5,14 +5,20 @@ import { dataRot } from './rotate.ts';
 import { orderedCollectionNames } from './sheets/parse.ts';
 import type { Catalogue, Rug, Tag } from './sheets/types.ts';
 import { STUDIO_EMAIL, STUDIO_WHATSAPP } from './studio.ts';
-import { collectionSlug, displayCollection, normaliseKey, slugify } from './text.ts';
+import { collectionSlug, collectionSlugs, displayCollection, normaliseKey, slugify } from './text.ts';
 
 export interface CardView {
   id: string;
   slug: string;
   name: string;
+  /** The primary collection's display name — the one label a card has room for. */
   collection: string;
+  /** The primary collection's slug: the canonical tab, and the grouping key for lead-first order. */
   collectionSlug: string;
+  /** Every collection this rug belongs to, primary first (owner requirement 2026-09-13). */
+  collections: string[];
+  /** The matching slugs, de-duplicated. Membership tests and tab filtering read THIS, not the primary. */
+  collectionSlugs: string[];
   photoUrl?: string;
   photoUrls: string[];
   rot: 'force' | '1' | '0';
@@ -99,6 +105,43 @@ export function tagSlug(name: string, tags: Tag[]): string {
   return hit?.slug ?? slugify(name);
 }
 
+/**
+ * Tags that earn a corner badge on the card (owner, 2026-09-13): "whenever a product has the tag
+ * Signed or/and Antique, this should be visible as a tag on the top left corner of the product card
+ * for both admin and customer".
+ *
+ * Two names, not a general "badge any tag" mechanism: these two say something about provenance that
+ * a buyer scanning a grid wants to see without opening anything. Badging every tag would turn the
+ * corner into a second filter strip and bury exactly the signal this is for.
+ */
+export const BADGE_TAG_NAMES: readonly string[] = ['Signed', 'Antique'];
+
+/**
+ * The badges a rug's tags earn, in BADGE_TAG_NAMES order rather than the sheet's.
+ *
+ * Fixed order so a rug that is both Signed and Antique always reads the same way round, whichever
+ * order the owner happened to type the tags in. Matching is case-insensitive: the Tags tab holds the
+ * canonical spelling, but a rug row may carry whatever the owner typed.
+ */
+export function badgesFor(tagNames: readonly string[]): string[] {
+  const have = new Set(tagNames.map(normaliseKey));
+  return BADGE_TAG_NAMES.filter((name) => have.has(normaliseKey(name)));
+}
+
+/**
+ * Like counts are shown only from five (owner, 2026-09-13): "the like count should be only visible
+ * on the products that has 5 likes count or more".
+ *
+ * Below the threshold the number is hidden rather than shown as zero — "1 like" on a private preview
+ * tells a buyer who else has been looking, and an empty heart says everything a lone like would.
+ */
+export const MIN_VISIBLE_LIKES = 5;
+
+/** The like count to display, or undefined when it has not yet earned its place on the card. */
+export function visibleLikes(likes: number | undefined): number | undefined {
+  return likes !== undefined && likes >= MIN_VISIBLE_LIKES ? likes : undefined;
+}
+
 export function cardView(rug: Rug, catalogue: Catalogue): CardView {
   const photoUrls = rug.photos.map((id) => driveImageUrl(id, 1600));
   return {
@@ -107,6 +150,8 @@ export function cardView(rug: Rug, catalogue: Catalogue): CardView {
     name: rug.name,
     collection: displayCollection(rug.collection),
     collectionSlug: collectionSlug(rug.collection, catalogue.collections),
+    collections: (rug.collections?.length ? rug.collections : ['']).map(displayCollection),
+    collectionSlugs: collectionSlugs(rug.collections ?? [], catalogue.collections),
     photoUrl: rug.photos[0] ? driveImageUrl(rug.photos[0], 800) : undefined,
     photoUrls,
     rot: dataRot(rug.rotate),
@@ -165,11 +210,23 @@ export interface Siblings {
   next?: CardView;
 }
 
+/**
+ * The cards that share at least one collection with `me`, in grid order.
+ *
+ * Overlap rather than equal primaries (owner requirement 2026-09-13): a rug filed under both Kilims
+ * and Antique sits in two runs, and a buyer browsing either one should be able to walk to it. `me`
+ * is always in the result, because a card always shares a collection with itself.
+ */
+function sameCollectionRun(cards: CardView[], me: CardView): CardView[] {
+  const mine = new Set(me.collectionSlugs);
+  return cards.filter((c) => c.collectionSlugs.some((s) => mine.has(s)));
+}
+
 /** Position of a rug within its collection, in grid order; no wrap-around. */
 export function siblings(cards: CardView[], slug: string): Siblings | undefined {
   const me = cards.find((c) => c.slug === slug);
   if (!me) return undefined;
-  const run = cards.filter((c) => c.collectionSlug === me.collectionSlug);
+  const run = sameCollectionRun(cards, me);
   const i = run.indexOf(me);
   return { index: i, total: run.length, prev: run[i - 1], next: run[i + 1] };
 }
@@ -178,7 +235,7 @@ export function siblings(cards: CardView[], slug: string): Siblings | undefined 
 export function relatedCards(cards: CardView[], slug: string, n = 4): CardView[] {
   const me = cards.find((c) => c.slug === slug);
   if (!me) return [];
-  const run = cards.filter((c) => c.collectionSlug === me.collectionSlug);
+  const run = sameCollectionRun(cards, me);
   const i = run.indexOf(me);
   return [...run.slice(i + 1), ...run.slice(0, i)].slice(0, n);
 }
@@ -205,7 +262,12 @@ export function enquiryLinks(name: string, id: string): EnquiryLinks {
  * tab whose count matches the cards the client filter shows; blank collections count under "More".
  */
 export function navTabs(rugs: Rug[], catalogue: Catalogue): NavTab[] {
-  const displayed = rugs.map((r) => ({ ...r, collection: displayCollection(r.collection) }));
+  // A rug with no collection at all still belongs somewhere: displayCollection() sends it to "More".
+  const displayed = rugs.map((r) => ({
+    ...r,
+    collection: displayCollection(r.collection),
+    collections: (r.collections?.length ? r.collections : ['']).map(displayCollection),
+  }));
   const names = orderedCollectionNames(displayed, catalogue.collections);
   const tabs: NavTab[] = [];
   const seen = new Set<string>();
@@ -217,7 +279,10 @@ export function navTabs(rugs: Rug[], catalogue: Catalogue): NavTab[] {
     tabs.push({
       name: canonical,
       slug,
-      count: displayed.filter((r) => collectionSlug(r.collection, catalogue.collections) === slug).length,
+      // Membership, not primary: a rug in three collections is counted under all three, which is
+      // what the client-side tab filter shows once a card carries every slug it belongs to.
+      count: displayed.filter((r) => collectionSlugs(r.collections, catalogue.collections).includes(slug))
+        .length,
       description: catalogue.collections.find((c) => c.slug === slug)?.description.trim() ?? '',
     });
   }

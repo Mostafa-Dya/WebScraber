@@ -2,10 +2,14 @@
 // its body with `Schema.safeParse` and answers 400 `{ ok:false, error:'invalid body', issues }`.
 import * as z from 'zod';
 import { DRIVE_ID_RE } from '../images.ts';
+import { splitCollections } from '../text.ts';
 
 export const ID_RE = /^[A-Za-z0-9_-]{1,64}$/; // parse.ts ID_RE (excludes * ? = < > by construction)
 export const SLUG_RE = /^[a-z0-9-]{1,80}$/;
-export const CLIENT_CODE_RE = /^[a-z0-9]([a-z0-9-]{0,26})[a-z0-9]$/; // subset of the site's ^[A-Za-z0-9_-]{1,64}$
+// A customer route segment: alphanumeric at both ends, with `-` and `_` fillers allowed inside
+// (src/lib/admin/clients.ts scrambles these). Deliberately a SUBSET of the sheet's customer_slug
+// rule /^[A-Za-z0-9_-]{1,64}$/, because the same string is stored there and in every Reactions row.
+export const CLIENT_CODE_RE = /^[a-z0-9]([a-z0-9\-_]{0,26})[a-z0-9]$/;
 export const VERSION_RE = /^[a-f0-9]{16}$/;
 
 const Id = z.string().regex(ID_RE);
@@ -27,6 +31,18 @@ function isHttpsUrl(u: string): boolean {
   }
 }
 const HttpsUrl = z.string().trim().max(500).refine(isHttpsUrl, 'https only');
+
+/**
+ * The collections a product belongs to — at least one, at most ten (owner requirement 2026-09-13).
+ *
+ * A bare string is accepted and split on "|" so that a single-select form, a hand-written call, or a
+ * row read back from the sheet all validate without the caller having to know which shape this is.
+ * splitCollections() trims and de-duplicates case-insensitively, so ["Kilims", "kilims "] is one.
+ */
+const CollectionList = z
+  .union([z.string(), z.array(z.string())])
+  .transform((v) => splitCollections(Array.isArray(v) ? v.join('|') : v))
+  .pipe(z.array(z.string().min(1).max(80)).min(1).max(10));
 export const Version = z.string().regex(VERSION_RE);
 
 export const RugInput = z.object({
@@ -34,7 +50,7 @@ export const RugInput = z.object({
   slug: Slug.optional(), // absent → derived from name (create) / kept (update)
   name: z.string().trim().min(1).max(120),
   description: Text(4000),
-  collection: z.string().trim().min(1).max(80), // must match a Collections.name (case-insensitive)
+  collections: CollectionList, // each must match a Collections.name (case-insensitive)
   tags: z.array(TagName).max(20).default([]),
   photos: z.array(z.string().regex(DRIVE_ID_RE)).max(12).default([]), // src/lib/images.ts DRIVE_ID_RE
   widthCm: z.number().int().min(10).max(2000).optional(),
@@ -52,10 +68,26 @@ export const RugInput = z.object({
   supplierRef: Text(40),
   notes: Text(2000),
   roundPrice: z.boolean().default(false), // apply roundUpToStep(priceUsd) server-side before writing (§7)
+  /**
+   * Brief §12: the row is written `pending` before its photos are uploaded, and updated to
+   * `complete` once they land. Blank on a row that never had photos to import.
+   */
+  commitStatus: z.enum(['pending', 'complete', '']).default(''),
+  driveFolderId: z.string().trim().max(200).default(''),
+  driveFolderUrl: z.string().trim().max(400).default(''),
 });
 export type RugInputT = z.infer<typeof RugInput>;
 export const RugUpdate = RugInput.omit({ id: true }).extend({ version: Version });
 export type RugUpdateT = z.infer<typeof RugUpdate>;
+/** Finishing a half-imported row: the photos that landed, their folder, and the new commit state. */
+export const RugCommit = z.object({
+  version: Version,
+  photos: z.array(z.string().regex(DRIVE_ID_RE)).max(12).default([]),
+  commitStatus: z.enum(['pending', 'complete', '']).default('complete'),
+  driveFolderId: z.string().trim().max(200).default(''),
+  driveFolderUrl: z.string().trim().max(400).default(''),
+});
+export type RugCommitT = z.infer<typeof RugCommit>;
 export const RugStatus = z.object({ status: z.enum(['active', 'draft', 'archived']), version: Version });
 export type RugStatusT = z.infer<typeof RugStatus>;
 
@@ -103,12 +135,26 @@ export const ScrapeRequest = z.object({
 export type ScrapeRequestT = z.infer<typeof ScrapeRequest>;
 export const PhotoImportRequest = z.object({
   urls: z.array(HttpsUrl).min(1).max(12),
+  /** When given, the photos land in `<root>/<id> — <name>/All Images` (brief §12). */
+  productId: z
+    .string()
+    .trim()
+    .max(64)
+    .regex(/^[A-Za-z0-9_-]*$/)
+    .optional(),
+  productName: z.string().trim().max(120).optional(),
   namePrefix: z
     .string()
     .trim()
     .min(1)
     .max(60)
     .regex(/^[A-Za-z0-9_-]+$/), // e.g. the slug; files are <prefix>-<n>.jpg
+  /**
+   * Which supplier these photos came from, so the per-supplier fixes of 2026-09-13 can be applied
+   * to the first image (src/lib/drive/transform.ts). Sent explicitly rather than sniffed from the
+   * photo host: Karavan is a Shopify store, so its images arrive from the shared cdn.shopify.com.
+   */
+  supplier: z.enum(['ecarpetgallery', 'karavanrug', '']).default(''),
 });
 export type PhotoImportRequestT = z.infer<typeof PhotoImportRequest>;
 export const SettingsUpdate = z.object({

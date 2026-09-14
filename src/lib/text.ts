@@ -65,3 +65,37 @@ export function collectionSlug(name: string, collections: readonly Collection[])
   const hit = collections.find((c) => normaliseKey(c.name) === normaliseKey(display));
   return hit?.slug || slugify(display) || 'other';
 }
+
+/**
+ * Splits the `Collection` cell into the names a product belongs to (owner requirement 2026-09-13).
+ *
+ * Pipe-only, deliberately unlike `splitTags`, which also accepts commas: a collection name is prose
+ * the owner types, and "Wabi Sabi, Vol. 2" must stay one collection. A cell with no pipe is one
+ * name — which is what every row written before this change already is, so no migration is needed.
+ */
+export function splitCollections(cell: string | undefined): string[] {
+  return splitPipe(cell);
+}
+
+/** The inverse: the cell to write back. Trimmed, de-duplicated, pipe-joined. */
+export function joinCollections(names: readonly string[]): string {
+  return splitPipe(names.join('|')).join(' | ');
+}
+
+/**
+ * Every slug a product should be reachable under, in the order the owner listed them.
+ *
+ * De-duplicated on the SLUG, not the name, because two spellings the owner typed ("Wabi-sabi" and
+ * "Wabi Sabi") collapse to one tab and must not make the rug appear in it twice.
+ */
+export function collectionSlugs(names: readonly string[], collections: readonly Collection[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const name of names.length ? names : ['']) {
+    const slug = collectionSlug(name, collections);
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    out.push(slug);
+  }
+  return out;
+}

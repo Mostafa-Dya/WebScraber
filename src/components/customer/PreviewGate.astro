@@ -108,7 +108,10 @@ const { slug, displayName } = Astro.props;
     display: flex;
   }
   .pv-field .pv-input {
-    padding-right: 36px;
+    /* 12.8 inline padding + 16 glyph + 12 row gap = 40.8, so the text stops 40.8 from the right edge
+       and the text-to-icon gap is the 12 drawn in Figma 53:11 / 58:213. The 36px literal it replaces
+       left only 7.2. Written as the sum rather than the total so the three tokens stay legible. */
+    padding-right: calc(var(--input-x) + var(--size-icon) + var(--tight));
     text-align: left;
   }
   .pv-eye {
@@ -152,7 +155,8 @@ const { slug, displayName } = Astro.props;
     font-size: var(--text-sm);
     color: var(--ink-soft);
   }
-  .pv-gate-note-2 {
+  /* Caption, not Body S (53:31) — raised above `.pv-gate-note p`, which would otherwise win. */
+  .pv-gate-note p.pv-gate-note-2 {
     font-size: var(--text-xs);
     color: var(--ink-muted);
   }
@@ -161,16 +165,10 @@ const { slug, displayName } = Astro.props;
      second consent line is dropped, because one line of reassurance is enough on a phone. */
   @media (max-width: 767px) {
     .pv-gate {
-      padding-inline: 48px;
+      padding-inline: var(--stack-2xl);
     }
     .pv-gate-col {
       max-width: 294px;
-    }
-    .pv-gate-brand .pv-h1 {
-      font-size: var(--h3);
-    }
-    .pv-gate-welcome {
-      font-size: var(--h4);
     }
     .pv-gate-note-2 {
       display: none;

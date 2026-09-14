@@ -6,6 +6,8 @@
 export const prerender = false;
 
 import AdminLayout from '../../components/admin/AdminLayout.astro';
+import Button from '../../components/ui/Button.astro';
+import Input from '../../components/ui/Input.astro';
 import { requestIpHash } from '../../lib/api.ts';
 import { newSession, setSessionCookie, verifyPassword } from '../../lib/admin/auth.ts';
 import { adminRuntime, recordAuditEvent } from '../../lib/admin/http.ts';
@@ -77,33 +79,123 @@ if (request.method === 'POST') {
       });
     }
   }
-  message = retryAfter > 0 ? `Login failed. Try again in ${retryAfter} s.` : 'Login failed.';
+  // Copy from Figma 47:44 (A2) and 47:67 (A3), which supersedes ADMIN_SPEC §8's generic
+  // "Login failed." — see the note there. The generic wording exists to stop username enumeration,
+  // and this form has no username: one shared password is the only secret, so "that password is not
+  // correct" tells an attacker exactly what a generic message already told them. The throttle, which
+  // is the control that actually matters, is unchanged.
+  message =
+    status === 429
+      ? `Too many attempts — wait 60s. ${retryAfter}s remaining.`
+      : retryAfter > 0
+        ? `That password is not correct. Try again in ${retryAfter} s.`
+        : 'That password is not correct.';
 }
+
+// A3 is the locked state: the attempt was refused before the password was read, so the field is
+// unavailable rather than invalid, and the message is a warning rather than an error.
+const locked = status === 429;
 
 Astro.response.status = status;
 if (retryAfter > 0) Astro.response.headers.set('retry-after', String(retryAfter));
 ---
 
 <AdminLayout title="Serio Ludere — Admin login" nav={false} sub="Admin — sign in">
-  <form method="post" action="/admin/login" class="login">
+  <!--
+    A1 · Login — default (Figma 47:3), A2 · wrong password (47:28), A3 · rate limited (47:51).
+
+    One 400-wide card centred on the page ground, and the three states differ only in the field: A2
+    reddens the border and says why; A3 greys the whole control, swaps the button label to "Locked"
+    and carries a WARNING-toned line, because the buyer's password was never judged — the attempt was
+    refused before it was read. That distinction is why the locked state does not set aria-invalid.
+
+    The form still posts without JavaScript. The reveal eye on the password field is the one thing
+    that needs it, and Input's own script adds it progressively.
+  -->
+  <form method="post" action="/admin/login" class="alogin">
     <input type="hidden" name="next" value={next} />
-    <div class="fields">
-      <div class="f">
-        <label for="password">Password</label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autocomplete="current-password"
-          required
-          autofocus
-        />
-      </div>
+
+    <div class="alogin__brand">
+      <p class="alogin__wordmark">Serio Ludere</p>
+      <p class="alogin__realm">preview admin</p>
     </div>
-    <div class="actions">
-      <button class="go" type="submit">Log in</button>
-    </div>
-    <div id="m1" class:list={['msg', 'err', { on: message !== '' }]} role="alert">{message}</div>
-    <p class="hint">Private. Sessions expire after 12 hours idle and 7 days at most.</p>
+
+    <Input
+      type="password"
+      name="password"
+      label="Password"
+      autocomplete="current-password"
+      required
+      disabled={locked}
+      error={message || undefined}
+      errorTone={locked ? 'warning' : 'danger'}
+    />
+
+    <Button type="submit" style="primary" disabled={locked} class="alogin__go">
+      {locked ? 'Locked' : 'Enter'}
+    </Button>
+
+    <p class="alogin__fine">Private. Sessions expire after 12 hours idle and 7 days at most.</p>
   </form>
 </AdminLayout>
+
+<style>
+  /* The card: 400 wide, centred, on the page ground. Figma 47:4 places it at x=520 in a 1440 frame,
+     which is the centre — so it is centred rather than positioned. */
+  .alogin {
+    box-sizing: border-box;
+    width: 400px;
+    max-width: 100%;
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    /* 47:4 gap is --fieldset-gap (12); this repo already carries that value as --stack-md. */
+    gap: var(--stack-md);
+    padding: var(--section-gap);
+    border: var(--rule-width) solid var(--rule);
+    background: var(--surface);
+  }
+
+  .alogin__brand {
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-xs);
+  }
+
+  /* H3 in admin resolves to 15 (47:6), which is the wordmark's step here — not the page title's. */
+  .alogin__wordmark {
+    margin: 0;
+    font-family: var(--heading);
+    font-size: var(--h3);
+    font-weight: var(--weight-heading);
+    line-height: var(--leading-heading);
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+
+  .alogin__realm {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: var(--leading-body);
+    color: var(--ink-muted);
+  }
+
+  /* 47:19 is full-bleed inside the card. */
+  .alogin__go {
+    width: 100%;
+  }
+
+  .alogin__fine {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: var(--leading-body);
+    color: var(--ink-muted);
+  }
+</style>
+
+<script>
+  // 63:487: the countdown must tick. A static "47s remaining" reads as a hung page, and the natural
+  // response to a hung page is a reload — the one action that makes a throttled login worse.
+  import { initLockout } from '../../scripts/admin/lockout.ts';
+  initLockout();
+</script>

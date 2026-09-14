@@ -1,6 +1,6 @@
 // Photo reachability sweep for /api/health (docs/ADR.md D5.5, D6): HEADs every active rug's first
 // photo on lh3 after a refresh, at most once per interval, and remembers which rugs fail.
-import { driveImageUrl } from './images.ts';
+import { lh3Url } from './images.ts';
 import type { Rug } from './sheets/types.ts';
 
 export interface PhotoHealth {
@@ -29,7 +29,7 @@ export async function sweepPhotos(rugs: Rug[], opts: SweepOptions = {}): Promise
       const t = targets[i++]!;
       let status = 0; // 0 = network error / timeout
       try {
-        const res = await fetchImpl(driveImageUrl(t.photo, 800), {
+        const res = await fetchImpl(lh3Url(t.photo, 800), {
           method: 'HEAD',
           redirect: 'manual',
           signal: AbortSignal.timeout(timeoutMs),

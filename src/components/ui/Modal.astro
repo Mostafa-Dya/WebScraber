@@ -1,0 +1,27 @@
+---
+// Modal — Figma 24:232. Scrim is bg/overlay (--page-overlay, 40% black).
+//
+// A native <dialog> rather than a hand-rolled overlay: it gives the top layer, the backdrop, focus
+// trapping, Esc-to-close and inert-behind for free, all of which a div would have to re-earn. The
+// repo already uses <dialog> for its two admin confirms, so this is the established pattern.
+import Icon from './Icon.astro';
+
+interface Props {
+  id: string;
+  title: string;
+  class?: string;
+}
+const { id, title, class: className } = Astro.props;
+---
+
+<dialog id={id} class:list={['modal', className]} aria-labelledby={`${id}-title`}>
+  <div class="modal__header">
+    <h2 class="modal__title" id={`${id}-title`}>{title}</h2>
+    <button type="button" class="modal__close" data-close={id}>
+      <Icon name="close" />
+      <span class="sr-only">Close</span>
+    </button>
+  </div>
+  <div class="modal__body"><slot /></div>
+  <div class="modal__footer"><slot name="footer" /></div>
+</dialog>

@@ -3,7 +3,14 @@
 // `not_found` so a caller cannot probe which ids exist.
 import { describe, expect, it } from 'vitest';
 import { DRIVE_API } from '../../../src/lib/drive/client.ts';
-import { DRIVE_MEDIA_ID_RE, createMediaReader, isDriveFileId } from '../../../src/lib/drive/media.ts';
+import {
+  DRIVE_MEDIA_ID_RE,
+  PROXY_WIDTHS,
+  coerceWidth,
+  createMediaReader,
+  createPublicMediaReader,
+  isDriveFileId,
+} from '../../../src/lib/drive/media.ts';
 import { silentLogger } from '../../../src/lib/sheets/errors.ts';
 
 const FILE_ID = '1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb';
@@ -160,5 +167,101 @@ describe('createMediaReader', () => {
     const result = await read(FILE_ID);
     expect(result).toMatchObject({ ok: true, contentType: 'image/png' });
     expect(result.ok && result.body).toBeNull();
+  });
+});
+
+/* ---------- the anonymous lh3 reader (brief §12) ---------- */
+
+describe('coerceWidth', () => {
+  it('accepts only the three widths the proxy serves', () => {
+    expect(PROXY_WIDTHS).toEqual([400, 800, 1600]);
+    for (const w of PROXY_WIDTHS) expect(coerceWidth(w)).toBe(w);
+    expect(coerceWidth('400')).toBe(400);
+  });
+
+  it('falls back to 800 for anything else, so the width can never widen the surface', () => {
+    for (const bad of [undefined, null, '', 'w800', '801', 0, -400, 9999, NaN, Infinity, '800px', {}, []])
+      expect(coerceWidth(bad), String(bad)).toBe(800);
+  });
+});
+
+describe('createPublicMediaReader', () => {
+  const lh3 = (respond: (url: string) => Response) => {
+    const urls: string[] = [];
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      urls.push(url);
+      return respond(url);
+    }) as unknown as typeof fetch;
+    return { urls, read: createPublicMediaReader({ fetchImpl }) };
+  };
+
+  it('asks lh3 for the requested width, with no Authorization header at all', async () => {
+    let sawAuth: string | null = 'unset';
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+      sawAuth = new Headers(init?.headers).get('authorization');
+      expect(String(input)).toBe(`https://lh3.googleusercontent.com/d/${FILE_ID}=w1600`);
+      return image();
+    }) as unknown as typeof fetch;
+    const out = await createPublicMediaReader({ fetchImpl })(FILE_ID, 1600);
+    expect(out).toMatchObject({ ok: true, contentType: 'image/jpeg', contentLength: '8' });
+    // No token: this is why the proxy works before (and after) a Drive grant.
+    expect(sawAuth).toBeNull();
+  });
+
+  it('defaults to 800 and clamps a width outside the closed set', async () => {
+    const a = lh3(() => image());
+    await a.read(FILE_ID);
+    await a.read(FILE_ID, 9999);
+    await a.read(FILE_ID, 400);
+    expect(a.urls).toEqual([
+      `https://lh3.googleusercontent.com/d/${FILE_ID}=w800`,
+      `https://lh3.googleusercontent.com/d/${FILE_ID}=w800`,
+      `https://lh3.googleusercontent.com/d/${FILE_ID}=w400`,
+    ]);
+  });
+
+  it('validates the id before it reaches the URL', async () => {
+    const a = lh3(() => image());
+    for (const bad of ['', 'short', '../../etc/passwd', 'a/b?x=1', 'https://evil.example/a.jpg'])
+      expect(await a.read(bad), bad).toEqual({ ok: false, error: 'bad_id' });
+    expect(a.urls).toEqual([]);
+  });
+
+  it('answers not_found for both 404 and 403, so a caller cannot probe which ids exist', async () => {
+    for (const status of [403, 404]) {
+      const a = lh3(() => new Response('nope', { status }));
+      expect(await a.read(FILE_ID)).toEqual({ ok: false, error: 'not_found' });
+    }
+  });
+
+  it('reports any other status, and a network failure, as drive_error', async () => {
+    const a = lh3(() => new Response('boom', { status: 500 }));
+    expect(await a.read(FILE_ID)).toMatchObject({
+      ok: false,
+      error: 'drive_error',
+      detail: 'lh3 answered 500',
+    });
+
+    const dead = createPublicMediaReader({
+      fetchImpl: (async () => {
+        throw new Error('ECONNRESET');
+      }) as unknown as typeof fetch,
+    });
+    expect(await dead(FILE_ID)).toMatchObject({ ok: false, error: 'drive_error', detail: 'ECONNRESET' });
+  });
+
+  it('refuses a non-image body: the proxy serves from our own origin', async () => {
+    const a = lh3(
+      () => new Response('<script>x</script>', { status: 200, headers: { 'content-type': 'text/html' } }),
+    );
+    expect(await a.read(FILE_ID)).toMatchObject({ ok: false, error: 'not_an_image', detail: 'text/html' });
+  });
+
+  it('omits content-length when lh3 does not send one', async () => {
+    const a = lh3(() => new Response(JPEG, { status: 200, headers: { 'content-type': 'image/webp' } }));
+    const out = await a.read(FILE_ID);
+    expect(out.ok && out.contentLength).toBeUndefined();
+    expect(out).toMatchObject({ ok: true, contentType: 'image/webp' });
   });
 });

@@ -51,7 +51,7 @@ const fields: RugFields = {
   slug: 'winks',
   name: 'Winks',
   description: '',
-  collection: 'Kilims',
+  collections: ['Kilims'],
   tags: ['Kilim', 'Denizli'],
   photos: ['1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb'],
   widthCm: 135,
@@ -531,6 +531,46 @@ describe('row tabs (Collections / Tags / Clients / Settings)', () => {
       endIndex: 2,
     });
   });
+  it('insertTopRow runs the precheck INSIDE the lock, before anything is written', async () => {
+    // The caller builds its row from a snapshot read outside the lock. Since customer codes became
+    // short scrambles of the buyer's name (owner, 2026-09-13), a code taken in that window is a
+    // realistic collision — and two buyers sharing one private link is the failure to avoid.
+    const f = fake({});
+    const order: string[] = [];
+    await insertTopRow(f.client, {
+      tab: 'Customers',
+      cells: ['a1b_2c', 'Nadia', 'scrypt.1.2.3.aa.bb', '', 'now', true],
+      audit: buildAuditRow({ ...audit, action: 'client.create', targetTab: 'Customers', targetId: 'a1b_2c' }),
+      precheck: async () => {
+        order.push('precheck');
+      },
+    });
+    order.push('written');
+    expect(order).toEqual(['precheck', 'written']);
+    expect(f.writes).toHaveLength(1);
+  });
+
+  it('insertTopRow writes NOTHING when the precheck throws', async () => {
+    const f = fake({});
+    await expect(
+      insertTopRow(f.client, {
+        tab: 'Customers',
+        cells: ['a1b_2c', 'Nadia', 'scrypt.1.2.3.aa.bb', '', 'now', true],
+        audit: buildAuditRow({
+          ...audit,
+          action: 'client.create',
+          targetTab: 'Customers',
+          targetId: 'a1b_2c',
+        }),
+        precheck: async () => {
+          throw new Error('code taken');
+        },
+      }),
+    ).rejects.toThrow(/code taken/);
+    // Not even the audit row: a create that did not happen must leave no trace claiming it did.
+    expect(f.writes).toHaveLength(0);
+  });
+
   it('updateColumnCells rewrites one column for many rows after checking each id', async () => {
     const f = fake({ rows: { 'Collections!A2:A2': ['kilims'], 'Collections!A3:A3': ['tulu'] } });
     const reorder = buildAuditRow({

@@ -4,7 +4,8 @@
 import { shouldRotate } from '../../lib/rotate.ts';
 import { initChips } from './chips.ts';
 import { byId, maybe } from './dom.ts';
-import { hide, msg } from './msg.ts';
+import { post, type ApiOptions } from './api.ts';
+import { msg } from './msg.ts';
 
 export interface ListFilter {
   /** '*' = every collection, '__none' = rugs without one, else a collection slug. */
@@ -15,17 +16,31 @@ export interface ListFilter {
 }
 
 export interface CardData {
+  /** The primary collection's slug. */
   collection?: string;
+  /** Space-separated: every collection slug the rug belongs to (owner requirement 2026-09-13). */
+  collections?: string;
   status?: string;
   search?: string;
+}
+
+/**
+ * Every collection slug a card claims. Falls back to the primary when `data-collections` is absent,
+ * so a card rendered before this change — or by an older test fixture — still filters instead of
+ * vanishing from every chip at once.
+ */
+function slugsOf(card: CardData): string[] {
+  if (card.collections !== undefined) return card.collections.split(' ').filter(Boolean);
+  return card.collection ? [card.collection] : [];
 }
 
 /** Pure: does a card's data-* set pass the filter? */
 export function matches(card: CardData, f: ListFilter): boolean {
   if (f.status !== 'all' && (card.status ?? '') !== f.status) return false;
+  const slugs = slugsOf(card);
   if (f.collection === '__none') {
-    if (card.collection) return false;
-  } else if (f.collection !== '*' && (card.collection ?? '') !== f.collection) return false;
+    if (slugs.length > 0) return false;
+  } else if (f.collection !== '*' && !slugs.includes(f.collection)) return false;
   const needle = f.q.trim().toLowerCase();
   if (needle && !(card.search ?? '').includes(needle)) return false;
   return true;
@@ -43,6 +58,42 @@ export function bindRotate(doc: Document = document): void {
   });
 }
 
+/**
+ * Finishes a row whose photo import stopped half way (brief §12). The endpoint re-reads the source
+ * page for the images it still needs, so this button is safe to press twice: photos already in the
+ * row are kept and only the shortfall is fetched.
+ */
+export async function retryPhotos(id: string, doc: Document = document, api: ApiOptions = {}): Promise<void> {
+  const button = doc.querySelector<HTMLButtonElement>(`[data-retry="${CSS.escape(id)}"]`);
+  const out = doc.getElementById('m-retry');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Finishing…';
+  }
+  const r = await post<{ imported: number; complete: boolean }>(
+    `/api/admin/rugs/${encodeURIComponent(id)}/retry`,
+    {},
+    { timeoutMs: 120_000, ...api },
+  );
+  if (!r.ok) {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Finish photo import';
+    }
+    if (out) msg(out, `${id}: ${r.message}`, 'err');
+    return;
+  }
+  if (out) {
+    msg(
+      out,
+      r.data.complete ? `${id}: photos finished.` : `${id}: ${r.data.imported} more saved, still incomplete.`,
+      r.data.complete ? 'ok' : 'busy',
+    );
+  }
+  // The card is server-rendered, so a reload is the honest way to show the new state.
+  setTimeout(() => location.reload(), 1200);
+}
+
 export interface RugList {
   apply(): void;
   filter(): ListFilter;
@@ -51,7 +102,8 @@ export interface RugList {
 export function initRugList(doc: Document = document): RugList {
   const q = byId<HTMLInputElement>('q', doc);
   const count = maybe('count', doc);
-  const empty = maybe('empty', doc);
+  const emptyFirst = maybe('empty-first', doc);
+  const emptyNone = maybe('empty-none', doc);
   const cards = [...doc.querySelectorAll<HTMLElement>('[data-card]')];
 
   const filter = (): ListFilter => ({
@@ -62,23 +114,32 @@ export function initRugList(doc: Document = document): RugList {
 
   const apply = (): void => {
     const f = filter();
-    let shown = 0;
+    // Every rug appears twice — once as a table row, once as a gallery card — so that one filter
+    // drives both views and switching view can never change what you are looking at. The COUNT has
+    // to be of rugs, not of elements, or it reports double.
+    const shownIds = new Set<string>();
     for (const card of cards) {
       const on = matches(card.dataset as CardData, f);
       card.hidden = !on;
-      if (on) shown++;
+      if (on && card.dataset.id) shownIds.add(card.dataset.id);
     }
+    const shown = shownIds.size;
     if (count) count.textContent = `${shown} ${shown === 1 ? 'rug' : 'rugs'} shown`;
-    if (empty) {
-      if (cards.length === 0) msg(empty, 'No rugs yet.', 'busy');
-      else if (shown === 0) msg(empty, 'No rugs match — change the chips or the search.', 'busy');
-      else hide(empty);
-    }
+    // First run and no-results are different problems and get different copy, different icons and
+    // different actions (Figma Empty State 24:231) — collapsing them into one generic 'no data' is
+    // the common miss. Both are server-rendered and toggled, so neither is assembled in JS.
+    const total = new Set(cards.map((c) => c.dataset.id).filter(Boolean)).size;
+    if (emptyFirst) emptyFirst.hidden = total !== 0;
+    if (emptyNone) emptyNone.hidden = total === 0 || shown !== 0;
   };
 
   const collectionChips = initChips(byId('collectionChips', doc), { onChange: apply });
   const statusChips = initChips(byId('statusChips', doc), { onChange: apply });
   q.addEventListener('input', apply);
+  doc.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-retry]');
+    if (b?.dataset.retry) void retryPhotos(b.dataset.retry, doc);
+  });
   bindRotate(doc);
   apply();
   return { apply, filter };

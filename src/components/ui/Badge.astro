@@ -1,0 +1,13 @@
+---
+// Badge — Figma set 17:64. Tone = Neutral | Success | Warning | Danger | Info.
+//
+// Info and Neutral share the same #EFEFEF ground and are separated only by label colour, which at
+// 11px makes them near-indistinguishable. Built as drawn; reported as a conflict.
+interface Props {
+  tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'info';
+  class?: string;
+}
+const { tone = 'neutral', class: className } = Astro.props;
+---
+
+<span class:list={['badge', tone !== 'neutral' && `badge--${tone}`, className]}><slot /></span>

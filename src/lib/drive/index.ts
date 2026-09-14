@@ -12,10 +12,10 @@
 // in the service account's own Drive, §5.1): report `drive_not_authorised` instead.
 
 import { createDriveHttp } from './client.ts';
-import { createFolderResolver } from './folder.ts';
+import { createFolderLister, createFolderResolver, createProductFolderResolver } from './folder.ts';
 import { createMediaReader } from './media.ts';
 import { createScopeChecker } from './scope.ts';
-import { createUploader, defaultDownload } from './upload.ts';
+import { createCopier, createUploader, defaultDownload } from './upload.ts';
 import type { DriveClient, DriveClientOptions } from './types.ts';
 
 export function createDriveClient(options: DriveClientOptions): DriveClient {
@@ -31,14 +31,32 @@ export function createDriveClient(options: DriveClientOptions): DriveClient {
   const uploadFromUrl = createUploader(http, { download, ensureFolder });
   const scopeStatus = createScopeChecker({ getAccessToken: options.getAccessToken, http, now: options.now });
   const getMedia = createMediaReader({ getAccessToken: options.getAccessToken, http });
-  return { ensureFolder, uploadFromUrl, scopeStatus, getMedia };
+  const ensureProductFolders = createProductFolderResolver(http, ensureFolder);
+  const copyFile = createCopier(http);
+  const listFolder = createFolderLister(http);
+  return { ensureFolder, ensureProductFolders, uploadFromUrl, copyFile, listFolder, scopeStatus, getMedia };
 }
 
 export { DriveApiError, describeDriveError } from './client.ts';
 export { DownloadError, buildMultipartBody, defaultDownload, fileNameFor, waitForLh3 } from './upload.ts';
-export { DRIVE_MEDIA_ID_RE, createMediaReader, isDriveFileId } from './media.ts';
+export {
+  DRIVE_MEDIA_ID_RE,
+  PROXY_WIDTHS,
+  coerceWidth,
+  createMediaReader,
+  createPublicMediaReader,
+  isDriveFileId,
+} from './media.ts';
+export type { ProxyWidth } from './media.ts';
 export { IMAGE_CACHE_CONTROL, driveImageResponse, imageMethodNotAllowed } from './proxy.ts';
 export { hasDriveScope, parseScopes } from './scope.ts';
+export {
+  ALL_IMAGES_FOLDER,
+  createFolderLister,
+  createProductFolderResolver,
+  productFolderName,
+} from './folder.ts';
+export type { ProductFolders } from './folder.ts';
 export {
   DOWNLOAD_HOSTS,
   DRIVE_FILE_SCOPE,

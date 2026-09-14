@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { driveImageUrl, extractDriveId, normaliseImageUrl } from '../../src/lib/images.ts';
+import { driveImageUrl, extractDriveId, normaliseImageUrl, lh3Url } from '../../src/lib/images.ts';
 import { canonicalCollection, slugify, splitPipe } from '../../src/lib/text.ts';
 
 const ID = '1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb';
@@ -31,12 +31,14 @@ describe('extractDriveId', () => {
 
 describe('driveImageUrl / normaliseImageUrl', () => {
   it('formats the verified lh3 pattern and refuses bad ids', () => {
-    expect(driveImageUrl(ID)).toBe(`https://lh3.googleusercontent.com/d/${ID}=w800`);
-    expect(driveImageUrl(ID, 1600)).toBe(`https://lh3.googleusercontent.com/d/${ID}=w1600`);
+    expect(driveImageUrl(ID)).toBe(`/api/image/${ID}?w=800`);
+    // The upstream is still lh3; only what a browser is pointed at changed.
+    expect(lh3Url(ID)).toBe(`https://lh3.googleusercontent.com/d/${ID}=w800`);
+    expect(driveImageUrl(ID, 1600)).toBe(`/api/image/${ID}?w=1600`);
     expect(() => driveImageUrl('../etc/passwd')).toThrow();
   });
   it('normalises cover cells: Drive → lh3, allow-listed https kept, anything else refused with a reason', () => {
-    expect(normaliseImageUrl(ID)).toEqual({ url: `https://lh3.googleusercontent.com/d/${ID}=w1600` });
+    expect(normaliseImageUrl(ID)).toEqual({ url: `/api/image/${ID}?w=1600` });
     expect(normaliseImageUrl('https://lh3.googleusercontent.com/some/other.jpg')).toEqual({
       url: 'https://lh3.googleusercontent.com/some/other.jpg',
     });

@@ -1,0 +1,40 @@
+---
+// Fetch Modal — Figma 78:241. Opens OVER the drawer.
+//
+// Two CTAs only, and the reveal order is deliberate: the first photo lands BEFORE the fields, so a
+// wrong scrape is cancelled before a single field is read (revision 161:339).
+//
+// The progress bar is indeterminate by design — a scrape has no honest progress value, so the bar
+// never pretends to a percentage and the stage label carries the real information (161:564).
+//
+// At 390 this becomes a full-screen modal whose footer stacks Save above Cancel, inverting the
+// desktop left-ghost / right-primary order. That is a media query in components.css.
+import Icon from './Icon.astro';
+
+interface Props {
+  id: string;
+  title?: string;
+  /** Shows the indeterminate bar while the scrape is running. */
+  loading?: boolean;
+  class?: string;
+}
+const { id, title = 'Fetched result', loading = false, class: className } = Astro.props;
+---
+
+<dialog id={id} class:list={['fetch', className]} aria-labelledby={`${id}-title`}>
+  <div class="fetch__header">
+    <h2 class="fetch__title" id={`${id}-title`} data-fetch-title>{title}</h2>
+    <button type="button" class="fetch__close" data-close={id}>
+      <Icon name="close" />
+      <span class="sr-only">Close</span>
+    </button>
+  </div>
+  {
+    /* Indeterminate by design: a scrape has no honest progress value, so the bar never pretends to a
+       percentage and the stage list below carries the real information (161:564). Hidden rather than
+       absent, because the same dialog serves all five states and the bar comes and goes. */
+  }
+  <div class="fetch__bar" role="progressbar" aria-label="Fetching" data-fetch-bar hidden={!loading}></div>
+  <div class="fetch__body" data-fetch-body><slot /></div>
+  <div class="fetch__footer" data-fetch-footer><slot name="footer" /></div>
+</dialog>

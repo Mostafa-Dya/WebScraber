@@ -24,7 +24,7 @@ interface Props {
 const { cards, rates, active, state, error = false, eager = 0, hrefFor } = Astro.props;
 let left = eager;
 const loadMode = cards.map((c) => {
-  const visible = active === undefined || c.collectionSlug === active;
+  const visible = active === undefined || c.collectionSlugs.includes(active);
   if (!visible || left <= 0) return 'lazy';
   left -= 1;
   return left === eager - 1 ? 'priority' : 'eager';
@@ -82,7 +82,7 @@ const ghosts = Array.from({ length: 8 }, (_, i) => i);
           <RugCard
             card={card}
             rates={rates}
-            hidden={active !== undefined && card.collectionSlug !== active}
+            hidden={active !== undefined && !card.collectionSlugs.includes(active)}
             eager={loadMode[i] !== 'lazy'}
             priority={loadMode[i] === 'priority'}
             href={hrefFor ? hrefFor(card) : undefined}

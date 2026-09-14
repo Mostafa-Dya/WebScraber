@@ -88,3 +88,67 @@ export function createMediaReader(opts: MediaReaderOptions): (fileId: string) =>
     };
   };
 }
+
+/* ---------- the public (lh3) reader ---------- */
+
+/** Widths the proxy will ask lh3 for. A closed set: the width goes into a URL. */
+export const PROXY_WIDTHS = [400, 800, 1600] as const;
+export type ProxyWidth = (typeof PROXY_WIDTHS)[number];
+
+export function coerceWidth(value: unknown): ProxyWidth {
+  const n = Number(value);
+  return (PROXY_WIDTHS as readonly number[]).includes(n) ? (n as ProxyWidth) : 800;
+}
+
+/**
+ * Reads a photo through `lh3.googleusercontent.com`, which is how these files were always served.
+ *
+ * Two things this buys over the authenticated API, and they are the reasons it is tried first:
+ *   * **No token.** The photo folder is shared with anyone holding the link, so lh3 serves it to an
+ *     anonymous request. The proxy therefore works before the owner has granted the Drive scope, and
+ *     keeps working if that grant lapses.
+ *   * **The right number of bytes.** lh3 downscales on demand (`=w800`), where `files?alt=media`
+ *     returns the original — often several megabytes for a card thumbnail.
+ *
+ * The id is validated before it reaches the URL and the width comes from a closed set, so there is
+ * no input here that can steer the request elsewhere.
+ */
+export function createPublicMediaReader(opts: {
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+}): (fileId: string, width?: number) => Promise<MediaResult> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? MEDIA_TIMEOUT_MS;
+  return async (fileId, width = 800) => {
+    if (!isDriveFileId(fileId)) return { ok: false, error: 'bad_id' };
+    const url = `https://lh3.googleusercontent.com/d/${fileId}=w${coerceWidth(width)}`;
+    let res: Response;
+    try {
+      res = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) });
+    } catch (e) {
+      return { ok: false, error: 'drive_error', detail: serializeError(e).message };
+    }
+    // 403 and 404 are the same answer: whether the file is missing or merely not public is not
+    // something a caller may probe.
+    if (res.status === 403 || res.status === 404) {
+      await res.body?.cancel();
+      return { ok: false, error: 'not_found' };
+    }
+    if (!res.ok) {
+      await res.body?.cancel();
+      return { ok: false, error: 'drive_error', detail: `lh3 answered ${res.status}` };
+    }
+    const contentType = mimeOf(res.headers.get('content-type'));
+    if (!isImageType(contentType)) {
+      await res.body?.cancel();
+      return { ok: false, error: 'not_an_image', detail: contentType || 'missing content-type' };
+    }
+    const contentLength = res.headers.get('content-length');
+    return {
+      ok: true,
+      body: res.body,
+      contentType,
+      ...(contentLength ? { contentLength } : {}),
+    };
+  };
+}

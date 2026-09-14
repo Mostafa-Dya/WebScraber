@@ -1,0 +1,33 @@
+---
+// The Products table — Figma P2 79:1439, header row 79:1441 plus six Inline Rows.
+//
+// The header carries a 1px bottom border in border/strong (heavier than the row hairlines, so the
+// head reads as a head) and the Label style at 12px muted. Column widths are shared with the rows
+// through .irow__* so the two can never drift apart.
+//
+// It is a plain <div> stack rather than a <table>: every row is an editable form surface with a
+// trailing action, and a real <table> would fight that on every cell. The header is marked up as a
+// row of column headers so the structure still reads.
+import type { AdminRug } from '../../lib/admin/read.ts';
+import type { Collection } from '../../lib/sheets/types.ts';
+import RugRow from './RugRow.astro';
+
+interface Props {
+  rugs: readonly AdminRug[];
+  collections: readonly Collection[];
+}
+const { rugs, collections } = Astro.props;
+---
+
+<div class="rugtable" role="table" aria-label="Products">
+  <div class="rugtable__head" role="row">
+    <span class="irow__id" role="columnheader">ID</span>
+    <span class="irow__title" role="columnheader">Title</span>
+    <span class="irow__collection" role="columnheader">Collection</span>
+    <span class="irow__size" role="columnheader">Size</span>
+    <span class="irow__price" role="columnheader">Price</span>
+    <span class="irow__spacer"></span>
+    <span class="irow__action"></span>
+  </div>
+  {rugs.map((rug) => <RugRow rug={rug} collections={collections} />)}
+</div>

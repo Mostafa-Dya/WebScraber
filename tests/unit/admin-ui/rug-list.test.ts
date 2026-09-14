@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // /admin/rugs client filter (docs/ADMIN_SPEC.md §8.3): collection + status chips and the search box
-// toggle `hidden` on the server-rendered cards; the count and empty state follow.
+// toggle `hidden` on the server-rendered cards; the count and the two empty states follow.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { initRugList, matches } from '../../../src/scripts/admin/rug-list.ts';
 
@@ -21,7 +21,8 @@ beforeEach(() => {
       <button type="button" class="chip" data-value="all" aria-pressed="false">Any</button>
     </div>
     <p id="count"></p>
-    <div id="empty" class="msg"></div>
+    <div id="empty-first" hidden></div>
+    <div id="empty-none" hidden></div>
     <div id="grid">
       ${card('SL-021', 'kilims', 'active', 'winks sl-021 1389 winks')}
       ${card('SL-022', 'kilims', 'draft', 'yellow sl-022  yellow')}
@@ -66,10 +67,13 @@ describe('initRugList()', () => {
     q.value = 'yellow';
     q.dispatchEvent(new Event('input'));
     expect(visible()).toEqual([]);
-    expect(document.getElementById('empty')?.className).toBe('msg on busy');
+    // Cards exist but none match: the no-results state, not the first-run one.
+    expect(document.getElementById('empty-none')?.hidden).toBe(false);
+    expect(document.getElementById('empty-first')?.hidden).toBe(true);
     document.querySelector<HTMLButtonElement>('#collectionChips [data-value="*"]')!.click();
     expect(visible()).toEqual(['SL-022']);
-    expect(document.getElementById('empty')?.className).toBe('msg');
+    expect(document.getElementById('empty-none')?.hidden).toBe(true);
+    expect(document.getElementById('empty-first')?.hidden).toBe(true);
     expect(list.filter()).toEqual({ collection: '*', status: 'all', q: 'yellow' });
   });
 });

@@ -1,30 +1,49 @@
 ---
 // The preview header (Figma 53:35 catalog, 57:226 detail).
 //
-// One row, 152 tall on desktop: the wordmark or a back link on the left, the buyer's name or the
-// wordmark on the right, and a flexible gap between them. The 1142×1 box sitting between them in the
-// Figma frame is a spacer, not a rule — a zoomed render of the header shows no line there. The only
-// rule is the hairline along the bottom.
+// One row, 152 tall on the catalog header (53:35) and 148 on the detail header (57:226): the detail
+// wordmark is H4, not H3, so its line box is 19 rather than 24 and 64 + 19 + 64 + 1 = 148. Left is
+// the wordmark or a back link, right the buyer's name or the wordmark, with a flexible gap between.
+// The 1142×1 box sitting between them in the Figma frame is a spacer, not a rule — a zoomed render
+// shows no line there.
+//
+// The only rule is the hairline along the bottom, and the detail variant drops even that at 390:
+// M3 (58:327) draws no border-bottom where M2 (58:232) and desktop G3 (57:226) both keep it, and
+// M3 has no trailing wordmark at all. Both are hung off `pv-header--detail` in preview.css.
 interface Props {
   /** Where the wordmark links. Inside a realm this is the buyer's own catalog, never `/`. */
   home: string;
   /** Shown on the right of the catalog header. */
   displayName?: string;
-  /** Replaces the wordmark on the left; the wordmark then moves to the right (the detail header). */
-  back?: { href: string; label: string };
+  /**
+   * Replaces the wordmark on the left; the wordmark then moves to the right (the detail header).
+   * `shortLabel` is the 390 copy: Figma draws '← Back to the collection' at 1440 (57:227) and just
+   * '← Back' at 390 (58:328) — DIFF-3 item 7. The full label stays the accessible name.
+   */
+  back?: { href: string; label: string; shortLabel?: string };
 }
 const { home, displayName, back } = Astro.props;
 ---
 
-<header class="pv-header">
+<header class:list={['pv-header', back && 'pv-header--detail']}>
   {
     back ? (
       <>
-        <a class="pv-back" href={back.href}>
-          <span aria-hidden="true">←</span> {back.label}
+        <a class="pv-back" href={back.href} aria-label={back.label}>
+          <span aria-hidden="true">←</span>
+          <span class="pv-back-long" aria-hidden="true">
+            {back.label}
+          </span>
+          {back.shortLabel && (
+            <span class="pv-back-short" aria-hidden="true">
+              {back.shortLabel}
+            </span>
+          )}
         </a>
         <span class="pv-spacer" aria-hidden="true" />
-        <a class="pv-wordmark pv-h3" href={home}>
+        {/* H4, not H3 (57:229): the detail wordmark sits one step below the catalog's 53:36, which
+            is what makes this header 148 tall against the catalog's 152. */}
+        <a class="pv-wordmark pv-wordmark-trailing pv-h4" href={home}>
           Serio Ludere
         </a>
       </>
@@ -49,5 +68,21 @@ const { home, displayName, back } = Astro.props;
   }
   .pv-back:hover {
     color: var(--brand);
+  }
+
+  /* The same swap the Unit Toggle uses for 'ft / in' → 'ft': the SHORT copy is the default-hidden
+     one, so the desktop label (57:227) needs no query and only 390 (58:328) pays for the override.
+     Both spans are aria-hidden and the anchor carries the full copy as its accessible name, so the
+     link announces the same thing at every width. */
+  .pv-back-short {
+    display: none;
+  }
+  @media (max-width: 767px) {
+    .pv-back-long {
+      display: none;
+    }
+    .pv-back-short {
+      display: inline;
+    }
   }
 </style>

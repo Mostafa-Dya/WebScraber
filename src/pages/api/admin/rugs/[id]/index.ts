@@ -26,7 +26,7 @@ import {
   freshRug,
   loadSnapshot,
   requireAdminHeaders,
-  resolveCollection,
+  resolveCollections,
   resolveTags,
   rugFieldsFrom,
 } from '../../_shared.ts';
@@ -61,13 +61,13 @@ export const POST = adminPost(RugUpdate, async ({ context, body }) => {
   } else if (!slug) {
     slug = uniqueSlug(body.name, otherSlugs);
   }
-  const collection = resolveCollection(snapshot, body.collection);
+  const collections = resolveCollections(snapshot, body.collections);
   const tags = resolveTags(snapshot, body.tags);
   const priceUsd = body.roundPrice
     ? roundUpToStep(body.priceUsd, roundStepOf(snapshot.settings))
     : body.priceUsd;
   const before = fieldsOfRug(rug);
-  const after = rugFieldsFrom(body, { slug, collection, tags, priceUsd });
+  const after = rugFieldsFrom(body, { slug, collections, tags, priceUsd });
   const diff = diffFields(auditable(before), auditable(after));
   if (diff.changed.length === 0) {
     return noStore({ ok: true, rug, unchanged: true });

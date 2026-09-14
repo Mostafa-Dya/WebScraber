@@ -1,8 +1,7 @@
 /* Admin shell (docs/ADMIN_SPEC.md §8.1): reference/admin.html lines 16-71 ported onto the site's
-   tokens. Only --red is added here; tokens.css is not edited. No inline styles anywhere (hash CSP). */
-:root {
-  --red: #a32020;
-}
+   tokens. Type and colour now resolve through the Figma semantic layer in modes.css; the local
+   --red (#a32020, a third red with no source in the theme) was retired in favour of --danger.
+   No inline styles anywhere (hash CSP). */
 *,
 *::before,
 *::after {
@@ -10,16 +9,18 @@
 }
 body {
   margin: 0;
-  background: var(--paper);
+  background: var(--canvas);
   color: var(--ink);
   font-family: var(--body);
-  font-size: 15px;
-  line-height: 1.5;
-  padding: 32px 5vw 80px;
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+  /* The App Shell is full-bleed and owns its own gutters; the bare login layout sets its own. */
+  padding: 0;
 }
 h1 {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--h1);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-heading);
   letter-spacing: -0.01em;
   margin: 0;
 }
@@ -95,16 +96,16 @@ textarea {
   font-size: 14px;
   padding: 10px 12px;
   border: 1px solid var(--rule);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
-  border-radius: 2px;
+  border-radius: var(--radius);
   width: 100%;
 }
 input:focus,
 textarea:focus,
 select:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: var(--border-width-focus) solid var(--border-focus);
+  outline-offset: calc(-1 * var(--border-width-focus));
 }
 input[readonly] {
   background: var(--paper-deep);
@@ -126,7 +127,7 @@ button.go {
   border: 0;
   padding: 11px 18px;
   cursor: pointer;
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 button.go:disabled {
   opacity: 0.45;
@@ -153,27 +154,29 @@ button.go.alt {
   font-family: var(--mono);
   font-size: 12px;
   padding: 10px 12px;
-  border-radius: 2px;
+  border-radius: var(--radius);
   margin-top: 14px;
   display: none;
 }
 .msg.on {
   display: block;
 }
+/* Tones follow the Toast component (Figma 22:191): fill is the feedback -bg, the 1px border
+   and the label are the feedback colour itself. */
 .msg.ok {
-  background: rgba(47, 107, 58, 0.08);
-  color: var(--green);
-  border: 1px solid rgba(47, 107, 58, 0.25);
+  background: var(--success-bg);
+  color: var(--success);
+  border: var(--rule-width) solid var(--success);
 }
 .msg.err {
-  background: rgba(163, 32, 32, 0.07);
-  color: var(--red);
-  border: 1px solid rgba(163, 32, 32, 0.25);
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: var(--rule-width) solid var(--danger);
 }
 .msg.busy {
-  background: var(--paper-deep);
-  color: var(--ink-soft);
-  border: 1px solid var(--rule);
+  background: var(--info-bg);
+  color: var(--info);
+  border: var(--rule-width) solid var(--info);
 }
 .fields {
   display: grid;
@@ -361,6 +364,29 @@ td pre {
   font-size: 9px;
   padding: 2px 6px;
 }
+/* Signed / Antique corner badge (owner, 2026-09-13) — top-left, opposite the photo count, and
+   styled exactly like it so the two corners read as one family rather than two ideas. A list,
+   because a rug can be both. */
+.card .badges {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.card .badge-corner {
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+}
+
 .card.status-draft .ph {
   border-style: dashed;
 }
@@ -398,7 +424,7 @@ td pre {
   color: var(--ink-soft);
   border: 1px solid var(--rule);
   padding: 1px 5px;
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 .status {
   font-family: var(--mono);
@@ -423,8 +449,8 @@ td pre {
 .stat {
   border: 1px solid var(--rule);
   padding: 12px 14px;
-  border-radius: 2px;
-  background: #fff;
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 .stat .k {
   font-family: var(--mono);
@@ -455,7 +481,7 @@ td pre {
 .tabs a:focus-visible,
 button:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: var(--border-width-focus) solid var(--border-focus);
   outline-offset: 2px;
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -473,5 +499,81 @@ a:focus-visible {
   *::after {
     transition: none !important;
     animation: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------------------------
+   MF1 · Customers — mobile (Figma 111:2865). The table becomes a stack of cards at 390.
+
+   Done in CSS over the SAME markup rather than by rendering a second tree: the rows are built in two
+   places (server-side in clients.astro and by clientRow() in clients.ts), and a second tree would
+   have to be kept in step in both.
+
+   The frame draws name + badge, the link, then last-seen beside a copy control. It does not draw the
+   Active switch or the row buttons — but those are the only way to revoke a link or reset a
+   password, so they are kept and stacked rather than dropped. A control that exists on one screen
+   size and silently not on another is a worse failure than a slightly taller card.
+--------------------------------------------------------------------------------------------- */
+@media (max-width: 767px) {
+  #clientTable,
+  #clientTable tbody,
+  #clientTable tr,
+  #clientTable td {
+    display: block;
+    width: auto;
+  }
+
+  /* The header carries column names for a grid that no longer exists. */
+  #clientTable thead {
+    display: none;
+  }
+
+  #clientTable tr {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: var(--stack-sm) var(--stack-md);
+    margin-bottom: var(--stack-md);
+    padding: var(--stack-md);
+    border: 1px solid var(--rule);
+    background: var(--surface);
+  }
+
+  #clientTable td {
+    padding: 0;
+    border: 0;
+  }
+
+  /* 1 name · 2 visited badge · 3 link (full width) · 4 last seen · 5 active · 6 actions.
+     `Created` is dropped: it is on the customer's own screen, which the name now links to. */
+  #clientTable td:nth-child(1) {
+    grid-column: 1;
+    font-size: 13px;
+  }
+  #clientTable td:nth-child(4) {
+    grid-column: 2;
+    justify-self: end;
+  }
+  #clientTable td:nth-child(2) {
+    grid-column: 1 / -1;
+    overflow-wrap: anywhere;
+  }
+  #clientTable td:nth-child(3) {
+    display: none;
+  }
+  #clientTable td:nth-child(5) {
+    grid-column: 1;
+    color: var(--ink-soft);
+  }
+  #clientTable td:nth-child(6) {
+    grid-column: 2;
+    justify-self: end;
+  }
+  #clientTable td:nth-child(7) {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--stack-sm);
   }
 }

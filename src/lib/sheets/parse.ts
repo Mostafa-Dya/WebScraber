@@ -21,7 +21,7 @@ import type {
   VoteStateMap,
 } from './types.ts';
 import { extractDriveId, normaliseImageUrl } from '../images.ts';
-import { slugify, splitPipe, collectionSlug } from '../text.ts';
+import { slugify, splitPipe, splitCollections, collectionSlug } from '../text.ts';
 import { sizeBandOf, sizeLabelOf } from '../size.ts';
 
 type Raw = Record<string, CellValue | undefined>;
@@ -347,12 +347,16 @@ export function parseProducts(values: CellValue[][] | undefined): Parsed<Product
     const widthCm = p.width_cm && p.width_cm > 0 ? p.width_cm : undefined;
     const lengthCm = p.length_cm && p.length_cm > 0 ? p.length_cm : undefined;
     const { featured, rotate, rest } = flagsFromTags(splitTags(p.tags));
+    // One cell, several collections (owner requirement 2026-09-13). The first is the primary — the
+    // canonical route and the single label a card shows; the rest are additional memberships.
+    const collections = splitCollections(p.collection);
     items.push({
       id: p.id,
       slug,
       name: p.title,
       description: p.body_html ?? '',
-      collection: p.collection ?? '',
+      collections,
+      collection: collections[0] ?? '',
       tags: rest,
       photos,
       imageSrc: p.image_src ?? '',
@@ -575,7 +579,13 @@ export function ratingOf(likes: number, dislikes: number): number {
 
 /** Orders collections by sort_order then A→Z; falls back to the reference ORDER list when the tab is empty. */
 export function orderedCollectionNames(products: Product[], collections: Collection[]): string[] {
-  const present = [...new Set(products.map((r) => r.collection).filter(Boolean))];
+  // Every name a product claims, not just its primary: a collection that only ever appears as a
+  // second membership still deserves a tab (owner requirement 2026-09-13).
+  const present = [
+    ...new Set(
+      products.flatMap((r) => (r.collections?.length ? r.collections : [r.collection])).filter(Boolean),
+    ),
+  ];
   const known = collections
     .slice()
     .sort((a, b) => (a.sortOrder ?? 1e9) - (b.sortOrder ?? 1e9) || a.name.localeCompare(b.name))

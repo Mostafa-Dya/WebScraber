@@ -17,10 +17,12 @@ const card: CardView = {
   name: 'Winks',
   collection: 'Kilims',
   collectionSlug: 'kilims',
-  photoUrl: 'https://lh3.googleusercontent.com/d/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb=w800',
-  photoUrls: ['https://lh3.googleusercontent.com/d/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb=w1600'],
+  collections: ['Kilims'],
+  collectionSlugs: ['kilims'],
+  photoUrl: '/api/image/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb?w=800',
+  photoUrls: ['/api/image/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb?w=1600'],
   photoIds: ['1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb', '1DlTneR_41y-MNEuzUuqqaR5H0pXy0Sb0'],
-  altPhotoUrl: 'https://lh3.googleusercontent.com/d/1DlTneR_41y-MNEuzUuqqaR5H0pXy0Sb0=w800',
+  altPhotoUrl: '/api/image/1DlTneR_41y-MNEuzUuqqaR5H0pXy0Sb0?w=800',
   rot: '1',
   ar: '4-3',
   widthCm: 135,
@@ -51,7 +53,7 @@ describe('RugCard (design pass)', () => {
     expect(html).toContain('loading="eager"');
     expect(html).toContain('fetchpriority="high"');
     expect(html).toContain('data-plate-img');
-    expect(html).toMatch(/data-alt="[^"]*1DlTneR_41y-MNEuzUuqqaR5H0pXy0Sb0=w800"/);
+    expect(html).toMatch(/data-alt="[^"]*1DlTneR_41y-MNEuzUuqqaR5H0pXy0Sb0\?w=800"/);
     expect(html).not.toContain('style=');
   });
   it('marks empty plates, leads, and related cards without data-card', async () => {
@@ -136,7 +138,7 @@ describe('Gallery / Specs / Pager', () => {
     const html = await container.renderToString(Gallery, { props: { card } });
     expect(html).toMatch(/<div class="hero"[^>]*data-plate[^>]*data-ar="4-3"[^>]*data-slug="winks"/);
     expect(html).toMatch(/class="hero-base"[^>]*fetchpriority="high"/);
-    expect(html).toMatch(/class="hero-full"[^>]*srcset="[^"]*=w800 800w, [^"]*=w1600 1600w"/);
+    expect(html).toMatch(/class="hero-full"[^>]*srcset="[^"]*\?w=800 800w, [^"]*\?w=1600 1600w"/);
     expect(html.match(/class="thumb"/g)).toHaveLength(2);
     expect(html).toMatch(/class="thumb"[^>]*aria-pressed="true"/);
     expect(html).toContain('<dialog id="lightbox" class="lb" aria-label="Photo viewer">');

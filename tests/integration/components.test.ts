@@ -19,8 +19,10 @@ const card: CardView = {
   name: 'Winks "quoted" <b>bold</b>',
   collection: 'Kilims',
   collectionSlug: 'kilims',
-  photoUrl: 'https://lh3.googleusercontent.com/d/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb=w800',
-  photoUrls: ['https://lh3.googleusercontent.com/d/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb=w1600'],
+  collections: ['Kilims'],
+  collectionSlugs: ['kilims'],
+  photoUrl: '/api/image/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb?w=800',
+  photoUrls: ['/api/image/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb?w=1600'],
   rot: '1',
   widthCm: 135,
   lengthCm: 190,
@@ -138,7 +140,9 @@ describe('Layout (reference lines 1-9)', () => {
       slots: { default: '<p>body</p>' },
     });
     expect(html).toContain('<meta name="robots" content="noindex, nofollow">');
-    expect(html).toContain('fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono');
+    expect(html).toContain(
+      'fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400',
+    );
     expect(html).toContain('<title>Serio Ludere — Catalogue</title>');
     expect(html).toContain('id="sl-rates"');
     expect(html).not.toContain('</script><script>alert');

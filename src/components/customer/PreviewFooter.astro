@@ -1,5 +1,6 @@
 ---
-// The preview footer (Figma 130:274 / 130:297, identical on both screens).
+// The preview footer (desktop Figma 130:274 / 130:297; mobile 131:293 / 131:311, which is NOT the
+// same footer — DIFF-3 item 4 drops the "Questions, or want to see one in person?" line at 390).
 //
 // Three groups on one row: the studio and an invitation to ask; the contact address; and, pushed to
 // the right, the two lines of fine print. Both fine-print lines are required — the currency
@@ -12,11 +13,11 @@ import { STUDIO_EMAIL, STUDIO_NAME } from '../../lib/studio.ts';
   <div class="pv-footer-row">
     <div class="pv-footer-col">
       <p class="pv-h4">{STUDIO_NAME}</p>
-      <p>Questions, or want to see one in person?</p>
+      <p class="pv-footer-ask">Questions, or want to see one in person?</p>
     </div>
-    <div class="pv-footer-col pv-footer-contact">
+    <div class="pv-footer-col">
       <p class="pv-label pv-muted">Contact</p>
-      <p><a href={`mailto:${STUDIO_EMAIL}`}>{STUDIO_EMAIL}</a></p>
+      <p class="pv-footer-email"><a href={`mailto:${STUDIO_EMAIL}`}>{STUDIO_EMAIL}</a></p>
     </div>
     <div class="pv-footer-col pv-footer-fine">
       <p>Prices are indicative and convert at an approximate rate.</p>
@@ -26,12 +27,14 @@ import { STUDIO_EMAIL, STUDIO_NAME } from '../../lib/studio.ts';
 </footer>
 
 <style>
-  .pv-footer-contact {
-    margin-left: 16px;
-  }
+  /* The contact column needs no hook of its own: `.pv-footer-row`'s gap (preview.css:239) is the 16
+     Figma draws (130:275: col 1 w300 at x=0, col 2 at x=316), and the extra margin that doubled it
+     to 32 — with the mobile reset that undid it — is gone. */
   @media (max-width: 767px) {
-    .pv-footer-contact {
-      margin-left: 0;
+    /* DIFF-3 item 4: the invitation is desktop-only. M2 131:293 stacks the wordmark, the Contact
+       block and the fine print, and nothing else — hence 390x252, which this line would overrun. */
+    .pv-footer-ask {
+      display: none;
     }
   }
 </style>

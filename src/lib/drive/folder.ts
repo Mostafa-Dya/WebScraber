@@ -121,3 +121,113 @@ export function createFolderResolver(http: DriveHttp, options: FolderOptions = {
     return pending;
   };
 }
+
+/* ---------- per-product folders (brief §12) ---------- */
+
+/** The subfolder every photo of a rug is kept in, beside the duplicated primary. */
+export const ALL_IMAGES_FOLDER = 'All Images';
+
+/**
+ * `SL-021 — Winks`. The em dash is the brief's; the id leads so the folder list sorts by it and a
+ * renamed rug keeps its place. Characters Drive dislikes in a name are replaced rather than dropped,
+ * so two rugs never collapse onto one folder name.
+ */
+export function productFolderName(productId: string, productName: string): string {
+  const clean = (s: string): string =>
+    s
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim();
+  const id = clean(productId) || 'unknown';
+  const name = clean(productName).slice(0, 80);
+  return name ? `${id} — ${name}` : id;
+}
+
+async function findChildFolder(http: DriveHttp, parentId: string, name: string): Promise<string | undefined> {
+  const list = await http.request<{ files?: FileStub[] }>({
+    method: 'GET',
+    url: `${DRIVE_API}/files`,
+    query: [
+      ['q', `${folderQuery(name)} and '${escapeDriveQuery(parentId)}' in parents`],
+      ['spaces', 'drive'],
+      ['fields', 'files(id,name)'],
+      ['pageSize', '10'],
+    ],
+    policy: 'read',
+  });
+  return (list.files ?? [])[0]?.id;
+}
+
+async function createChildFolder(http: DriveHttp, parentId: string, name: string): Promise<string> {
+  const created = await http.request<FileStub>({
+    method: 'POST',
+    url: `${DRIVE_API}/files`,
+    query: [['fields', 'id']],
+    body: { json: { name, mimeType: FOLDER_MIME_TYPE, parents: [parentId] } },
+    policy: 'write',
+  });
+  if (!created.id) throw new DriveApiError(502, 'files.create returned no id');
+  return created.id;
+}
+
+async function ensureChild(http: DriveHttp, parentId: string, name: string): Promise<string> {
+  return (await findChildFolder(http, parentId, name)) ?? (await createChildFolder(http, parentId, name));
+}
+
+export interface ProductFolders {
+  /** `<root>/<id> — <name>`, which holds the duplicated primary. */
+  productId: string;
+  /** `<root>/<id> — <name>/All Images`, which holds every photo. */
+  allImagesId: string;
+  name: string;
+  /** A link the admin can open; the folder inherits the root's "anyone with the link" permission. */
+  url: string;
+}
+
+/**
+ * Finds or creates the two folders one rug needs. No permission call is made on either: they are
+ * created inside the root, which is already shared with anyone holding the link, and Drive folders
+ * inherit that. Idempotent, so a retry after a half-finished import reuses what is there.
+ */
+export function createProductFolderResolver(
+  http: DriveHttp,
+  ensureRoot: () => Promise<string>,
+): (productId: string, productName: string) => Promise<ProductFolders> {
+  return async (productId, productName) => {
+    const root = await ensureRoot();
+    const name = productFolderName(productId, productName);
+    const folderId = await ensureChild(http, root, name);
+    const allImagesId = await ensureChild(http, folderId, ALL_IMAGES_FOLDER);
+    return {
+      productId: folderId,
+      allImagesId,
+      name,
+      url: `https://drive.google.com/drive/folders/${folderId}`,
+    };
+  };
+}
+
+/**
+ * Every file already sitting in a folder, as `name → id`. Used by the retry path to tell what an
+ * interrupted import managed to upload: filenames are deterministic (`01-primary`, `winks-02`), so a
+ * name that is already there is a photo that already landed. One page of 100 covers the 12-photo cap
+ * many times over.
+ */
+export function createFolderLister(http: DriveHttp): (folderId: string) => Promise<Map<string, string>> {
+  return async (folderId) => {
+    const list = await http.request<{ files?: FileStub[] }>({
+      method: 'GET',
+      url: `${DRIVE_API}/files`,
+      query: [
+        ['q', `'${escapeDriveQuery(folderId)}' in parents and trashed=false`],
+        ['spaces', 'drive'],
+        ['fields', 'files(id,name)'],
+        ['pageSize', '100'],
+      ],
+      policy: 'read',
+    });
+    const out = new Map<string, string>();
+    for (const f of list.files ?? []) if (f.name && !out.has(f.name)) out.set(f.name, f.id);
+    return out;
+  };
+}

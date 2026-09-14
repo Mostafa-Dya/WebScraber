@@ -87,7 +87,12 @@ describe('clients', () => {
     expect(res.status).toBe(201);
     const out = await res.json();
     expect(out.client.code).toMatch(CLIENT_CODE_RE);
-    expect(out.client.code).toMatch(/^lea-dupont-[a-z0-9]{6}$/);
+    // The route is scrambled now (owner, 2026-09-13): half the name's letters, shuffled, with
+    // digits and `-`/`_` woven inside — never at either end, and never a character the sheet's
+    // customer_slug column would reject. The exact string is random, so assert the shape.
+    expect(out.client.code).toMatch(/^[a-z0-9][a-z0-9_-]*[a-z0-9]$/);
+    expect(out.client.code).not.toContain('lea-dupont');
+    for (const ch of out.client.code.replace(/[^a-z]/g, '')) expect('leadupont').toContain(ch);
     expect(out.client).toMatchObject({
       name: 'Léa Dupont',
       note: 'from Paris',

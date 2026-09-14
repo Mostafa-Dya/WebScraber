@@ -1,0 +1,44 @@
+---
+// Checkbox — Figma set 16:55. State = Unchecked | Checked | Indeterminate | Disabled.
+//
+// The box is 14px, deliberately off the 4pt grid (--checkbox-size 0.875rem) because a 16px box
+// reads noticeably heavier at 13px body size. The ROW carries the 44px minimum so the touch target
+// clears the platform minimum even though the box does not.
+//
+// Indeterminate cannot be set from HTML — it is a DOM property, not an attribute — so it is applied
+// by a tiny inline pass rather than pretending the markup can express it.
+interface Props {
+  name: string;
+  id?: string;
+  label: string;
+  checked?: boolean;
+  indeterminate?: boolean;
+  disabled?: boolean;
+  value?: string;
+  class?: string;
+}
+const {
+  name,
+  id = name,
+  label,
+  checked = false,
+  indeterminate = false,
+  disabled = false,
+  value,
+  class: className,
+} = Astro.props;
+---
+
+<label class:list={['check', className]} for={id}>
+  <input
+    class="check__box"
+    type="checkbox"
+    id={id}
+    name={name}
+    value={value}
+    checked={checked}
+    disabled={disabled}
+    data-indeterminate={indeterminate ? 'true' : undefined}
+  />
+  <span>{label}</span>
+</label>

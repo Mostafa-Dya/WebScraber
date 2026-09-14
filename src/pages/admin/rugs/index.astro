@@ -7,11 +7,28 @@ export const prerender = false;
 import AdminLayout from '../../../components/admin/AdminLayout.astro';
 import Chips from '../../../components/admin/Chips.astro';
 import RugCardAdmin from '../../../components/admin/RugCardAdmin.astro';
+import Button from '../../../components/ui/Button.astro';
+import EmptyState from '../../../components/ui/EmptyState.astro';
+import RugTable from '../../../components/admin/RugTable.astro';
+import FilterBar from '../../../components/ui/FilterBar.astro';
+import Drawer from '../../../components/ui/Drawer.astro';
+import RugFields from '../../../components/admin/RugFields.astro';
+import FetchModal from '../../../components/ui/FetchModal.astro';
+import { adminRuntime } from '../../../lib/admin/http.ts';
+import { nextRugId } from '../../../lib/admin/ids.ts';
+import { defaultStatusOf, roundStepOf } from '../../../lib/admin/settings.ts';
+import { jsonForScript } from '../../../lib/view.ts';
+import { driveScope, reservedIds } from '../../api/admin/_shared.ts';
 import { fetchAdminSnapshot, type AdminSnapshot } from '../../../lib/admin/read.ts';
 import { getClient } from '../../../lib/runtime.ts';
 import { consoleLogger, serializeError } from '../../../lib/sheets/errors.ts';
 import { orderedCollectionNames } from '../../../lib/sheets/parse.ts';
-import { collectionSlug } from '../../../lib/text.ts';
+import { collectionSlug, collectionSlugs } from '../../../lib/text.ts';
+/* The Add-product drawer shows supplier preview images, so this page needs the same img-src the
+   standalone add page declares (ADMIN_SPEC §5.3). */
+Astro.csp?.insertDirective(
+  "img-src 'self' https://lh3.googleusercontent.com https://cdn.shopify.com https://images.ecarpetwholesale.com data:",
+);
 
 interface Chip {
   value: string;
@@ -31,13 +48,15 @@ try {
 }
 const rugs = snapshot?.rugs ?? [];
 const collections = snapshot?.collections ?? [];
+// A rug filed under several collections is counted under each of them (owner requirement
+// 2026-09-13), which is exactly what the chip filter shows once a card carries every slug.
 const counts = new Map<string, number>();
 for (const r of rugs) {
-  const key = r.collection.trim() ? collectionSlug(r.collection, collections) : '';
-  counts.set(key, (counts.get(key) ?? 0) + 1);
+  const slugs = r.collections.length ? collectionSlugs(r.collections, collections) : [''];
+  for (const key of slugs) counts.set(key, (counts.get(key) ?? 0) + 1);
 }
 const names = orderedCollectionNames(
-  rugs.filter((r) => r.collection.trim()),
+  rugs.filter((r) => r.collections.length > 0),
   collections,
 );
 const seen = new Set<string>();
@@ -56,35 +75,116 @@ const statusChips: Chip[] = [
   { value: 'archived', label: 'Archived' },
   { value: 'all', label: 'Any status' },
 ];
+
+/* The one number on this screen that needs acting on: rows whose Drive folder exists but whose
+   sheet row was never written (Figma P1 header, "412 products · 3 failed to save"). */
+const pendingCount = rugs.filter((r) => r.commitStatus === 'pending').length;
+
+/* Adding a product is an action on this list, not a destination (Figma revision 161:195). The drawer
+   keeps the list mounted behind it, so cancelling costs nothing and you keep your place in the
+   scroll — which is the whole reason it is not a route. /admin/rugs/new stays as a working page, so
+   a direct link, a bookmark and a no-JS browser all still reach the same form. */
+await driveScope();
+const driveScopeOk = adminRuntime.driveScopeOk ?? null;
+const tags = snapshot?.tags ?? [];
+const settings = snapshot?.settings;
+const defaultStatus = settings ? defaultStatusOf(settings) : 'active';
+const roundStep = settings ? roundStepOf(settings) : 5;
+const nextId = snapshot
+  ? nextRugId(
+      snapshot.rugs.map((r) => r.id),
+      reservedIds(snapshot),
+    )
+  : '';
+const addData = {
+  mode: 'add',
+  collections: collections.map((c) => ({ id: c.id, slug: c.slug, name: c.name })),
+  tags: tags.map((t) => ({ id: t.id, slug: t.slug, name: t.name, color: t.color ?? '' })),
+  nextId,
+  defaultStatus,
+  roundStep,
+  driveScopeOk,
+  adminHeaders: snapshot?.report.adminHeaders ?? 'ok',
+};
 ---
 
-<AdminLayout title="Serio Ludere — Catalogue" active="rugs">
+<AdminLayout title="Serio Ludere — Products" active="rugs">
   {error && <div class="msg err on">Could not read the sheet: {error}</div>}
-  <div class="row">
-    <div class="grow">
-      <input
-        id="q"
-        type="search"
-        placeholder="Search name, id or supplier ref"
-        autocomplete="off"
-        aria-label="Search rugs"
-      />
+  <div class="page-head">
+    <div class="page-head__titles">
+      <p class="page-head__count">
+        {rugs.length}
+        {rugs.length === 1 ? 'product' : 'products'}{pendingCount > 0 && ` · ${pendingCount} failed to save`}
+      </p>
     </div>
-    <a class="go button-link" href="/admin/rugs/new">+ Add rug</a>
+    <span class="page-head__rule"></span>
+    <Button href="/admin/rugs/new" icon="plus" data-open="add-rug">Add product</Button>
   </div>
+
+  <FilterBar>
+    <input
+      slot="search"
+      id="q"
+      class="input filterbar__search"
+      type="search"
+      placeholder="Search ID or title"
+      autocomplete="off"
+      aria-label="Search products"
+    />
+  </FilterBar>
   <Chips id="collectionChips" label="Collections" chips={collectionChips} />
   <Chips id="statusChips" label="Status" chips={statusChips} />
   <p class="hint" id="count" role="status" aria-live="polite"></p>
-  <div id="empty" class:list={['msg', 'busy', { on: !error && rugs.length === 0 }]}>
-    {rugs.length === 0 ? 'No rugs yet.' : ''}
+  <div id="m-retry" class="msg"></div>
+  <div id="empty-first" hidden={rugs.length !== 0}>
+    <EmptyState type="first-run" href="/admin/rugs/new" />
   </div>
-  <div id="grid" class="grid">
+  <div id="empty-none" hidden>
+    <EmptyState type="no-results" />
+  </div>
+  <div id="table">
+    <RugTable rugs={rugs} collections={collections} />
+  </div>
+  <div id="grid" class="grid" hidden>
     {rugs.map((rug) => <RugCardAdmin rug={rug} collections={collections} />)}
   </div>
+  <Drawer id="add-rug" title="Add product">
+    <RugFields
+      mode="add"
+      collections={collections}
+      tags={tags}
+      defaultStatus={defaultStatus}
+      roundStep={roundStep}
+      driveScopeOk={driveScopeOk}
+      nextId={nextId}
+    />
+  </Drawer>
+  <script is:inline type="application/json" id="admin-data" set:html={jsonForScript(addData)} />
+
   <script>
     import { initRugList } from '../../../scripts/admin/rug-list.ts';
+    import { initViewSwitch } from '../../../scripts/admin/view-switch.ts';
+    import { initInlineRows } from '../../../scripts/admin/inline-row.ts';
+    import { initOverlays } from '../../../scripts/ui/overlay.ts';
+    import { initRugForm } from '../../../scripts/admin/rug-form.ts';
     initRugList();
+    initViewSwitch();
+    initInlineRows();
+    initOverlays();
+    initRugForm();
   </script>
+
+  {
+    /*
+      P5-P9 · the fetch modal (Figma 81:1865, 81:1974, 85:2332, 85:2508, 85:2652).
+
+      An empty shell: every state's content is built by src/scripts/admin/fetch-modal.ts, because the
+      five states share almost no structure and a page carrying all of them at once would be four
+      times the DOM for the one that is ever visible. rug-form.ts drives it, and falls back to
+      applying the scrape directly on any page that does not render this.
+    */
+  }
+  <FetchModal id="fetch-result" title="Fetching" />
 </AdminLayout>
 
 <style is:global>
@@ -94,17 +194,5 @@ const statusChips: Chip[] = [
   .card .mt .line,
   .card .mt .mono {
     display: block;
-  }
-  a.button-link {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    background: var(--ink);
-    color: var(--paper);
-    padding: 11px 18px;
-    border-radius: 2px;
-    text-decoration: none;
-    display: inline-block;
   }
 </style>

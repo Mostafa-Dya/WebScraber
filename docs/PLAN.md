@@ -150,3 +150,159 @@ file itself is blocking input for anything visual.
   both service-account-key and OAuth-refresh auth modes. See ADR D1–D11.
 - 2026-09-05: The shared `SECRET` shipped in the reference (`SL-view-9f3c81`) is treated as compromised;
   the legacy web app is archived once the new site is live.
+
+## Phase 12 — Owner requirements (2026-09-13)
+
+Ten requirements arrived together. Mapped one agent per requirement against the repo, then reconciled
+across them; the reconciliation changed the shape of the work materially, so the plan below is by
+**work item**, not by requirement. The mappers' independent sum was 145.5h; the honest combined figure
+is **~47h plus one unpriceable spike**, because four of the ten collapse into two and one is already
+85% built.
+
+### Incident — uncommitted half-migration in the tree (2026-09-13)
+
+The mapping pass was instructed to read only. It did not: ~34 files were modified and
+`src/components/ui/MultiSelect.astro` + `src/scripts/ui/multi-select.ts` were created, landing roughly
+85% of requirement R3 (multi-collection) with none of its design decisions taken. **Consequence: 4
+tests red and the admin rug form cannot save** — `src/scripts/admin/rug-form.ts:364` posts `collection`
+while `src/lib/admin/dto.ts:50` now requires `collections`, so every Add and Edit 400s. This work is
+interleaved with the uncommitted Figma pass in the same files, so a wholesale `git checkout` would
+destroy both. Resolve forward (finish R3) rather than revert. Nothing may be committed until the tree
+is green.
+
+### Work items, in dependency order
+
+**W1 · Unbreak + finish multi-collection (R3)** — ~14h, ~2h of which is the fire above.
+Already landed: `collections: string[]` on the domain type, `splitCollections` / `joinCollections`
+(`src/lib/text.ts:76-100`), parse, tab ordering, `CardView.collections`, prev/next by slug overlap,
+public card `data-collections`, write DTO + resolver + sheet write. Still open: the rug form post body;
+`src/scripts/prepaint.js:26` still reads the primary-only attribute (a first-paint flash of the wrong
+cards on `?collection=` deep links, and its CSP hash moves); admin filter and chip counts are
+primary-only (`src/scripts/admin/rug-list.ts:29`, `RugCardAdmin.astro:29`, `RugRow.astro:38`);
+`/api/catalogue` still publishes the scalar; the copy at `src/pages/admin/collections.astro:130,142`
+("A rug can only sit in one") is now false; ADR D12's join rule was amended by code with no record.
+**Blocked on owner decisions 3a–3d below.** Do this first — W4 and W5 edit the same `data-*` contract.
+
+**W2 · Footer phone (R8)** — 10 minutes of code; the rest is one question.
+`src/lib/studio.ts:7-8` (two constants) plus `tests/unit/design-view.test.ts:104`. The number renders
+in `src/components/Footer.astro:35-36` (public catalogue) only; `PreviewFooter.astro:8` imports just
+`STUDIO_EMAIL` and `STUDIO_NAME`, so if the owner is looking at a `/{slug}` preview link a correct fix
+changes nothing they can see. Also correct `docs/DESIGN.md:552,1842`, which hardcode the old number as
+spec. Leave `reference/catalogue.html:93` alone — parity record, ADR D18.
+
+**W3 · One pricing rule for both suppliers (R1 + R2)** — ~9h combined, vs 15h apart.
+These cannot be sequenced: whichever lands first gets rewritten by the second. Both rewrite the same
+nine-line `retailSuggestion` (`src/lib/scrape/money.ts:97-105`), reached only from
+`src/lib/scrape/index.ts:136`. One rule subsumes all three shapes:
+`retail = round(base x PRODUCT(factors) + band(x), step)` — ECG `factors=[1.5], bands=[always +150]`;
+Karavan `factors=[0.7, 2], bands=[(0,500) -> 100, [500,1000] -> 150, (1000,inf) -> 200]`; a plain
+markup `factors=[m], bands=[]`. One `PricingRule` type, one `pricingRuleFor(settings, supplier, env)`
+beside the existing `markupFor`, one substitution point, one provenance set, one form hint.
+**Blocked on decisions 1a–1d.**
+
+**W4 · Preview card pass (R5 + R6 + R7)** — ~14h combined (likes ~10h, badges ~4h).
+Four requirements land on one 30-line block, `src/components/customer/ProductCard.astro:78-111`, and
+they are complementary rather than conflicting — but only visibly so from above. The heart moving to
+bottom-right vacates top-right, and the badge then brackets the plate the way the public card already
+does (`catalogue.css:178-187`). One rewrite of the overlay layer, one z-index ladder, one D18
+amendment. Likes are **already stored and derived** — `parse.ts:553-566`, on `CardView` at
+`view.ts:29-31`, populated at `:122-124`, already returned by `POST /api/reactions` — so R5's "stored
+count" needs no new storage; nine of the fourteen files in its mapped change surface were "only if
+stored". The real work is the sort comparator, the control, the heart restyle and the 5+ threshold.
+Note `tests/unit/styles/icons.test.ts:19-38` asserts the glyph set is exactly 18 names — fill the
+existing heart path, do not add `heart-filled`. **Blocked on decisions 4a–4d and 5a–5b.**
+
+**W5 · Customer route obfuscation (R4)** — 5h without a literal `%`, 12h+ with it.
+The entire cost difference is the `%`. `src/lib/customer/gate.ts:83` reads the raw
+`context.url.pathname` while Astro hands the route param back `decodeURI`'d, so the gate would mint a
+cookie for `sl_c_x%25s` while `login.ts` sets `sl_c_x%s` — a silent, permanent, unlogged login loop.
+Two must-fixes regardless of the answer: reserved words are enforced on requests but **not at
+generation** (`src/lib/admin/clients.ts:28-43` can currently mint `admin`), and `newClientCode` retries
+exactly once, which is safe at 36^6 and not safe once the keyspace shrinks. Also fix
+`docs/ADMIN_SPEC.md:705`, which documents a link shape (`/?c=`) that has not been shipped since
+`clients.ts:52`. **Blocked on decisions 2a–2c.**
+
+**W6 · Rotate the Karavan primary image (R9)** — ~5h scoped honestly.
+The sheet stores exactly one photo per product (`src/lib/admin/write.ts:134`), so "rotate the first
+image" and "rotate the image" are the same instruction, and the gallery / thumbnail / lightbox half of
+the mapped surface is work for a multi-photo world the sheet cannot express. Recommended shape: the
+supplier **seeds the existing `rotate` tag flag** at scrape time and the owner always overrides — that
+keeps one source of truth (ADR R8), makes double rotation structurally impossible, and makes any
+backfill a plain Tags-cell rewrite. The only real chunk is that the preview realm has no rotation
+support at all. **Gated on W7's ingest-vs-render answer — it is the same seam.**
+
+**W7 · Background removal (R10)** — unpriceable; spike before planning.
+The repo has no image-processing capability, and the target host is ADR D2's `apps-s-1vcpu-0.5gb`
+($5, 512 MB, no disk). Feasibility is **unknowable from the repo**: no image bytes are committed, only
+URLs. Two unverified blockers — whether lh3's `=w800` re-encode preserves alpha
+(`src/lib/drive/media.ts:124`; the repo's own research documents WebP and no-upscaling but says nothing
+about alpha), and whether ECG scraping runs at all (`SCRAPE_RESPECT_ROBOTS` defaults true,
+`astro.config.mjs:74-78`). **Do a 30-minute spike first: 5 real supplier URLs plus one alpha probe.**
+If the source photos are flat studio white, sharp is already in `node_modules` as Astro's optional
+dependency and this collapses to ~6h. If not, the honest answer may be that the studio cuts out the
+primary by hand — `rug-form.ts` already accepts a pasted Drive id.
+If both W6 and W7 ship, **rotate-then-cut is the only correct order**: a cutout's tight alpha bounding
+box is meaningless if the image is subsequently turned 90 degrees.
+
+### Owner decisions this phase is blocked on
+
+1. **Pricing** — (a) in the Karavan band, is X the scraped base or the post-x1.4 subtotal? base 400 ->
+   **$660** under the base reading, **$710** under the subtotal reading; 500 -> $850 either way;
+   800 -> $1270 vs $1320; 1200 -> $1880 either way. (b) Are the band edges inclusive as written — 500
+   exactly -> +150, 1000 exactly -> +150? (c) Does the existing round-up-to-5 still run, and before or
+   after the additive term? (d) Do 0.7 / 2 / the bands live in the Settings tab, where every sheet
+   Editor can read them? ADMIN_SPEC 3.2 and ADR 3.2 both call margin structure confidential.
+2. **Route** — (a) must a literal `%` appear, or was `%s` shorthand for "some punctuation"? Compare
+   `hi6g2a3a-s` / `hi6g2a3a_s` against `hi6g2a3a%25s`, which is what the address bar would actually
+   show. (b) Derived from the name or random? "Half the letters" reads derived; "no fixed rule" reads
+   random; the example's digits (6, 2, 3) are in neither. (c) Retro-fit existing customers, or new
+   links only?
+3. **Collections** — (a) which collection owns a product's breadcrumb and lead placement when it is in
+   three? (b) Per-tab counts now sum to more than the catalogue — acceptable? (c) **Audit the live
+   Collections tab for a `|` before this ships** — `splitCollections` has no escaping and
+   `CollectionInput.name` does not refuse the character, so a collection already named with a pipe
+   shatters silently and unrecoverably on the next read. This is a 60-second check only the owner can
+   do. (d) Does the admin _list filter_ become multi-select too, or only the edit form?
+4. **Likes** — (a) "bottom right of **the page**" — one floating button fixed to the viewport, or one
+   heart per card? Only per-card is consistent with per-product liking. (b) Whose likes does the count
+   show — every buyer's, or only this buyer's? A buyer seeing other buyers' counts is a disclosure.
+   (c) Sorting by a hidden count discloses it ordinally: either sort only among the 5+ set, or drop the
+   threshold — those are the only two internally consistent answers. (d) Is "highest likes" the default
+   order or opt-in? It competes with `withLeads()` (`view.ts:138-163`), which physically splices a
+   featured rug to the front of its run and cannot co-exist with a popularity sort.
+5. **Badges** — (a) `Signed` is already a **collection** in this system (`contract.ts:176`, ADR R5) as
+   well as a tag. Does the badge key off the tag, the collection, or either? Multi-collection makes
+   "filed under Signed _and_ tagged Signed" much more likely, and nobody has said what that card shows.
+   (b) Does a `Signed` row exist in the `Tags` tab of every sheet? If not, `resolveTags` 422s and the
+   feature is inert (`_shared.ts:87-94`).
+6. **Scope** — is `PUBLIC_CATALOGUE` staying on? It defaults true (`astro.config.mjs:84`) while ADR D14
+   says the preview _replaces_ the public catalogue as the product. If it is going off, roughly a third
+   of the change surface above is work on pages nobody will see. One question, very large answer.
+
+### Doc and decision-record defects found while mapping
+
+- **ADMIN_SPEC.md:733-734 is false and will produce a wrong price**: "the step is configurable so a
+  tiered rule (e.g. >= 1000 -> 50) can be added without touching callers". `roundUpToStep(1120, 200)`
+  is 1200, not 1320. The Karavan band is additive, not a rounding step; anyone reaching for
+  `price_round_step` — the obvious existing knob, blessed by the spec — gets a plausible-looking wrong
+  number. Correct it in the same pass.
+- **There is no admin-panel ADR at all.** `ADMIN_SPEC.md:993-995` cites "ADR D13 (D13.6 price rule)";
+  `ADR.md:530` D13 is the Design pass. Neither pricing requirement has an existing decision to amend.
+- **ADR D4 (ADR.md:266-268)** still documents formula-owned `likes` / `dislikes` via COUNTIFS over tabs
+  (`Rugs` / `Votes`) that no longer exist, while `parse.ts:530-533` states the site never reads a
+  stored count. Amend it whichever way decision 4 lands, or the next engineer implements COUNTIFS
+  straight from the ADR.
+- **ADR D12 (ADR.md:512)** — "rugs store display names" was amended by uncommitted code, no record.
+- **ADR D14 (ADR.md:599-601)** rests on slugs being random-suffixed (36^6 ~ 2.2e9); a name-derived
+  scheme is ~1e6-1e7, so that trade-off must be re-accepted explicitly rather than inherited.
+- **ADR D18 (ADR.md:671-675)** — badges on the public card go in `editorial.css`, never
+  `catalogue.css`. D18 also pins the reaction control to "#000000 on #ffffff"; a red-filled heart
+  overturns it and contradicts `preview.css:64` ("the focus ring is ink, never the brand red: red next
+  to a destructive action reads as an error"). It would be the first brand-red non-destructive
+  affordance in the preview realm.
+- **ADMIN_SPEC.md:699-702** claims code uniqueness is checked "under the admin lock". It is not — the
+  snapshot read is outside `withAdminLock`. Harmless at 36^6; not harmless once the keyspace shrinks.
+- **tests/unit/revalidate-view.test.ts:219-221** ("every card's `data-collection` matches exactly one
+  tab, and the counts add up") is now **vacuously green** — every fixture is single-collection. That is
+  worse than red; give it a multi-collection fixture.
+- Write **one** ADR entry covering this batch, not nine.

@@ -1,0 +1,42 @@
+---
+// Filter Bar — Figma 23:183. Search 280 · three selects 180 each · spacer · 36px view switch.
+//
+// The view-switch buttons are SQUARE (radius 0), not circular, despite Prestige shipping a
+// circle_button_background — matched as drawn.
+//
+// NAMING CONFLICT, reported: the component description calls the pair "table / gallery" while every
+// screen frame labels them list / grid. The frames win here because that is what a user sees; the
+// icons are Icon / List and Icon / Grid.
+import Icon from './Icon.astro';
+
+interface Props {
+  /** Which view is active. P1 draws Grid active; P2 and every other admin frame draw List. */
+  view?: 'list' | 'grid';
+  class?: string;
+}
+const { view = 'list', class: className } = Astro.props;
+---
+
+<div class:list={['filterbar', className]} role="search">
+  <slot name="search" />
+  <slot name="filters" />
+  <span class="filterbar__spacer"></span>
+  <button
+    type="button"
+    class="filterbar__view"
+    aria-pressed={view === 'list' ? 'true' : 'false'}
+    data-view="list"
+  >
+    <Icon name="list" />
+    <span class="sr-only">Table view</span>
+  </button>
+  <button
+    type="button"
+    class="filterbar__view"
+    aria-pressed={view === 'grid' ? 'true' : 'false'}
+    data-view="grid"
+  >
+    <Icon name="grid" />
+    <span class="sr-only">Gallery view</span>
+  </button>
+</div>

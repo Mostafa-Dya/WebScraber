@@ -82,9 +82,15 @@ export interface ScrapedRug {
   retailEstimate?: string;
   /** seenPrice converted to USD (Rates tab) when not USD; else = seenPrice. */
   priceUsd?: number;
-  /** roundUpToStep(priceUsd × markup) — undefined when no markup is configured. */
+  /**
+   * The retail suggestion: the supplier's own formula where one exists (owner, 2026-09-13), else
+   * roundUpToStep(priceUsd × markup). Undefined when neither a formula nor a markup applies.
+   */
   suggestedRetailUsd?: number;
+  /** Set only when the plain multiplier was used; a formula has no single markup to report. */
   markupApplied?: number;
+  /** The formula's name when one was applied, e.g. "karavanrug: base × 0.7 × 2 + band". */
+  pricingRule?: string;
   roundStep?: number;
   tagsSuggested: string[];
   /** Full-size candidates, max 12. */

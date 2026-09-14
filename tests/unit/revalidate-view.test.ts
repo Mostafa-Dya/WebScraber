@@ -147,7 +147,7 @@ describe('catalogueDto', () => {
     const text = JSON.stringify(dto);
     expect(text).not.toContain('visitor');
     expect(text).not.toContain('voteState');
-    expect(dto.rugs[0]?.photos[0]).toMatch(/^https:\/\/lh3\.googleusercontent\.com\/d\/.+=w1600$/);
+    expect(dto.rugs[0]?.photos[0]).toMatch(/^\/api\/image\/[A-Za-z0-9_-]+\?w=1600$/);
     expect(dto.rates[0]).toEqual({ currency: 'AED', rateToBase: 3.67, symbol: 'AED ' });
   });
 });
@@ -178,7 +178,7 @@ describe('view helpers (ADR D12)', () => {
     const rugs = snap.catalogue.rugs.filter((r) => r.status === 'active');
     const card = cardView(rugs[1]!, snap.catalogue);
     expect(card).toMatchObject({ id: 'T-1', collectionSlug: 'tulu', rot: '0' });
-    expect(card.photoUrl).toMatch(/=w800$/);
+    expect(card.photoUrl).toMatch(/\?w=800$/);
     expect(card.tags).toEqual([
       { name: 'Kilim', slug: 'kilim' },
       { name: 'Signed', slug: 'signed' },
@@ -216,11 +216,49 @@ describe('view helpers (ADR D12)', () => {
       { name: 'More', slug: 'more', count: 1, description: '' },
       { name: 'Art Deco', slug: 'art-deco', count: 2, description: '' }, // variants sort A→Z, the first names the tab,
     ]);
-    // Every card's data-collection matches exactly one tab, and the counts add up to the cards shown.
+    // Every card is reachable from the tabs it claims, and the counts add up to the cards shown.
+    //
+    // This reads `collectionSlugs`, not the primary `collectionSlug`. Since a rug may belong to
+    // several collections (owner, 2026-09-13) the primary-only version of this check passes
+    // vacuously on any single-collection fixture — which is worse than failing, because it looks
+    // like coverage. The multi-collection case is asserted separately below.
     for (const tab of tabs) {
-      const shown = rugs.filter((r) => cardView(r, snap.catalogue).collectionSlug === tab.slug).length;
+      const shown = rugs.filter((r) => cardView(r, snap.catalogue).collectionSlugs.includes(tab.slug)).length;
       expect(shown).toBe(tab.count);
     }
+    // A rug in two collections is counted under BOTH tabs and reachable from either. Without this
+    // fixture the loop above never sees a rug whose membership differs from its primary.
+    const multi = snapshotFromRanges(
+      rangesWith({
+        rugs: [
+          rugRow({ id: 'm1', name: 'M1', collection: 'Tulu | Wabi Sabi' }),
+          rugRow({ id: 'm2', name: 'M2', collection: 'Tulu' }),
+        ],
+        collections: [
+          ['tulu', 'Tulu', 'tulu', '', '', '', 1],
+          ['wabi-sabi', 'Wabi Sabi', 'wabi-sabi', '', '', '', 2],
+        ],
+      }),
+    );
+    const multiTabs = navTabs(multi.catalogue.rugs, multi.catalogue);
+    expect(multiTabs.map((t) => [t.slug, t.count])).toEqual([
+      ['tulu', 2],
+      ['wabi-sabi', 1],
+    ]);
+    for (const tab of multiTabs) {
+      const shown = multi.catalogue.rugs.filter((r) =>
+        cardView(r, multi.catalogue).collectionSlugs.includes(tab.slug),
+      ).length;
+      expect(shown).toBe(tab.count);
+    }
+    // The two-collection rug keeps ONE primary — the canonical route — while appearing in two tabs.
+    const m1 = cardView(
+      multi.catalogue.rugs.find((r) => r.id === 'm1')!,
+      multi.catalogue,
+    );
+    expect(m1.collectionSlugs).toEqual(['tulu', 'wabi-sabi']);
+    expect(m1.collectionSlug).toBe('tulu');
+
     // Only the variant spelling present: it still takes the Collections row's slot and name.
     const only = snapshotFromRanges(
       rangesWith({

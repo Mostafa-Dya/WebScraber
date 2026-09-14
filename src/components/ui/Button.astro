@@ -1,0 +1,69 @@
+---
+// Button — Figma `02 · Components` set 12:122. 20 variants = 4 Style x 5 State.
+//
+// The Figma set models State as a variant property because a design file has no pseudo-classes.
+// In code, Hover and Active ARE pseudo-classes and belong in CSS, so only the two states the DOM
+// cannot infer — Disabled and Loading — surface as props. All four are styled in controls.css.
+//
+// Figma props map as: Style -> style, Label -> the default slot, Show icon + Icon -> icon,
+// State -> disabled / loading.
+import Icon, { type IconName } from './Icon.astro';
+
+interface Props {
+  style?: 'primary' | 'secondary' | 'ghost' | 'destructive';
+  /** Renders an <a> when set; otherwise a <button>. */
+  href?: string;
+  type?: 'button' | 'submit' | 'reset';
+  disabled?: boolean;
+  /** Swaps the label for loadingLabel and marks the control busy. */
+  loading?: boolean;
+  /** Figma's Loading variants all read 'Saving…'; override where the verb differs. */
+  loadingLabel?: string;
+  /** Figma's 'Show icon' boolean plus its Icon instance-swap, as one prop. */
+  icon?: IconName;
+  class?: string;
+  id?: string;
+  name?: string;
+  value?: string;
+  form?: string;
+}
+
+const {
+  style = 'primary',
+  href,
+  type = 'button',
+  disabled = false,
+  loading = false,
+  loadingLabel = 'Saving…',
+  icon,
+  class: className,
+  ...rest
+} = Astro.props;
+
+const classes = ['btn', `btn--${style}`, loading && 'is-loading', className].filter(Boolean).join(' ');
+
+// A link has no disabled state in HTML; aria-disabled plus a removed href is the accessible
+// equivalent, and controls.css styles both the same way.
+const isInert = disabled || loading;
+---
+
+{
+  href ? (
+    <a
+      href={isInert ? undefined : href}
+      class={classes}
+      aria-disabled={isInert ? 'true' : undefined}
+      aria-busy={loading ? 'true' : undefined}
+      role={isInert ? 'link' : undefined}
+      {...rest}
+    >
+      {icon && <Icon name={icon} class="btn__icon" />}
+      {loading ? loadingLabel : <slot />}
+    </a>
+  ) : (
+    <button type={type} class={classes} disabled={isInert} aria-busy={loading ? 'true' : undefined} {...rest}>
+      {icon && <Icon name={icon} class="btn__icon" />}
+      {loading ? loadingLabel : <slot />}
+    </button>
+  )
+}

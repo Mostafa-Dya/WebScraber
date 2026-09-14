@@ -1,0 +1,90 @@
+---
+// Multi-select dropdown — owner requirement 2026-09-13: "the admin can assign multiple collections
+// for the product, not only one (there should be a multi select dropdown to choose from)".
+//
+// Not drawn in the Figma file. It is composed from parts that ARE drawn rather than invented: the
+// trigger is the Input control's box (same height, same border, same focus ring) and every option is
+// the Checkbox component, so this reads as one system with the rest of the form.
+//
+// Built on <details>, not a custom listbox widget, for three reasons that matter here:
+//   - open/close, Space/Enter activation and the disclosure semantics are the platform's, not mine;
+//   - the options are real <input type="checkbox">, so a screen reader announces "checked, 2 of 7"
+//     without any aria-* bookkeeping that can drift from the DOM;
+//   - it degrades to a usable (if unstyled) control with no JavaScript at all.
+//
+// A true `role="listbox"` with `aria-multiselectable` would be the ARIA-canonical choice, but it
+// would mean reimplementing typeahead, roving focus and selection-follows-focus by hand — more code
+// and more ways to be subtly wrong than a disclosure full of checkboxes.
+//
+// src/scripts/ui/multi-select.ts adds only what <details> lacks: the summary line, close-on-Esc and
+// close-on-outside-click.
+import Checkbox from './Checkbox.astro';
+
+export interface MultiOption {
+  value: string;
+  label: string;
+  selected?: boolean;
+}
+
+interface Props {
+  id: string;
+  /** Submitted field name; every checked option posts under it. */
+  name: string;
+  label: string;
+  options: MultiOption[];
+  /** Shown when nothing is selected. */
+  placeholder?: string;
+  /** Marks the field required for the form's own validation; <details> cannot express it natively. */
+  required?: boolean;
+  class?: string;
+}
+const { id, name, label, options, placeholder = 'Select…', required = false, class: className } = Astro.props;
+
+const chosen = options.filter((o) => o.selected === true);
+// The resting summary. multi-select.ts recomputes this on every change; rendering it here too means
+// the closed control is already correct on first paint, with no flash of the placeholder.
+const summary = chosen.length === 0 ? placeholder : chosen[0]!.label;
+const extra = chosen.length > 1 ? `+${chosen.length - 1}` : '';
+---
+
+<div
+  class:list={['msel', className]}
+  id={id}
+  data-multi-select
+  data-placeholder={placeholder}
+  data-required={required ? 'true' : undefined}
+>
+  <details class="msel__wrap">
+    <summary class="msel__trigger">
+      <span class="msel__label sr-only">{label}</span>
+      <span class:list={['msel__value', { 'is-empty': chosen.length === 0 }]} data-msel-value>
+        {summary}
+      </span>
+      {
+        extra && (
+          <span class="msel__more" data-msel-more>
+            {extra}
+          </span>
+        )
+      }
+      <svg class="msel__chevron" viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true">
+        <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+    </summary>
+    <div class="msel__panel" role="group" aria-label={label}>
+      {
+        options.map((o) => (
+          <Checkbox
+            class="msel__opt"
+            id={`${id}__${o.value.replace(/[^A-Za-z0-9_-]+/g, '-')}`}
+            name={name}
+            value={o.value}
+            label={o.label}
+            checked={o.selected === true}
+          />
+        ))
+      }
+      {options.length === 0 && <p class="msel__empty">No collections yet — add one first.</p>}
+    </div>
+  </details>
+</div>

@@ -8,6 +8,19 @@ import type { Flip as FlipType } from 'gsap/Flip';
 
 const SLUG_RE = /^[a-z0-9-]{1,80}$/;
 
+/**
+ * Does this card belong to the tab? (owner requirement 2026-09-13: a rug can be in several.)
+ *
+ * `data-collections` is the space-separated membership list; `data-collection` is the primary and
+ * stays for anything that needs the one canonical tab. Falling back to the primary keeps a card
+ * rendered before this change — or by a test fixture — filtering correctly instead of vanishing.
+ */
+function inCollection(card: HTMLElement, slug: string): boolean {
+  const list = card.dataset.collections;
+  if (list === undefined) return card.dataset.collection === slug;
+  return list.split(' ').includes(slug);
+}
+
 type Gsap = typeof GsapType;
 type FlipPlugin = typeof FlipType;
 interface Motion {
@@ -112,7 +125,7 @@ export function initTabs(doc: Document = document, win: Window = window): void {
     });
     const cards = [...doc.querySelectorAll<HTMLElement>('[data-card]')];
     const run = (): void => {
-      for (const card of cards) card.hidden = card.dataset.collection !== slug;
+      for (const card of cards) card.hidden = !inCollection(card, slug);
     };
     if (animate && grid) reflow(grid, cards, run);
     else run();

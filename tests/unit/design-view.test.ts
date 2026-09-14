@@ -19,6 +19,8 @@ const base: CardView = {
   name: 'X',
   collection: 'Kilims',
   collectionSlug: 'kilims',
+  collections: ['Kilims'],
+  collectionSlugs: ['kilims'],
   photoUrls: [],
   rot: '0',
   material: '',
@@ -32,13 +34,17 @@ const base: CardView = {
   rating: 0,
   tags: [],
 };
-const c = (id: string, over: Partial<CardView> = {}): CardView => ({
-  ...base,
-  id,
-  slug: id,
-  name: id.toUpperCase(),
-  ...over,
-});
+const c = (id: string, over: Partial<CardView> = {}): CardView => {
+  const merged = { ...base, id, slug: id, name: id.toUpperCase(), ...over };
+  // Keep membership in step with a primary-only override. Every fixture below sets `collection` /
+  // `collectionSlug`; a card whose plural list disagreed with its primary would be a shape the
+  // parser cannot produce, so the grouping helpers would be exercised against fiction.
+  return {
+    ...merged,
+    collections: over.collections ?? [merged.collection],
+    collectionSlugs: over.collectionSlugs ?? [merged.collectionSlug],
+  };
+};
 
 describe('plateRatio (docs/DESIGN.md §5.2)', () => {
   it('snaps the displayed width ÷ height to the nearest bucket in log space', () => {
@@ -101,7 +107,7 @@ describe('enquiryLinks', () => {
   it('pre-fills the rug name and reference id', () => {
     const l = enquiryLinks('Winks "quoted"', 'SL-021');
     expect(l.whatsapp).toBe(
-      'https://wa.me/16475615157?text=' +
+      'https://wa.me/525535760978?text=' +
         encodeURIComponent('Hi Serio Ludere, I am interested in Winks "quoted" (ref SL-021).'),
     );
     expect(l.mailto).toBe(

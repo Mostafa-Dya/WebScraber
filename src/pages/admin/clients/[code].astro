@@ -1,0 +1,386 @@
+---
+// F5 · Customer detail — Figma 52:1207.
+//
+// One buyer: how often they have come back, what they liked, and — the part that is actually used —
+// a copy control that puts their liked product IDs on the clipboard as a plain list. The frame's own
+// footnote says so: "The copy action is the real export — a plain ID list for a supplier
+// conversation." Everything above it exists to make that list trustworthy.
+//
+// Both halves of the data already existed and neither was ever rendered: buildSavesReport() knew
+// what each buyer liked, buildVisitsReport() knew whether they had ever arrived, and each was
+// reachable only as a JSON endpoint. This screen is the join.
+//
+// Read server-side in ONE batchGet rather than two fetches from the browser: the page is useless
+// without both halves, so there is nothing to show progressively, and the admin read is already the
+// slowest thing here.
+export const prerender = false;
+
+import AdminLayout from '../../../components/admin/AdminLayout.astro';
+import Badge from '../../../components/ui/Badge.astro';
+import CopyButton from '../../../components/ui/CopyButton.astro';
+import StatBlock from '../../../components/ui/StatBlock.astro';
+import { clientLink } from '../../../lib/admin/clients.ts';
+import { adminRuntime } from '../../../lib/admin/http.ts';
+import { ADMIN_READ_RANGES, parseAdminSnapshot } from '../../../lib/admin/read.ts';
+import { SAVES_READ_RANGE, buildSavesReport, type ClientSaves } from '../../../lib/admin/saves.ts';
+import { VISITS_READ_RANGE, buildVisitsReport, type ClientVisits } from '../../../lib/admin/visits.ts';
+import { CLIENT_CODE_RE } from '../../../lib/admin/dto.ts';
+import { driveImageUrl } from '../../../lib/images.ts';
+import { getClient } from '../../../lib/runtime.ts';
+import { consoleLogger, serializeError } from '../../../lib/sheets/errors.ts';
+import { dims } from '../../../lib/units.ts';
+
+const code = Astro.params.code ?? '';
+// Validated before any read: an unparseable code is a 404, not a sheet round trip.
+if (!CLIENT_CODE_RE.test(code)) {
+  return new Response('Not found', { status: 404, headers: { 'cache-control': 'no-store' } });
+}
+
+let error = '';
+let saves: ClientSaves | undefined;
+let visits: ClientVisits | undefined;
+let name = code;
+let status: 'active' | 'revoked' | undefined;
+let notReviewed = 0;
+let photoOf = new Map<string, string | undefined>();
+let sizeOf = new Map<string, string>();
+
+try {
+  const client = getClient();
+  const ranges = await client.batchGet([...ADMIN_READ_RANGES, SAVES_READ_RANGE, VISITS_READ_RANGE]);
+  const snapshot = parseAdminSnapshot(ranges.slice(0, ADMIN_READ_RANGES.length), { logger: consoleLogger });
+  const savesReport = buildSavesReport(
+    ranges[ADMIN_READ_RANGES.length]?.values,
+    snapshot.rugs,
+    snapshot.clients,
+  );
+  const visitsReport = buildVisitsReport(ranges[ADMIN_READ_RANGES.length + 1]?.values, snapshot.clients);
+
+  const key = code.toLowerCase();
+  saves = savesReport.byClient.find((c) => c.code.toLowerCase() === key);
+  visits = visitsReport.byClient.find((c) => c.code.toLowerCase() === key);
+  const row = snapshot.clients.find((c) => c.code.toLowerCase() === key);
+  if (!row && !saves && !visits) {
+    return new Response('Not found', { status: 404, headers: { 'cache-control': 'no-store' } });
+  }
+  name = row?.name || saves?.name || visits?.name || code;
+  status = row?.status ?? saves?.status ?? visits?.status;
+
+  // "Not yet reviewed" is what is LEFT of the live catalogue, not of everything ever published: a
+  // buyer cannot review a draft or an archived rug, so counting those would make the number a lie.
+  const active = snapshot.rugs.filter((r) => r.status === 'active');
+  notReviewed = Math.max(0, active.length - (saves?.liked.length ?? 0) - (saves?.disliked.length ?? 0));
+
+  photoOf = new Map(active.map((r) => [r.id, r.photos[0] ? driveImageUrl(r.photos[0], 800) : undefined]));
+  sizeOf = new Map(active.map((r) => [r.id, dims(r.widthCm, r.lengthCm, 'cm')]));
+} catch (e) {
+  const safe = serializeError(e);
+  consoleLogger.error('customer detail read failed', { error: safe });
+  error = safe.message;
+}
+
+const liked = saves?.liked ?? [];
+const disliked = saves?.disliked ?? [];
+const link = clientLink(adminRuntime.siteUrl, code);
+
+/** "preview.serioludere.com/x · first opened 2 Sep · last seen 4 min ago · 7 sessions" (52:1259). */
+const day = (iso: string): string =>
+  iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+const sessions = visits?.visits ?? 0;
+const opened = visits?.firstSeen ? `First opened ${day(visits.firstSeen)}` : 'Never opened';
+const lastSeen = visits?.lastSeen ? `last seen ${day(visits.lastSeen)}` : '';
+
+// MF4 (111:2953) carries ONLY the dates: at 390 the URL wraps to three lines and the session count
+// is already the first Stat Block a thumb-width below. Both lines ship and the breakpoint chooses,
+// the same swap the back link and the unit toggle use.
+const metaShort = [opened, lastSeen].filter(Boolean).join(' · ');
+const metaLong = [
+  link.replace(/^https?:\/\//, ''),
+  opened.toLowerCase(),
+  lastSeen,
+  `${sessions} ${sessions === 1 ? 'session' : 'sessions'}`,
+]
+  .filter(Boolean)
+  .join(' · ');
+---
+
+<AdminLayout title={`Serio Ludere — ${name}`} active="clients" sub={name}>
+  {error && <div class="msg err on">Could not read the sheet: {error}</div>}
+
+  <section class="cust" aria-labelledby="cust-name">
+    <div class="cust__head">
+      <h2 class="cust__name" id="cust-name">{name}</h2>
+      <p class="cust__meta">
+        <span class="cust__meta-long">{metaLong}</span>
+        <span class="cust__meta-short">{metaShort}</span>
+      </p>
+    </div>
+
+    {
+      /*
+        Four Stat Blocks, 200 wide (52:1265…52:1277). The tones are the file's: Liked is POSITIVE,
+        "Not yet reviewed" is MUTED on the container so both its lines dim together, and the other
+        two are default. That is the whole reason StatBlock carries a tone.
+      */
+    }
+    <div class="cust__stats">
+      <StatBlock label="Sessions" value={sessions} />
+      <StatBlock label="Liked" value={liked.length} tone="positive" />
+      <StatBlock label="Disliked" value={disliked.length} />
+      <StatBlock label="Not yet reviewed" value={notReviewed} tone="muted" />
+    </div>
+
+    <div class="cust__sec">
+      <h3 class="cust__sectitle">
+        Liked<span class="cust__sec-long"> — most recent first</span>
+      </h3>
+      <span class="cust__rule" aria-hidden="true"></span>
+      <CopyButton
+        value={liked.map((r) => r.rugId).join('\n')}
+        label={`Copy ${liked.length} product ${liked.length === 1 ? 'ID' : 'IDs'}`}
+      />
+    </div>
+
+    {
+      liked.length > 0 ? (
+        <div class="cust__grid">
+          {liked.map((r) => (
+            <article class="gcard">
+              <div class="gcard__image">
+                {photoOf.get(r.rugId) ? (
+                  <img src={photoOf.get(r.rugId)} alt="" loading="lazy" />
+                ) : (
+                  <span class="gcard__empty">no photo</span>
+                )}
+                <Badge class="gcard__badge">Saved</Badge>
+              </div>
+              <p class="gcard__id mono">{r.rugId}</p>
+              <p class="gcard__name">{r.name}</p>
+              <p class="gcard__size">{sizeOf.get(r.rugId) ?? ''}</p>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p class="hint">Nothing liked yet.</p>
+      )
+    }
+
+    {
+      /* 52:1349: disliked sits below in the SAME grid with a muted plate, so the two can never be
+         misread at a glance. The muting is on the card, not on the image, so the id stays legible. */
+    }
+    {
+      disliked.length > 0 && (
+        <>
+          <div class="cust__sec">
+            <h3 class="cust__sectitle">Disliked</h3>
+            <span class="cust__rule" aria-hidden="true" />
+            <CopyButton
+              value={disliked.map((r) => r.rugId).join('\n')}
+              label={`Copy ${disliked.length} product ${disliked.length === 1 ? 'ID' : 'IDs'}`}
+            />
+          </div>
+          <div class="cust__grid cust__grid--muted">
+            {disliked.map((r) => (
+              <article class="gcard">
+                <div class="gcard__image">
+                  {photoOf.get(r.rugId) ? (
+                    <img src={photoOf.get(r.rugId)} alt="" loading="lazy" />
+                  ) : (
+                    <span class="gcard__empty">no photo</span>
+                  )}
+                </div>
+                <p class="gcard__id mono">{r.rugId}</p>
+                <p class="gcard__name">{r.name}</p>
+                <p class="gcard__size">{sizeOf.get(r.rugId) ?? ''}</p>
+              </article>
+            ))}
+          </div>
+        </>
+      )
+    }
+
+    <p class="hint">
+      The copy action is the real export — a plain ID list for a supplier conversation.
+      {status === 'revoked' && ' This link has been revoked; the buyer can no longer sign in.'}
+    </p>
+  </section>
+</AdminLayout>
+
+<style>
+  .cust {
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-gap);
+  }
+
+  .cust__head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-xs);
+  }
+  .cust__name {
+    margin: 0;
+    font-family: var(--heading);
+    font-size: var(--h3);
+    font-weight: var(--weight-heading);
+    line-height: var(--leading-heading);
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .cust__meta {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: var(--leading-body);
+    color: var(--ink-muted);
+  }
+
+  /* 52:1261 lays the four blocks on one row with gap 16; they wrap rather than shrink, because a
+     Stat Block narrower than its label stops being readable. */
+  .cust__stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--stack-lg);
+  }
+
+  /* 200 is the drawn width (52:1265). Set here rather than on .statblock: the component should not
+     carry one screen's layout, and MF4 puts the same block on a 2-column grid at 390. */
+  .cust__stats > * {
+    width: 200px;
+  }
+
+  /* 52:1279: title, a flexible rule, then the copy control hard against the right. */
+  .cust__sec {
+    display: flex;
+    align-items: center;
+    gap: var(--stack-md);
+  }
+  .cust__sectitle {
+    margin: 0;
+    flex: 0 0 auto;
+    font-family: var(--heading);
+    font-size: var(--h4);
+    font-weight: var(--weight-heading);
+    line-height: var(--leading-heading);
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .cust__rule {
+    flex: 1 1 auto;
+    height: var(--rule-width);
+    background: var(--rule);
+  }
+
+  /* 240-wide cards, gap 16, wrapping (52:1292). */
+  .cust__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 240px);
+    gap: var(--stack-lg);
+    align-items: start;
+  }
+
+  .gcard {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: var(--tight);
+    padding: var(--tight);
+    border: var(--rule-width) solid var(--rule);
+    background: var(--surface);
+  }
+
+  .gcard__image {
+    position: relative;
+    height: 300px;
+    background: var(--bg-inset);
+    overflow: hidden;
+  }
+  .gcard__image img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .gcard__empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: var(--text-xs);
+    color: var(--ink-muted);
+  }
+  .gcard__badge {
+    position: absolute;
+    top: var(--stack-sm);
+    left: var(--stack-sm);
+  }
+
+  .gcard__id {
+    margin: 0;
+    font-size: var(--size-mono);
+    color: var(--ink-muted);
+  }
+  .gcard__name {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-body);
+    color: var(--ink);
+  }
+  .gcard__size {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: var(--leading-body);
+    color: var(--ink-soft);
+  }
+
+  /* The muted plate for disliked. Dimming the PLATE, not the text, keeps the id copyable by eye. */
+  .cust__grid--muted .gcard__image {
+    filter: grayscale(1);
+    opacity: 0.7;
+  }
+
+  /* ---------- 390 · MF4 (111:2947) ----------
+     The four Stat Blocks go 2x2 at 175 wide with an 8 gutter, and the gallery to two 175 columns —
+     358 of content inside the 16 gutter, which is 175 + 8 + 175 exactly. The long meta line and the
+     section's qualifier are dropped rather than wrapped. */
+  /* The SHORT copy is the default-hidden one, so desktop needs no query and only 390 pays. */
+  .cust__meta-short {
+    display: none;
+  }
+
+  @media (max-width: 767px) {
+    .cust__meta-long {
+      display: none;
+    }
+    .cust__meta-short {
+      display: inline;
+    }
+    .cust__sec-long {
+      display: none;
+    }
+
+    /* Two up, not wrap-at-whatever-fits: 111:2955…111:2964 place them on a strict 2x2. */
+    .cust__stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--stack-sm);
+    }
+    .cust__stats > * {
+      width: auto;
+    }
+
+    .cust__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--stack-sm);
+    }
+
+    /* The plate keeps its drawn 378 height at 175 wide — the card is narrower, not shorter. */
+    .gcard__image {
+      height: 300px;
+    }
+  }
+</style>
+
+<script>
+  import { initCopy } from '../../../scripts/ui/copy.ts';
+  initCopy();
+</script>

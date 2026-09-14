@@ -20,7 +20,22 @@ export interface Product {
   name: string;
   /** `Body (HTML)`. */
   description: string;
-  /** `Collection` — the collection *name*, denormalised so the tab imports standalone. */
+  /**
+   * `Collection` — every collection *name* this product belongs to, denormalised so the tab imports
+   * standalone. Owner requirement 2026-09-13: a rug can sit in several collections at once.
+   *
+   * Pipe-delimited in the sheet, NOT comma-delimited like `Tags`: a collection name is prose the
+   * owner types ("Wabi Sabi, Vol. 2") and comma-splitting would shatter it. A cell with no pipe is
+   * therefore one collection, which is exactly what every pre-existing row already is.
+   */
+  collections: string[];
+  /**
+   * The primary collection — `collections[0]`, or `''` when the cell is empty.
+   *
+   * Kept because one collection has to be *the* one: the canonical `/[slug]/` route a product link
+   * resolves to, the label a card shows when there is only room for one, and the grouping key for
+   * lead-first ordering. Membership questions ("is this rug in Kilims?") must read `collections`.
+   */
   collection: string;
   tags: string[];
   /**

@@ -1,0 +1,86 @@
+---
+// App Shell — Figma 25:200. The admin chrome: 220px nav, topbar, content.
+//
+// The nav ships NEUTRAL. Each screen declares its own active tab via `active`, because the component
+// originally baked Products active and every other screen had to fight it, which let two tabs light
+// at once (revision 161:367).
+//
+// Figma draws three destinations — Products, Collections, Customers — and no dashboard: "a tool used
+// by one person for one task does not need a summary of itself" (revision 161:331).
+//
+// DEPARTURE, reported: this repo also has /admin/audit and /admin/google, which the file does not
+// draw. They are real, working screens — Google is how the Drive and Sheets connection is re-
+// authorised — so dropping them from the nav would strand them. They render below a divider as
+// secondary items, visually subordinate to the three the file specifies, rather than being deleted
+// or given equal weight.
+//
+// At 390 the nav becomes a bottom tab bar carrying the three primary destinations only; that is a
+// media query in components.css.
+import Icon from './Icon.astro';
+
+export type ShellTab = 'products' | 'collections' | 'customers' | 'audit' | 'google';
+
+interface Props {
+  active?: ShellTab;
+  title: string;
+  /** The topbar's quiet status line, e.g. 'Sheet synced 4 min ago'. */
+  meta?: string;
+  class?: string;
+}
+const { active, title, meta, class: className } = Astro.props;
+
+const PRIMARY = [
+  { key: 'products', href: '/admin/rugs', icon: 'list', label: 'Products' },
+  { key: 'collections', href: '/admin/collections', icon: 'grid', label: 'Collections' },
+  { key: 'customers', href: '/admin/clients', icon: 'heart', label: 'Customers' },
+] as const;
+
+const SECONDARY = [
+  { key: 'audit', href: '/admin/audit', icon: 'list', label: 'Audit log' },
+  { key: 'google', href: '/admin/google', icon: 'refresh', label: 'Google' },
+] as const;
+---
+
+<div class:list={['shell', className]}>
+  <nav class="shell__nav" aria-label="Admin sections">
+    <div class="shell__brand">
+      <a class="shell__wordmark" href="/admin/rugs">Serio Ludere</a>
+      <span class="shell__realm">preview admin</span>
+    </div>
+
+    {
+      PRIMARY.map((item) => (
+        <a class="shell__link" href={item.href} aria-current={active === item.key ? 'page' : undefined}>
+          <Icon name={item.icon} />
+          <span>{item.label}</span>
+        </a>
+      ))
+    }
+
+    <hr class="divider shell__rule" />
+
+    {
+      SECONDARY.map((item) => (
+        <a
+          class="shell__link shell__link--secondary"
+          href={item.href}
+          aria-current={active === item.key ? 'page' : undefined}
+        >
+          <Icon name={item.icon} />
+          <span>{item.label}</span>
+        </a>
+      ))
+    }
+
+    <slot name="nav-footer" />
+  </nav>
+
+  <div class="shell__main">
+    <header class="shell__topbar">
+      <h1 class="shell__title">{title}</h1>
+      {meta && <span class="shell__meta">{meta}</span>}
+      <slot name="topbar" />
+    </header>
+    <main class="shell__content"><slot /></main>
+  </div>
+</div>

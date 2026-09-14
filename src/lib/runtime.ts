@@ -21,6 +21,8 @@ import {
 import { join } from 'node:path';
 import { fetch as undiciFetch } from 'undici';
 import { createDriveClient, defaultDownload, type DriveClient } from './drive/index.ts';
+import { createPublicMediaReader } from './drive/media.ts';
+import type { MediaResult } from './drive/types.ts';
 import { GoogleConnection } from './google/connection.ts';
 import { createTokenStore, type GoogleTokenStore } from './google/store.ts';
 import { PhotoMonitor } from './photos-health.ts';
@@ -214,6 +216,11 @@ export interface AdminDeps {
   scrape: { jinaFallback: boolean; respectRobots: boolean };
   /** Rates-tab conversion for non-USD supplier prices (§4.7); undefined when the currency is unknown. */
   convertToUsd: (amount: number, currency: string) => number | undefined;
+  /**
+   * The anonymous lh3 reader the image proxy tries first (brief §12). It lives here rather than in
+   * the route so a test that mocks this module never reaches the network for an image.
+   */
+  publicImages: (fileId: string, width?: number) => Promise<MediaResult>;
 }
 
 /** Global-fetch-shaped wrapper over undici with the DNS-time BlockList agent (§4.3): image downloads only. */
@@ -257,6 +264,7 @@ export function getAdminDeps(): AdminDeps {
               logger: consoleLogger,
             })
           : undefined,
+      publicImages: createPublicMediaReader({}),
       scrape: {
         jinaFallback: SCRAPE_JINA_FALLBACK ?? true,
         // Defaults to honouring robots.txt: an absent variable must never quietly turn a

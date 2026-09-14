@@ -68,7 +68,7 @@ describe('collections.ts', () => {
   ];
   const markup = (): string => `
     <div id="m5" class="msg"></div>
-    <table id="collectionTable"><tbody>${collections.map((c, i) => collectionRow(c, i).outerHTML).join('')}</tbody></table>
+    <ul id="collectionList">${collections.map((c, i) => collectionRow(c, i).outerHTML).join('')}</ul>
     <input id="c_name" /><input id="c_description" /><input id="c_cover" /><button id="btnAddCollection"></button><div id="m6" class="msg"></div>
     <div id="tagList" class="chips">${tags.map((t) => tagChip(t).outerHTML).join('')}</div>
     <div id="tagEdit" hidden><input id="t_name" /><input id="t_color" type="color" value="#000000" /><input id="t_noColor" type="checkbox" />
@@ -103,9 +103,7 @@ describe('collections.ts', () => {
       }, calls),
     });
     const ids = (): string[] =>
-      [...document.querySelectorAll<HTMLTableRowElement>('#collectionTable tr[data-id]')].map(
-        (r) => r.dataset.id!,
-      );
+      [...document.querySelectorAll<HTMLElement>('#collectionList [data-id]')].map((r) => r.dataset.id!);
     expect(ids()).toEqual(['tulu', 'kilims']);
     await page.move('kilims', 'up');
     expect(calls[0]).toMatchObject({
@@ -113,9 +111,7 @@ describe('collections.ts', () => {
       body: { order: ['kilims', 'tulu'] },
     });
     expect(ids()).toEqual(['kilims', 'tulu']);
-    expect(document.querySelector<HTMLTableRowElement>('tr[data-id="kilims"]')?.dataset.version).toBe(
-      'x'.repeat(16),
-    );
+    expect(document.querySelector<HTMLElement>('[data-id="kilims"]')?.dataset.version).toBe('x'.repeat(16));
     expect(cls('m5')).toBe('msg on ok');
     fail = true;
     await page.move('kilims', 'down');
@@ -164,7 +160,7 @@ describe('collections.ts', () => {
         return { status: 500, body: {} };
       }, calls),
     });
-    const input = document.querySelector<HTMLInputElement>('tr[data-id="kilims"] input[data-field="name"]')!;
+    const input = document.querySelector<HTMLInputElement>('[data-id="kilims"] input[data-field="name"]')!;
     input.value = 'Flatweaves';
     await page.saveCollection('kilims');
     expect(calls[0]?.body).toEqual({
@@ -174,9 +170,7 @@ describe('collections.ts', () => {
       version: 'b'.repeat(16),
     });
     expect(text('m5')).toContain('2 rugs still store the old name "Kilims"');
-    expect(document.querySelector<HTMLTableRowElement>('tr[data-id="kilims"]')?.dataset.version).toBe(
-      'n'.repeat(16),
-    );
+    expect(document.querySelector<HTMLElement>('[data-id="kilims"]')?.dataset.version).toBe('n'.repeat(16));
     conflict = true;
     await page.saveCollection('kilims');
     expect(cls('m5')).toBe('msg on err');
@@ -185,7 +179,7 @@ describe('collections.ts', () => {
     await page.addCollection();
     expect(cls('m6')).toBe('msg on ok');
     expect(
-      [...document.querySelectorAll<HTMLTableRowElement>('tr[data-id]')].map((r) => r.dataset.id),
+      [...document.querySelectorAll<HTMLElement>('#collectionList [data-id]')].map((r) => r.dataset.id),
     ).toContain('modern');
   });
 
@@ -252,8 +246,15 @@ describe('clients.ts', () => {
     <input id="cl_name" /><input id="cl_note" /><input id="cl_pw" /><button id="btnGenerate"></button><div id="m8" class="msg"></div>
     <dialog id="pwDialog"><h3 id="pwDialogTitle"></h3><input id="pwDialogInput" /><p id="pwDialogErr" hidden></p>
       <button id="pwDialogOk"></button><button id="pwDialogCancel"></button></dialog>
-    <div id="linkOut" hidden><input id="linkInput" readonly /><button id="btnCopy"></button><span id="linkCode"></span><span id="linkNote"></span>
-      <div id="pwOut" hidden><input id="pwInput" readonly /><button id="btnCopyPw"></button></div><p id="pwNote" hidden></p></div>
+    <div id="linkOut" hidden>
+      <section class="credential">
+        <div class="credential__value"><span data-credential-url></span>
+          <button class="credential__copy" data-copy data-copy-what="url"></button></div>
+        <div class="credential__value"><span data-credential-password></span>
+          <button class="credential__copy" data-copy data-copy-what="password"></button></div>
+        <button class="btn btn--primary credential__both" data-copy data-copy-what="both"></button>
+      </section>
+      <span id="linkCode"></span><span id="linkNote"></span></div>
     <div id="m9" class="msg"></div>
     <table id="clientTable"><tbody>${clientRow(client).outerHTML}</tbody></table>
     <button id="btnReport"></button><div id="m10" class="msg"></div><div id="reportOut"></div>
@@ -377,14 +378,18 @@ describe('clients.ts', () => {
       body: { name: 'Léa', note: '' },
     });
     expect((document.getElementById('linkOut') as HTMLElement).hidden).toBe(false);
-    expect((document.getElementById('linkInput') as HTMLInputElement).value).toBe(
-      'https://s.test/lea-abc123',
-    );
+    expect(document.querySelector('[data-credential-url]')?.textContent).toBe('https://s.test/lea-abc123');
     expect(text('linkCode')).toBe('lea-abc123');
     expect(text('linkNote')).toContain('recorded under Léa');
     // Reveal-once (brief §10): the plaintext is in the create response and nowhere else.
-    expect((document.getElementById('pwOut') as HTMLElement).hidden).toBe(false);
-    expect((document.getElementById('pwInput') as HTMLInputElement).value).toBe('amber-loom-serai-47');
+    // The panel is one surface now: there is no separate password sub-block to unhide.
+    expect(document.querySelector('[data-credential-password]')?.textContent).toBe('amber-loom-serai-47');
+    // F4 (Figma 20:91): one control carries BOTH, because that is what gets pasted into a message.
+    const both = document.querySelector<HTMLElement>('[data-copy-what="both"]')!;
+    expect(both.getAttribute('data-copy')).toContain('amber-loom-serai-47');
+    expect(both.getAttribute('data-copy')).toContain(
+      document.querySelector('[data-credential-url]')!.textContent!,
+    );
     expect(document.querySelector<HTMLTableRowElement>('#clientTable tr')?.dataset.code).toBe('lea-abc123');
     // Blank means "generate one for me": no password is sent and the server mints it.
     await page.resetPassword('nadia-k7m2pq');
@@ -394,7 +399,7 @@ describe('clients.ts', () => {
     });
     expect(call('/api/admin/clients/nadia-k7m2pq/regenerate')?.body).not.toHaveProperty('password');
     // The new plaintext replaces the old one in the same reveal-once panel.
-    expect((document.getElementById('pwInput') as HTMLInputElement).value).toBe('cedar-quarry-tulip-11');
+    expect(document.querySelector('[data-credential-password]')?.textContent).toBe('cedar-quarry-tulip-11');
 
     // …and a password the owner types is sent through instead.
     await page.resetPassword('nadia-k7m2pq', 'winter-loom-2026');
@@ -407,7 +412,7 @@ describe('clients.ts', () => {
     });
     const row = document.querySelector<HTMLTableRowElement>('tr[data-code="nadia-k7m2pq"]')!;
     expect(row.dataset.status).toBe('revoked');
-    expect(row.querySelector('button')?.dataset.act).toBe('restore');
+    expect(row.querySelector<HTMLInputElement>('[data-act="toggle"]')?.checked).toBe(false);
     await page.loadReport();
     const out = document.getElementById('reportOut')!;
     expect(out.textContent).toContain('Most saved');
@@ -416,7 +421,8 @@ describe('clients.ts', () => {
     expect(out.textContent).toContain('Nadia — 1 saved');
     expect(out.textContent).toContain('anonymous — 0 saved');
     expect(out.querySelector('.status-archived')?.textContent).toBe('Old (SL-022)');
-    expect(row.querySelector('[data-saves]')?.textContent).toBe('1');
+    // The saves count lives in the "Most saved" report, not in a column — F1 does not draw one.
+    expect(out.textContent).toContain('Nadia — 1 saved');
     expect(document.body.innerHTML).not.toMatch(/\son[a-z]+=/i);
   });
   it('renderReport handles an empty report', () => {

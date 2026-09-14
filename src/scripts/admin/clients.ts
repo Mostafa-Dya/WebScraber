@@ -46,28 +46,62 @@ export function clientRow(c: ClientLike, doc: Document = document): HTMLTableRow
     'tr',
     { 'data-code': c.code, 'data-version': c.version, 'data-status': c.status },
     [
-      el('td', {}, c.name, doc),
-      el('td', { class: 'mono' }, c.code, doc),
-      el('td', { class: `status ${c.status}` }, c.status, doc),
-      el('td', { class: 'mono' }, c.createdAt, doc),
-      el('td', { class: 'n', 'data-saves': '' }, '—', doc),
+      // F5 (Figma 52:1207) is reachable from the name: the row already carries everything else the
+      // owner needs, so the name is the one cell that means "show me this buyer".
+      el('td', {}, el('a', { href: `/admin/clients/${encodeURIComponent(c.code)}` }, c.name, doc), doc),
       el(
         'td',
         { class: 'mono' },
         el('a', { href: c.link, target: '_blank', rel: 'noopener' }, c.link, doc),
         doc,
       ),
+      el('td', {}, c.createdAt, doc),
+      // Filled by the visits loader: a Badge reading "Opened" or "Not visited", never a bare count.
+      el('td', {}, el('span', { class: 'badge', 'data-visits': '' }, 'Not visited', doc), doc),
+      el('td', { 'data-last-seen': '' }, '—', doc),
       el(
         'td',
         {},
+        el(
+          'label',
+          { class: 'toggle' },
+          [
+            el(
+              'input',
+              {
+                type: 'checkbox',
+                role: 'switch',
+                class: 'toggle__track',
+                'data-act': 'toggle',
+                'aria-label': `Link active for ${c.name}`,
+                ...(active ? { checked: 'checked' } : {}),
+              },
+              [],
+              doc,
+            ),
+          ],
+          doc,
+        ),
+        doc,
+      ),
+      el(
+        'td',
+        { class: 'acts' },
         [
+          // "Copy-link is the most-used action here — the control changes icon, label and colour for
+          // 2 seconds. A toast alone is missable when copying several in a row." (52:1114)
           el(
             'button',
-            { type: 'button', class: 'chip', 'data-act': active ? 'revoke' : 'restore' },
-            active ? 'Revoke' : 'Restore',
+            { type: 'button', class: 'copy', 'data-copy': c.link, 'data-label': 'Copy link' },
+            el('span', { 'data-copy-label': '' }, 'Copy link', doc),
             doc,
           ),
-          el('button', { type: 'button', class: 'chip', 'data-act': 'password' }, 'Reset password', doc),
+          el(
+            'button',
+            { type: 'button', class: 'btn btn--ghost', 'data-act': 'password' },
+            'Reset password',
+            doc,
+          ),
         ],
         doc,
       ),
@@ -256,14 +290,14 @@ export function initClients(doc: Document = document, api: ApiOptions = {}): Cli
   const generate = byId<HTMLButtonElement>('btnGenerate', doc);
   const m8 = byId('m8', doc);
   const linkOut = byId('linkOut', doc);
-  const linkInput = byId<HTMLInputElement>('linkInput', doc);
-  const copy = byId<HTMLButtonElement>('btnCopy', doc);
   const linkCode = byId('linkCode', doc);
   const linkNote = byId('linkNote', doc);
-  const pwOut = byId('pwOut', doc);
-  const pwInput = byId<HTMLInputElement>('pwInput', doc);
-  const pwNote = byId('pwNote', doc);
-  const copyPw = byId<HTMLButtonElement>('btnCopyPw', doc);
+  // F4 (Figma 52:1115): the Credential Panel replaces the two readonly inputs and their two separate
+  // copy buttons. src/scripts/ui/copy.ts drives every [data-copy] and reads the attribute at CLICK
+  // time, so filling these in here is all the wiring the panel needs.
+  const credUrl = doc.querySelector<HTMLElement>('[data-credential-url]')!;
+  const credPassword = doc.querySelector<HTMLElement>('[data-credential-password]')!;
+  const credCopies = Array.from(doc.querySelectorAll<HTMLElement>('.credential [data-copy]'));
   const tbody = byId<HTMLTableElement>('clientTable', doc).querySelector('tbody')!;
   const m9 = byId('m9', doc);
   const reportBtn = byId<HTMLButtonElement>('btnReport', doc);
@@ -279,13 +313,25 @@ export function initClients(doc: Document = document, api: ApiOptions = {}): Cli
    * stored, never re-read from the sheet, and disappears from the page on the next action.
    */
   const showLink = (c: ClientLike, password?: string): void => {
-    linkInput.value = c.link;
+    credUrl.textContent = c.link;
+    credPassword.textContent = password ?? '';
     linkCode.textContent = c.code;
     linkNote.textContent = `Send this link; their ❤/👎 are recorded under ${c.name}.`;
+    // Each control carries what IT copies; the footer button carries both on two lines, which is the
+    // shape that gets pasted into a message. Set on the element, never rendered into the page twice.
+    for (const el of credCopies) {
+      const what = el.dataset.copyWhat;
+      el.setAttribute(
+        'data-copy',
+        what === 'url'
+          ? c.link
+          : what === 'password'
+            ? (password ?? '')
+            : `${c.link}
+${password ?? ''}`,
+      );
+    }
     linkOut.hidden = false;
-    pwInput.value = password ?? '';
-    pwOut.hidden = !password;
-    pwNote.hidden = !password;
   };
 
   const doGenerate = async (): Promise<void> => {
@@ -325,26 +371,16 @@ export function initClients(doc: Document = document, api: ApiOptions = {}): Cli
     name.value = '';
     note.value = '';
     pwField.value = '';
-    linkInput.focus();
-    linkInput.select();
-  };
-
-  const doCopy = async (): Promise<void> => {
-    linkInput.focus();
-    linkInput.select();
-    try {
-      await navigator.clipboard.writeText(linkInput.value);
-      msg(m8, 'Copied.', 'ok');
-    } catch {
-      msg(m8, 'Select the link and copy it with Ctrl/⌘+C.', 'busy');
-    }
+    // Focus the one control that copies BOTH — it is the only thing worth doing on this panel, and
+    // it is where the keyboard should already be when the panel appears.
+    doc.querySelector<HTMLElement>('.credential [data-copy-what="both"]')?.focus();
   };
 
   const setStatus = async (code: string, status: 'active' | 'revoked'): Promise<void> => {
     const current = clients.get(code);
     const tr = tbody.querySelector<HTMLTableRowElement>(`tr[data-code="${CSS.escape(code)}"]`);
     if (!current || !tr) return;
-    const b = tr.querySelector<HTMLButtonElement>('button[data-act]');
+    const b = tr.querySelector<HTMLInputElement>('[data-act="toggle"]');
     if (b) b.disabled = true;
     msg(m9, `${status === 'revoked' ? 'Revoking' : 'Restoring'} ${current.name}…`, 'busy');
     const r = await post<{ client: ClientLike; audit: { row: number } }>(
@@ -402,7 +438,14 @@ export function initClients(doc: Document = document, api: ApiOptions = {}): Cli
       const row = seen.get(tr.dataset.code ?? '');
       const visits = tr.querySelector('[data-visits]');
       const last = tr.querySelector<HTMLElement>('[data-last-seen]');
-      if (visits) visits.textContent = String(row?.visits ?? 0);
+      if (visits) {
+        // The drawn states are "Opened" and "Not visited" — a count of 0 reads as a measurement,
+        // where the point is only whether the buyer has been (52:887).
+        const n = row?.visits ?? 0;
+        visits.textContent = n > 0 ? 'Opened' : 'Not visited';
+        visits.classList.toggle('badge--success', n > 0);
+        if (n > 0) visits.setAttribute('title', `${n} ${n === 1 ? 'visit' : 'visits'}`);
+      }
       if (last) {
         last.textContent = whenText(row?.lastSeen ?? '');
         if (row?.lastSeen) last.title = row.lastSeen;
@@ -421,11 +464,6 @@ export function initClients(doc: Document = document, api: ApiOptions = {}): Cli
       return;
     }
     renderReport(reportOut, r.data, doc);
-    const saves = new Map(r.data.byClient.map((c) => [c.code, c.liked.length]));
-    tbody.querySelectorAll<HTMLTableRowElement>('tr[data-code]').forEach((tr) => {
-      const cell = tr.querySelector('[data-saves]');
-      if (cell) cell.textContent = String(saves.get(tr.dataset.code ?? '') ?? 0);
-    });
     hide(m10);
   };
 
@@ -473,15 +511,6 @@ export function initClients(doc: Document = document, api: ApiOptions = {}): Cli
       void doGenerate();
     }
   });
-  copy.addEventListener('click', () => void doCopy());
-  copyPw.addEventListener('click', () => {
-    pwInput.focus();
-    pwInput.select();
-    void navigator.clipboard
-      .writeText(pwInput.value)
-      .then(() => msg(m8, 'Password copied.', 'ok'))
-      .catch(() => msg(m8, 'Select the password and copy it with Ctrl/⌘+C.', 'busy'));
-  });
   tbody.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-act]');
     const tr = b?.closest<HTMLTableRowElement>('tr[data-code]');
@@ -491,6 +520,17 @@ export function initClients(doc: Document = document, api: ApiOptions = {}): Cli
       return;
     }
     void setStatus(tr.dataset.code, b.dataset.act === 'revoke' ? 'revoked' : 'active');
+  });
+
+  /* The Active column is a switch (Figma F1). It is a real checkbox, so it changes rather than
+     clicks — and if the write fails, setStatus puts the row back, which means the switch must
+     follow the SERVER's answer, never its own optimistic flip. */
+  tbody.addEventListener('change', (e) => {
+    const input = e.target;
+    if (!(input instanceof HTMLInputElement) || input.dataset.act !== 'toggle') return;
+    const tr = input.closest<HTMLTableRowElement>('tr[data-code]');
+    if (!tr?.dataset.code) return;
+    void setStatus(tr.dataset.code, input.checked ? 'active' : 'revoked');
   });
   reportBtn.addEventListener('click', () => void loadReport());
   visitsBtn.addEventListener('click', () => void loadVisits());

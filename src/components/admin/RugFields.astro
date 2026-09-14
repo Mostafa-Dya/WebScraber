@@ -6,6 +6,7 @@
 import type { AdminCollection, AdminRug, AdminTag } from '../../lib/admin/read.ts';
 import { driveImageUrl } from '../../lib/images.ts';
 import Chips from './Chips.astro';
+import MultiSelect from '../ui/MultiSelect.astro';
 
 interface Props {
   mode: 'add' | 'edit';
@@ -28,7 +29,8 @@ const tagChips = tags.map((t) => ({
 }));
 const status = rug?.status ?? defaultStatus;
 const openSite = rug ? `/rugs/${rug.slug}` : '#';
-const collectionValue = rug?.collection.trim().toLowerCase() ?? '';
+// Membership, not the primary: the form must tick every collection the rug is filed under.
+const chosenCollections = new Set((rug?.collections ?? []).map((c) => c.trim().toLowerCase()));
 ---
 
 <div class="row">
@@ -45,16 +47,18 @@ const collectionValue = rug?.collection.trim().toLowerCase() ?? '';
     )
   }
   <div class="narrow">
-    <select id="f_collection" aria-label="Collection" required>
-      <option value="">Collection…</option>
-      {
-        collections.map((c) => (
-          <option value={c.name} selected={c.name.trim().toLowerCase() === collectionValue}>
-            {c.name}
-          </option>
-        ))
-      }
-    </select>
+    <MultiSelect
+      id="f_collection"
+      name="collection"
+      label="Collections"
+      placeholder="Collections…"
+      required
+      options={collections.map((c) => ({
+        value: c.name,
+        label: c.name,
+        selected: chosenCollections.has(c.name.trim().toLowerCase()),
+      }))}
+    />
   </div>
 </div>
 <div class="row tagrow">

@@ -1,0 +1,36 @@
+---
+// Toast — Figma set 22:191. Tone = Success | Danger | Info.
+//
+// A Danger toast always carries a retry affordance, which is why the trailing slot exists. The
+// message is a live region so it is announced without stealing focus; `assertive` only for danger,
+// because a success toast interrupting a screen-reader user mid-sentence is its own defect.
+import Icon, { type IconName } from './Icon.astro';
+
+interface Props {
+  tone?: 'success' | 'danger' | 'info';
+  /** Omit to render without a dismiss control (a toast that times out on its own). */
+  dismissible?: boolean;
+  class?: string;
+}
+const { tone = 'info', dismissible = true, class: className } = Astro.props;
+
+const ICON: Record<string, IconName> = { success: 'check', danger: 'alert', info: 'refresh' };
+---
+
+<div
+  class:list={['toast', tone !== 'info' && `toast--${tone}`, className]}
+  role={tone === 'danger' ? 'alert' : 'status'}
+  aria-live={tone === 'danger' ? 'assertive' : 'polite'}
+>
+  <Icon name={ICON[tone] ?? 'refresh'} class="toast__icon" />
+  <p class="toast__message"><slot /></p>
+  <slot name="action" />
+  {
+    dismissible && (
+      <button type="button" class="toast__close" data-toast-close>
+        <Icon name="close" />
+        <span class="sr-only">Dismiss</span>
+      </button>
+    )
+  }
+</div>

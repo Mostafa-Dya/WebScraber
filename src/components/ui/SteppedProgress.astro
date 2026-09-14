@@ -1,0 +1,29 @@
+---
+// Stepped Progress — Figma 19:98. Assembled from Progress Step.
+//
+// Serves the Committing state of Add Product (creating folder / uploading images / writing row) and
+// the Fetching sequence (fetching / parsing / resolving images). The bar itself never animates: a
+// moving bar under a real count implies false precision (handoff motion spec 67:174).
+//
+// It is an <ol> because the steps are ordered and a screen reader should say how many there are.
+//
+// "Fetch and commit stages announce as they become active" (handoff accessibility notes). aria-current
+// alone does not announce — it marks, silently. So the group carries a visually-hidden live region
+// that behaviour code writes the active stage into. It is polite, not assertive: a commit takes
+// 5-20s and interrupting on every step would be worse than saying nothing.
+//
+// Note the deliberate asymmetry with the reaction pending state, which is explicitly NOT announced:
+// a buffered like happens constantly and announcing each one would be intolerable. A commit happens
+// once and the user is waiting on it.
+interface Props {
+  /** Announced as the group's name, e.g. 'Saving SL-0412'. */
+  label: string;
+  class?: string;
+}
+const { label, class: className } = Astro.props;
+---
+
+<div class:list={['steps', className]} role="group" aria-label={label}>
+  <ol class="steps__list"><slot /></ol>
+  <p class="sr-only" role="status" aria-live="polite" data-step-status></p>
+</div>

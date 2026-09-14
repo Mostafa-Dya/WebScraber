@@ -61,6 +61,30 @@ export function resolveCollection(snapshot: Pick<AdminSnapshot, 'collections'>, 
   return hit.name;
 }
 
+/**
+ * Canonical Collections.name for every requested collection, in the order given, else 422.
+ *
+ * De-duplicated case-insensitively on the CANONICAL name, so a body listing both "kilims" and
+ * "Kilims" resolves to one membership rather than writing the same collection into the cell twice.
+ * The first unknown name is the one reported: naming all of them would be kinder, but the 422 shape
+ * in §2.3 carries a single `collection`, and widening it is a spec change, not a bug fix.
+ */
+export function resolveCollections(
+  snapshot: Pick<AdminSnapshot, 'collections'>,
+  names: readonly string[],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const name of names) {
+    const canonical = resolveCollection(snapshot, name);
+    const key = canonical.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(canonical);
+  }
+  return out;
+}
+
 /** Canonical Tags.name for every requested tag (case-insensitive, de-duplicated), else 422. */
 export function resolveTags(snapshot: Pick<AdminSnapshot, 'tags'>, tags: readonly string[]): string[] {
   const out: string[] = [];
@@ -84,13 +108,13 @@ type RugBody = Omit<RugInputT, 'id' | 'roundPrice' | 'slug'>;
 /** RugFields from a validated body plus the resolved slug / collection / tags and the price to store. */
 export function rugFieldsFrom(
   body: RugBody,
-  resolved: { slug: string; collection: string; tags: string[]; priceUsd: number | undefined },
+  resolved: { slug: string; collections: string[]; tags: string[]; priceUsd: number | undefined },
 ): RugFields {
   return {
     slug: resolved.slug,
     name: body.name,
     description: body.description,
-    collection: resolved.collection,
+    collections: resolved.collections,
     tags: resolved.tags,
     photos: body.photos,
     widthCm: body.widthCm,
@@ -107,6 +131,9 @@ export function rugFieldsFrom(
     supplier: body.supplier,
     supplierRef: body.supplierRef,
     notes: body.notes,
+    commitStatus: body.commitStatus,
+    driveFolderId: body.driveFolderId,
+    driveFolderUrl: body.driveFolderUrl,
   };
 }
 
@@ -116,7 +143,7 @@ export function fieldsOfRug(rug: AdminRug): RugFields {
     slug: rug.slug,
     name: rug.name,
     description: rug.description,
-    collection: rug.collection,
+    collections: [...rug.collections],
     tags: [...rug.tags],
     photos: [...rug.photos],
     widthCm: rug.widthCm,
@@ -133,6 +160,9 @@ export function fieldsOfRug(rug: AdminRug): RugFields {
     supplier: rug.supplier,
     supplierRef: rug.supplierRef,
     notes: rug.notes,
+    commitStatus: rug.commitStatus,
+    driveFolderId: rug.driveFolderId,
+    driveFolderUrl: rug.driveFolderUrl,
   };
 }
 

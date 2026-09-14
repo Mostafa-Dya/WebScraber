@@ -73,7 +73,7 @@ beforeEach(() => {
 
 const baseInput = {
   name: 'Khal Mohammadi',
-  collection: 'kilims', // case-insensitive match → canonical "Kilims"
+  collections: ['kilims'], // case-insensitive match → canonical "Kilims"
   tags: ['KILIM', 'Denizli'],
   photos: [PHOTO],
   widthCm: 130,
@@ -127,7 +127,7 @@ describe('POST /api/admin/rugs (rug.create)', () => {
       id: 'SL-030',
       slug: 'khal-mohammadi',
       name: 'Khal Mohammadi',
-      collection: 'Kilims',
+      collections: ['Kilims'],
       tags: ['Kilim', 'Denizli'],
       photos: [PHOTO],
       priceUsd: 1335,
@@ -196,7 +196,7 @@ describe('POST /api/admin/rugs (rug.create)', () => {
   });
   it('refuses an unknown collection or tag with 422 and writes nothing', async () => {
     const c = await createPost(
-      ctx({ path: '/api/admin/rugs', method: 'POST', body: { ...baseInput, collection: 'Nope' } }),
+      ctx({ path: '/api/admin/rugs', method: 'POST', body: { ...baseInput, collections: ['Nope'] } }),
     );
     expect(c.status).toBe(422);
     expect(await c.json()).toMatchObject({ ok: false, error: 'unknown collection', collection: 'Nope' });
@@ -261,7 +261,7 @@ describe('GET/POST /api/admin/rugs/[id] (rug.update)', () => {
       ...baseInput,
       name: 'Winks renamed',
       slug: undefined,
-      collection: 'Tulu',
+      collections: ['Tulu'],
       tags: ['Kilim'],
       priceUsd: 705,
       roundPrice: false,
@@ -279,11 +279,11 @@ describe('GET/POST /api/admin/rugs/[id] (rug.update)', () => {
       id: 'SL-021',
       slug: 'winks',
       name: 'Winks renamed',
-      collection: 'Tulu',
+      collections: ['Tulu'],
       row: 2,
     });
     expect(out.rug.version).not.toBe(rug.version);
-    expect(out.changed).toEqual(expect.arrayContaining(['name', 'collection', 'priceUsd']));
+    expect(out.changed).toEqual(expect.arrayContaining(['name', 'collections', 'priceUsd']));
     expect(out.changed).not.toContain('slug'); // kept on rename (stable URLs)
     const written = sheet.row('Products', 2);
     expect(written[0]).toBe('SL-021');
@@ -293,8 +293,8 @@ describe('GET/POST /api/admin/rugs/[id] (rug.update)', () => {
     expect(audit[2]).toBe('rug.update');
     const before = JSON.parse(String(audit[5]));
     const after = JSON.parse(String(audit[6]));
-    expect(before).toMatchObject({ name: 'Winks', collection: 'Kilims' });
-    expect(after).toMatchObject({ name: 'Winks renamed', collection: 'Tulu' });
+    expect(before).toMatchObject({ name: 'Winks', collections: ['Kilims'] });
+    expect(after).toMatchObject({ name: 'Winks renamed', collections: ['Tulu'] });
     expect(before).not.toHaveProperty('slug');
     expect(sheet.writes).toHaveLength(1);
     expect(cache.busts).toBe(1);
@@ -323,7 +323,7 @@ describe('GET/POST /api/admin/rugs/[id] (rug.update)', () => {
     const same = {
       name: rug.name,
       description: rug.description,
-      collection: rug.collection,
+      collections: rug.collections,
       tags: rug.tags,
       photos: rug.photos,
       widthCm: rug.widthCm,

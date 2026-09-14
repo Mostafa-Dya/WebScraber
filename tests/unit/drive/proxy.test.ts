@@ -131,3 +131,59 @@ describe('imageMethodNotAllowed', () => {
     expect(await res.json()).toEqual({ ok: false, error: 'method not allowed' });
   });
 });
+
+describe('driveImageResponse — two upstreams (lh3 first, Drive as fallback)', () => {
+  /** Records which upstream was asked, and with what width. */
+  function upstreams(pub: MediaResult, authed: MediaResult) {
+    const seen: string[] = [];
+    return {
+      seen,
+      deps: {
+        readPublic: async (id: string, width?: number) => {
+          seen.push(`public:${id}:${String(width)}`);
+          return pub;
+        },
+        readMedia: async (id: string) => {
+          seen.push(`media:${id}`);
+          return authed;
+        },
+        logger: silentLogger,
+      },
+    };
+  }
+
+  it('asks lh3 first, passes the width through, and never touches the Drive API on a hit', async () => {
+    const u = upstreams(hit(), hit());
+    const res = await driveImageResponse(FILE_ID, u.deps, 400);
+    expect(res.status).toBe(200);
+    expect(u.seen).toEqual([`public:${FILE_ID}:400`]);
+  });
+
+  it('falls back to the authenticated read for a photo that is not public', async () => {
+    const u = upstreams({ ok: false, error: 'not_found' }, hit({ contentType: 'image/png' }));
+    const res = await driveImageResponse(FILE_ID, u.deps, 800);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(u.seen).toEqual([`public:${FILE_ID}:800`, `media:${FILE_ID}`]);
+  });
+
+  it('reports the public failure when the fallback fails too', async () => {
+    const u = upstreams({ ok: false, error: 'not_found' }, { ok: false, error: 'drive_error' });
+    const res = await driveImageResponse(FILE_ID, u.deps);
+    expect(res.status).toBe(404);
+    expect(u.seen).toHaveLength(2);
+  });
+
+  it('does not retry a malformed id against the Drive API', async () => {
+    const u = upstreams({ ok: false, error: 'bad_id' }, hit());
+    const res = await driveImageResponse(FILE_ID, u.deps);
+    expect(res.status).toBe(400);
+    expect(u.seen).toEqual([`public:${FILE_ID}:undefined`]);
+  });
+
+  it('serves from lh3 alone when no Drive client exists (service_account mode)', async () => {
+    const res = await driveImageResponse(FILE_ID, { readPublic: async () => hit() });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe(IMAGE_CACHE_CONTROL);
+  });
+});

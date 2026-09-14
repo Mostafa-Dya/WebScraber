@@ -5,27 +5,29 @@
 > The analysis below is the original reading of the brief and is left unedited as the record. Most of
 > it has since been built. What is **done**, with where to look:
 >
-> | Gap                                                | Now                                                                                           |
-> | -------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-> | §1/§7/§10 the customer realm                       | ✅ `/{slug}`, `/{slug}/{productId}`, gate, per-realm cookies, reserved slugs, default-deny    |
-> | §10 generated passwords                            | ✅ three words + two digits, scrypt, revealed once, reset from the clients table              |
-> | §2 `Visits`                                        | ✅ one row per buyer per 30 min, coarse UA, never fails a render                              |
-> | §2/§9 `Products` as the Shopify CSV set            | ✅ 42 columns A..AP, keyed by `Product ID`                                                    |
-> | §2 `Reactions` with `event_id` + `source`          | ✅; counts are derived from the log, not stored                                               |
-> | §3 rule 2 client batching                          | ✅ 2.5 s buffer, one append per flush, `sendBeacon` on hide                                   |
-> | §3 rule 3 compaction as an action                  | ✅ `POST /api/admin/compact-reactions`                                                        |
-> | §7 asymmetric reactions, text labels, 44 px        | ✅ card = like only, detail = both, `source` recorded and enforced                            |
-> | §7 footer disclaimer, no enquiry action            | ✅ both                                                                                       |
-> | §7 collection description clamped with "See more"  | ✅                                                                                            |
-> | §8 `BASE_CURRENCY`, `FX_API_URL`, fallback, GBP    | ✅ `src/lib/rates.ts`; a price renders with no network at all                                 |
-> | §8 `GET /api/rates`                                | ✅                                                                                            |
-> | §9 `GET /api/export/shopify-csv`                   | ✅ at `/api/admin/export/shopify-csv` — the brief's path would have been public               |
-> | §12 `/api/image/[fileId]`                          | ✅ validated id, long cache, never an arbitrary URL                                           |
-> | §11 `fieldStatus`, size band, Shopify-first ladder | ✅ `src/lib/scrape/*`, plus robots.txt, a 2 s per-host throttle and a photo-first response    |
-> | §13 `@view-transition` must not reach the admin    | ✅ it never did: `motion.css` is imported by `Layout.astro` only                              |
-> | §5 the three `[data-mode]` token sets              | ✅ `src/styles/modes.css`, corrected against the Figma file's own variables                   |
-> | §5/§7 the customer preview's visual design         | ✅ rebuilt from the Figma handoff on 2026-09-09 — see ADR D18 and `docs/screenshots/preview/` |
-> | §18 env names                                      | ✅ `AUTH_SECRET`, `BASE_CURRENCY`, `FX_API_URL` added; `PUBLIC_CATALOGUE` is new              |
+> | Gap                                                | Now                                                                                            |
+> | -------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+> | §1/§7/§10 the customer realm                       | ✅ `/{slug}`, `/{slug}/{productId}`, gate, per-realm cookies, reserved slugs, default-deny     |
+> | §10 generated passwords                            | ✅ three words + two digits, scrypt, revealed once, reset from the clients table               |
+> | §2 `Visits`                                        | ✅ one row per buyer per 30 min, coarse UA, never fails a render                               |
+> | §2/§9 `Products` as the Shopify CSV set            | ✅ 42 columns A..AP, keyed by `Product ID`                                                     |
+> | §2 `Reactions` with `event_id` + `source`          | ✅; counts are derived from the log, not stored                                                |
+> | §3 rule 2 client batching                          | ✅ 2.5 s buffer, one append per flush, `sendBeacon` on hide                                    |
+> | §3 rule 3 compaction as an action                  | ✅ `POST /api/admin/compact-reactions`                                                         |
+> | §7 asymmetric reactions, text labels, 44 px        | ✅ card = like only, detail = both, `source` recorded and enforced                             |
+> | §7 footer disclaimer, no enquiry action            | ✅ both                                                                                        |
+> | §7 collection description clamped with "See more"  | ✅                                                                                             |
+> | §8 `BASE_CURRENCY`, `FX_API_URL`, fallback, GBP    | ✅ `src/lib/rates.ts`; a price renders with no network at all                                  |
+> | §8 `GET /api/rates`                                | ✅                                                                                             |
+> | §9 `GET /api/export/shopify-csv`                   | ✅ at `/api/admin/export/shopify-csv` — the brief's path would have been public                |
+> | §12 `/api/image/[fileId]`                          | ✅ and every photo is now served through it — lh3 anonymously first, the Drive API as fallback |
+> | §12 folder tree + duplicated primary               | ✅ `<root>/<id> — <name>/All Images`, primary copied up as `01-primary`                        |
+> | §12 commit order + `Commit Status` + retry         | ✅ row written `pending` first, `complete` after; "Finish photo import" re-runs the shortfall  |
+> | §11 `fieldStatus`, size band, Shopify-first ladder | ✅ `src/lib/scrape/*`, plus robots.txt, a 2 s per-host throttle and a photo-first response     |
+> | §13 `@view-transition` must not reach the admin    | ✅ it never did: `motion.css` is imported by `Layout.astro` only                               |
+> | §5 the three `[data-mode]` token sets              | ✅ `src/styles/modes.css`, corrected against the Figma file's own variables                    |
+> | §5/§7 the customer preview's visual design         | ✅ rebuilt from the Figma handoff on 2026-09-09 — see ADR D18 and `docs/screenshots/preview/`  |
+> | §18 env names                                      | ✅ `AUTH_SECRET`, `BASE_CURRENCY`, `FX_API_URL` added; `PUBLIC_CATALOGUE` is new               |
 >
 > **One decision this pass surfaced and cannot make for you.** Honouring robots.txt is what §11 asks
 > for, and it is now on by default — but eCarpetGallery publishes `Disallow: /`, so with it on a scrape
@@ -43,9 +45,22 @@
 > (ADR D18). That closes the item this document opened with as "blocking input needed". The admin's
 > visual design is still not drawn anywhere.
 >
+> **The Drive pipeline was closed on 2026-09-13** (the three rows above). Three things worth knowing
+> about the shape it landed in:
+>
+> - The retry works out what is missing by **listing `All Images`**, not by counting the photos on the
+>   row. The Products tab has one image column, so a row records only the primary; counting it would
+>   re-upload everything after the first photo. Filenames are deterministic, so a name already in the
+>   folder is a photo that already landed — which makes the endpoint idempotent.
+> - The proxy tries **lh3 anonymously before the Drive API**. The folder is shared with anyone holding
+>   the link, so that path needs no token: images keep serving when the Drive grant lapses, and lh3
+>   downscales on demand (`?w=400|800|1600`) where `files?alt=media` returns the original.
+> - `driveImageUrl()` now returns `/api/image/<id>?w=<n>`. Server-side probes (`waitForLh3`,
+>   `scripts/check-photos.ts`) deliberately still use `lh3Url()`: they check Drive, not our own origin.
+>
 > Still **not** built, and why: the
-> admin IA rework (§6, a large UI change with no dependency on the rest), the Drive folder tree and
-> the `pending`/`complete` commit order (§12), and RTL/Arabic (§8, not drawn).
+> admin IA rework (§6, a large UI change with no dependency on the rest) and RTL/Arabic (§8, not
+> drawn).
 >
 > Open question 4 ("does the public catalogue stay?") is answered by a flag rather than a decision:
 > `PUBLIC_CATALOGUE=false` gives the brief's posture exactly. Question 5 is answered — the enquiry

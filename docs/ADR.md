@@ -741,6 +741,178 @@ the DOM rather than eyeballed — every token, the 300px four-column grid, the s
 400, the 28.8px uppercase title. Four taps on one card produced exactly one `POST /api/reactions`
 carrying one item, with the realm claim attached and accepted.
 
+### D19 — The Drive pipeline closes to the brief's shape (2026-09-13)
+
+**Decision.** Brief §12's three outstanding items are built: the per-product folder tree, the
+row-first `pending`/`complete` commit with a retry, and photos served through our own origin.
+
+**The commit order is inverted from what this project did before,** and that is the whole point.
+It used to upload every photo and then write the row; a failure part-way left files in Drive that no
+row pointed at — invisible, unreferenced, unretryable. The order is now: validate the id → write the
+row `pending` → create the folders → upload one at a time → update the row `complete`. What a failure
+leaves behind is a **visible row** the products list marks "photos pending" with a "Finish photo
+import" button beside it. `src/lib/drive/commit.ts` therefore never throws: every outcome is
+reported, because a half-finished import has to leave something the admin can act on.
+
+**The retry asks Drive what is missing, not the row.** `Products` is the brief's fixed 42-column
+Shopify set and has one image column, so a row records only the primary. Counting row photos to find
+the shortfall would re-upload everything after the first photo on every retry. Instead
+`POST /api/admin/rugs/[id]/retry` re-scrapes `Source URL` for the photo list and lists the `All
+Images` folder for what already landed; filenames are deterministic (`01-primary`, `<slug>-02`), so a
+name already present is a photo already stored. The endpoint is idempotent — pressing it twice
+uploads nothing the second time. A failure to list the folder is not fatal: it falls back to
+uploading, because a duplicate file is a smaller problem than a retry button that does not work.
+
+**Why re-scrape rather than store the source URLs.** The alternative was a 43rd column holding the
+pending photo URLs. The brief pins the Products columns, the scraper is cached and idempotent, and
+the row already carries `Source URL` — so re-reading the supplier page costs one cached fetch and
+adds no second source of truth. The cost is honest and stated: if the supplier page changes between
+the import and the retry, the retry imports the new photos.
+
+**The proxy tries lh3 anonymously before the Drive API.** D6 kept `lh3.googleusercontent.com` links
+in the markup; §12 asks for `/api/image/[fileId]` with aggressive cache headers, and `driveImageUrl()`
+now returns `/api/image/<id>?w=<n>`. The upstream order is the part worth recording:
+
+1. **lh3, with no token.** The photo folder is shared with anyone holding the link, so an anonymous
+   request works — which means the proxy serves images before the owner has granted the Drive scope
+   and keeps serving them if that grant lapses. lh3 also downscales on demand, so a card asks for
+   `=w800` and gets 800px rather than the original four megabytes; `files?alt=media` cannot do that.
+2. **The authenticated Drive API**, only when lh3 says the file is not public and a client exists.
+
+`?w=` is a closed set (400 / 800 / 1600, anything else → 800) because the value goes into a URL, and
+the id is matched against `^[A-Za-z0-9_-]{10,200}$` before it reaches one. There is no parameter that
+accepts a URL, so the route adds no SSRF surface. The response is `immutable, max-age=31536000`: a
+Drive id addresses one immutable blob, and replacing a photo mints a new id, which is a new URL.
+
+**Server-side probes deliberately did not move.** `waitForLh3` (upload verification) and
+`scripts/check-photos.ts` still call `lh3Url()`. They exist to answer "is this file readable from
+Drive"; pointing them at our own proxy would have them checking us instead of Drive.
+
+**A folder-listing capability was added to the Drive client** (`listFolder`, `name → id`) purely to
+serve the retry. It reads one page of 100, which covers the 12-photo cap many times over.
+
+**Verified.** 36 new unit tests cover the folder tree, the lister, the reuse path, the endpoint's
+refusals and its idempotency, the lh3 reader and the proxy's two upstreams. The proxy was also
+exercised against a real Drive file through the built server: all three widths served as `image/jpeg`
+(36 KB / 125 KB / 197 KB), `w=9999` clamped to 800, a malformed id answered 400, and the
+year-long immutable header was present. The upload half is still unverified live — the connected
+token carries Sheets but not `drive.file` (see D3's note on the consent screen).
+
+### D20 — Ten owner requirements land on the Figma build (2026-09-13)
+
+**Decision.** The owner added ten requirements mid-build. Seven are ordinary feature work; three
+forced a choice this project had to make explicitly rather than by default.
+
+**A product belongs to several collections, and the `Collection` cell splits on `|` only.** `Tags`
+accepts both `|` and `,`, and copying that here would have been the obvious move. It is wrong: a
+collection name is prose the owner types, and "Wabi Sabi, Vol. 2" is one collection, not two. Pipe
+only means a cell written before this change still parses as exactly one collection, so **no sheet
+migration is required** — every existing row means what it always meant. `Product.collections[]` is
+canonical; `Product.collection` survives as the primary (`collections[0]`) because one collection
+still has to be _the_ one: the canonical `/[slug]/` route, the single label a card has room for, and
+the grouping key for lead-first ordering. Membership questions read the array; identity questions
+read the primary. `navTabs` counts a rug under every collection it claims, and
+`orderedCollectionNames` offers a tab for a collection that is nobody's primary — without that, a
+collection used only as a second membership would silently have no tab.
+
+**The per-supplier price formulas replace the Settings markup for those two suppliers.** Karavan is
+`base × 0.7 × 2 + band(base)` with bands `<500 → +100`, `500–1000 inclusive → +150`, `>1000 → +200`;
+ecarpetgallery is `USD × 1.5 + 150`. Neither is a multiplication, so the single `retail_markup.*`
+number could not express them. The formula **ignores** a configured markup for those suppliers rather
+than letting it override: a stale Settings row silently repricing the catalogue is a failure the
+owner cannot see. `retail_markup` still governs owned stock and anything unrecognised, which is what
+it is now for. The visible consequence is a repricing — ECG $700 moves 1120 → 1200, a $4000 Karavan
+6000 → 5800.
+
+**The scrambled customer route uses `-` and `_`, not the `~` and `.` first chosen.** The owner's
+example (`/hi6g2a3a%s`) uses `%`, which begins a percent-escape in a URL path; `%s` is not valid hex,
+so the link would be mangled or rejected. The obvious substitutes were the other RFC 3986 unreserved
+characters, `~` and `.`, and those were built first — **and would have been a real defect**. The same
+string is written into the sheet as `customer_slug` and into every Reactions row as `client`, both of
+which parse against `/^[A-Za-z0-9_-]{1,64}$/`. A `~` there does not look odd; the customer's own row
+fails to parse and the buyer disappears from the catalogue. The generator is therefore constrained to
+the **intersection** of what a URL path allows and what the sheet stores, and never places a filler
+first or last. The code is a locator, not a credential — it leaks roughly half the buyer's letters by
+design and carries perhaps 25 bits — which is acceptable only because §10 keeps a password gate
+behind the route.
+
+**Two departures from the Figma file, on the owner's instruction, recorded because the file is
+otherwise authoritative.** The like control moves from the top right of the card image (53:62) to the
+bottom right, which frees the top-left corner for the Signed/Antique badge — the two requests fit
+together rather than competing. And the pressed like state fills the _heart_ red rather than the
+whole circle with ink (18:54); that is the idiom every buyer already knows from every other wishlist,
+and it is scoped to `[data-vote='like']` so the dislike circle keeps what is drawn.
+
+**Supplier image fixes are applied to the bytes at import, not with a CSS transform.** A rug's photos
+become the studio's own asset — re-used in exports, sent to buyers, opened straight out of Drive — so
+a file that is correct only inside this website is not correct. `src/lib/drive/transform.ts` owns the
+policy; the supplier is passed explicitly from the form rather than sniffed from the photo host,
+because Karavan is a Shopify store and its images arrive from the shared `cdn.shopify.com`. A
+transform that fails is never fatal: the original bytes are stored and the reason is logged, because
+losing a product image to a cosmetic fix is the worse trade.
+
+**Background removal is deliberately not implemented.** `sharp` cannot do it — separating a rug from
+its backdrop needs a segmentation model, not an image filter. The options were a hosted API
+(~$0.20/image, and every supplier photo leaves the studio's control) or a local ONNX model (~180MB
+and materially more CPU per import). The owner chose neither for now, so `removeBackground()` returns
+its input unchanged and `transformsFor()` still lists the intent. The seam is one function wide.
+
+**One parallel system was retired rather than kept.** `ui/UnitToggle.astro` and
+`ui/CurrencyPicker.astro` re-implemented controls that `customer/PreviewControls.astro` already
+shipped. Keeping both would have been exactly the duplication the brief forbids. PreviewControls
+survived because it is what renders, and because its documented deviation — native `<select>` over
+the drawn `role="listbox"` panel — buys the platform's keyboard handling, the iOS and Android
+pickers, and screen-reader support a hand-built widget would have to re-earn. The accessibility tests
+that covered the deleted pair now cover PreviewControls, which previously had none.
+
+### D21 — The admin screens are built from the Figma file (2026-09-14)
+
+**Decision.** A1-A3, F3-F5, P5-P9 and the mobile frames are implemented. Four of them forced a
+choice worth recording, because in each case the file and the working system disagreed.
+
+**A2's copy supersedes the generic login failure.** Figma says "That password is not correct.";
+ADMIN_SPEC §8 said "Login failed." A generic message exists to prevent _username_ enumeration, and
+this form has no username — one shared password is the only secret — so the specific message tells an
+attacker nothing the generic one did. The throttle, the control that actually matters, is unchanged.
+A3 is a separate state from A2 in a way that is not cosmetic: the attempt was refused **before** the
+password was read, so the field is _unavailable_, not _invalid_. It carries a warning tone and does
+**not** set `aria-invalid`, because announcing the field as invalid would be a lie about a password
+that was never judged. `Input` gained `errorTone` for exactly this.
+
+**F3 cannot be built as drawn, and was not faked.** The frame shows a live "Their link will be"
+preview that updates as you type, and errors with "hala-nasser is already taken. Try hala-nasser-2".
+Both assume the route is derived from the name — which D20 replaced with a random, server-generated
+code. There is nothing to preview and no "-2" to suggest. The title, field and password guidance are
+used verbatim; the preview row is replaced by a line that says what actually happens; and the
+taken-code case is reported by the server's 409 rather than guessed at while typing.
+
+**The fetch modal gates the form, and that is a behaviour change.** P5-P9 are not a restyling of the
+inline preview: the scrape no longer reaches the form until "Use these" is pressed. P6 exists as its
+own frame because the first photo lands BEFORE the fields — the wrong rug is recognised from the
+picture and the whole scrape discarded before a single field has been read, and nothing has been
+written either way. P8 distinguishes a field the page never carried ("Not found on the page.") from
+one it carried and could not parse ("Couldn't read a number from 'POA'"), because those need
+different actions and collapsing them makes a refused price look like an absent one. On any page
+that does not render the modal the flow degrades to applying directly, which is what it did before.
+
+**Mobile drops data, never controls.** MF1 (111:2865) draws a customer card with name, badge, link
+and a copy control — no Active switch and no row buttons. Those are the only way to revoke a link or
+reset a password, so they are kept and stacked; only `Created` is dropped, and only because the name
+now links to the screen that shows it. A control that exists at one width and silently not at another
+is a worse failure than a taller card.
+
+**One line from 06 · States & Edge Cases was a real gap.** 63:487: "The counter ticks visibly. A
+static message reads as broken; a countdown reads as finite." The lockout number was server-rendered
+and then immediately stale; a frozen counter provokes a reload, which on a throttled login is the one
+action that makes things worse. `src/scripts/admin/lockout.ts` ticks it and hands the form back at
+zero. The rest of that canvas specifies states already built.
+
+**A guard was added that would have caught four defects the same day.** An undefined `var()` with no
+fallback is silent — the declaration is dropped and nothing complains. `--display`,
+`--font-weight-bold`, `--leading-tight` and `--inset` were written from the handoff's naming rather
+than this repo's and would have shipped as a missing font, weight, line-height and background.
+`tests/unit/styles/token-cascade.test.ts` now asserts every token any component reads is defined.
+
 ## 5. Sheet contract (created/validated by `scripts/init-sheet.ts`)
 
 Column headers are the contract; Zod validates the header row on every read (D5.2 governs what happens on mismatch).

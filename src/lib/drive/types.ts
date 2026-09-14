@@ -3,6 +3,7 @@
 // source (the same one the Sheets client uses) and the SSRF-guarded image downloader.
 
 import type { Logger } from '../sheets/errors.ts';
+import type { ProductFolders } from './folder.ts';
 
 export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 /** The broad scope also covers everything `drive.file` allows (accepted, never requested). */
@@ -91,8 +92,26 @@ export interface DriveClientOptions {
 export interface DriveClient {
   /** Resolves (once per process) the folder id every upload lands in. */
   ensureFolder(): Promise<string>;
-  /** Downloads `url`, uploads it as `name` into the folder and waits until lh3 serves it. Never throws. */
-  uploadFromUrl(url: string, name: string): Promise<UploadResult>;
+  /**
+   * Downloads `url`, uploads it as `name` and waits until lh3 serves it. Never throws.
+   * `intoFolderId` targets a rug's own folder; omitted, the photo lands in the flat root.
+   */
+  /**
+   * `opts` carries the per-supplier first-image fixes of 2026-09-13
+   * (src/lib/drive/transform.ts): which supplier sent the photo, and its position in the import.
+   */
+  uploadFromUrl(
+    url: string,
+    name: string,
+    intoFolderId?: string,
+    opts?: { supplier?: string; index?: number },
+  ): Promise<UploadResult>;
+  /** Finds or creates `<root>/<id> — <name>` and its `All Images` child (brief §12). */
+  ensureProductFolders(productId: string, productName: string): Promise<ProductFolders>;
+  /** Copies an already-uploaded file into another folder under a new name (the duplicated primary). */
+  copyFile(fileId: string, name: string, intoFolderId: string): Promise<UploadResult>;
+  /** What a folder already holds, as `name -> id`; how a retry tells which photos already landed. */
+  listFolder(folderId: string): Promise<Map<string, string>>;
   /** Streams one file's bytes for the `/api/image/[fileId]` proxy (brief §12). Never throws. */
   getMedia(fileId: string): Promise<MediaResult>;
   /** Whether the current token can write to Drive (tokeninfo scopes + a one-call API probe), cached. */

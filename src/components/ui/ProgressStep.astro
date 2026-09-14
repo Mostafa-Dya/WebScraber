@@ -1,0 +1,31 @@
+---
+// Progress Step — Figma set 19:97. State = Pending | Active | Done | Failed.
+//
+// The detail slot carries live counts like '4 / 12' in mono, so digits do not reflow as they tick.
+// Each step announces as it becomes active (handoff accessibility note); the marker itself is
+// aria-hidden because the state is already carried by the row's text.
+//
+// Figma exports the Active marker as a flattened arc. It is rebuilt in CSS so the state can
+// actually run — a static asset cannot spin — at the same 16px geometry. Listed as a departure.
+import Icon from './Icon.astro';
+
+interface Props {
+  state?: 'pending' | 'active' | 'done' | 'failed';
+  label: string;
+  detail?: string;
+  class?: string;
+}
+const { state = 'pending', label, detail, class: className } = Astro.props;
+---
+
+<li
+  class:list={['step', state !== 'pending' && `step--${state}`, className]}
+  aria-current={state === 'active' ? 'step' : undefined}
+>
+  <span class="step__marker" aria-hidden="true">
+    {state === 'done' && <Icon name="check" />}
+    {state === 'failed' && <Icon name="close" />}
+  </span>
+  <span class="step__label">{label}</span>
+  {detail && <span class="step__detail">{detail}</span>}
+</li>

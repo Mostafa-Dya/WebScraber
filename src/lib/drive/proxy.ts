@@ -27,6 +27,12 @@ export interface ImageProxyDeps {
    * cannot see them — and the proxy answers 503 rather than pretending the photo is missing.
    */
   readMedia?: (fileId: string) => Promise<MediaResult>;
+  /**
+   * The anonymous lh3 reader, tried FIRST. The photo folder is shared with anyone holding the link,
+   * so this path needs no token and returns a correctly downscaled image; the authenticated reader
+   * above is the fallback for a file that is not public.
+   */
+  readPublic?: (fileId: string, width?: number) => Promise<MediaResult>;
   logger?: Logger;
 }
 
@@ -47,13 +53,19 @@ function fail(status: number, error: string, retryAfter?: string): Response {
 export async function driveImageResponse(
   fileId: string | undefined,
   deps: ImageProxyDeps,
+  width?: number,
 ): Promise<Response> {
   if (!isDriveFileId(fileId)) return fail(400, 'bad file id');
-  if (!deps.readMedia) return fail(503, 'drive_not_authorised', '3600');
+  if (!deps.readPublic && !deps.readMedia) return fail(503, 'drive_not_authorised', '3600');
 
   let result: MediaResult;
   try {
-    result = await deps.readMedia(fileId);
+    result = deps.readPublic ? await deps.readPublic(fileId, width) : await deps.readMedia!(fileId);
+    // Not public, but we hold a token: the file may be private to the owner's Drive.
+    if (!result.ok && result.error !== 'bad_id' && deps.readPublic && deps.readMedia) {
+      const authed = await deps.readMedia(fileId);
+      if (authed.ok) result = authed;
+    }
   } catch (e) {
     // createMediaReader never throws, but the route must not 500 if a future reader does.
     deps.logger?.error('image proxy: media read threw', { error: serializeError(e) });

@@ -27,7 +27,7 @@ import {
   nowIso,
   requireAdminHeaders,
   reservedIds,
-  resolveCollection,
+  resolveCollections,
   resolveTags,
   rugFieldsFrom,
 } from '../_shared.ts';
@@ -75,12 +75,12 @@ export const POST = adminPost(RugInput, async ({ context, body }) => {
   } else {
     slug = uniqueSlug(body.name, allSlugs);
   }
-  const collection = resolveCollection(snapshot, body.collection);
+  const collections = resolveCollections(snapshot, body.collections);
   const tags = resolveTags(snapshot, body.tags);
   const priceUsd = body.roundPrice
     ? roundUpToStep(body.priceUsd, roundStepOf(snapshot.settings))
     : body.priceUsd;
-  const fields = rugFieldsFrom(body, { slug, collection, tags, priceUsd });
+  const fields = rugFieldsFrom(body, { slug, collections, tags, priceUsd });
   const now = nowIso();
   const audit = buildAuditRow({
     ...auditBase(context),

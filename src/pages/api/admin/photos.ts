@@ -14,7 +14,9 @@ import {
   methodNotAllowed,
   recordAuditEvent,
 } from '../../../lib/admin/http.ts';
+import { commitPhotos } from '../../../lib/drive/commit.ts';
 import { getAdminDeps } from '../../../lib/runtime.ts';
+import { consoleLogger } from '../../../lib/sheets/errors.ts';
 
 export interface PhotoOutcome {
   url: string;
@@ -47,17 +49,34 @@ export const POST = adminPost(
         { reason: scope.reason ?? null },
       );
     }
-    const photos: PhotoOutcome[] = [];
-    for (const [i, url] of body.urls.entries()) {
-      const r = await deps.drive.uploadFromUrl(url, `${body.namePrefix}-${i + 1}.jpg`);
-      if ('error' in r)
-        photos.push({
-          url,
-          error: r.error,
-          ...(r.detail ? { detail: r.detail } : {}),
-          ...(r.id ? { id: r.id } : {}),
-        });
-      else photos.push({ url, id: r.id, name: r.name });
+    // With a product id this is the brief's commit: its own folder, an "All Images" child, and the
+    // primary duplicated up. Without one it is a plain import into the flat root, unchanged.
+    const commit = body.productId
+      ? await commitPhotos(
+          {
+            productId: body.productId,
+            productName: body.productName ?? body.productId,
+            urls: body.urls,
+            namePrefix: body.namePrefix,
+            supplier: body.supplier,
+          },
+          { drive: deps.drive, logger: consoleLogger },
+        )
+      : undefined;
+
+    const photos: PhotoOutcome[] = commit ? commit.photos : [];
+    if (!commit) {
+      for (const [i, url] of body.urls.entries()) {
+        const r = await deps.drive.uploadFromUrl(url, `${body.namePrefix}-${i + 1}.jpg`);
+        if ('error' in r)
+          photos.push({
+            url,
+            error: r.error,
+            ...(r.detail ? { detail: r.detail } : {}),
+            ...(r.id ? { id: r.id } : {}),
+          });
+        else photos.push({ url, id: r.id, name: r.name });
+      }
     }
     const ids = photos.filter((p) => p.id && !p.error).map((p) => p.id!);
     const failed = photos.filter((p) => p.error).map((p) => ({ url: p.url, error: p.error }));
@@ -72,7 +91,17 @@ export const POST = adminPost(
     if (ids.length === 0) {
       return noStore({ ok: false, error: 'upload_failed', photos, imported: 0, audit }, 502);
     }
-    return noStore({ ok: true, photos, imported: ids.length, audit });
+    return noStore({
+      ok: true,
+      photos,
+      imported: ids.length,
+      // The admin writes these onto the row so the folder is one click away from the rug.
+      ...(commit?.folders
+        ? { driveFolderId: commit.folders.productId, driveFolderUrl: commit.folders.url }
+        : {}),
+      complete: commit ? commit.complete : ids.length === body.urls.length,
+      audit,
+    });
   },
   'photos',
 );

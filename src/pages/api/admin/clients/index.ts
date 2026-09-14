@@ -8,6 +8,7 @@ import { buildAuditRow } from '../../../../lib/admin/audit.ts';
 import { clientLink, clientToCells, newClientCode } from '../../../../lib/admin/clients.ts';
 import { ClientInput } from '../../../../lib/admin/dto.ts';
 import {
+  AdminError,
   adminGet,
   adminPost,
   adminRuntime,
@@ -47,6 +48,21 @@ export const POST = adminPost(ClientInput, async ({ context, body, actor }) => {
     after: { code, name: body.name, note: body.note, password: body.password ? 'chosen' : 'generated' },
   });
   const result = await insertTopRow(client, {
+    // Re-checked inside the admin lock, not just against the snapshot read above. The codes are
+    // short scrambles of the buyer's name now (owner, 2026-09-13), so two customers with similar
+    // names are a realistic collision — and a duplicated code would hand two buyers the same private
+    // link. Cheap: one extra read, only on create, only while the lock is already held.
+    precheck: async () => {
+      const fresh = await loadSnapshot(client);
+      if (fresh.clients.some((c) => c.code.trim().toLowerCase() === code.toLowerCase())) {
+        throw new AdminError(
+          409,
+          'code taken',
+          'That preview link was just taken by another customer — press Add again to get a new one.',
+          { code },
+        );
+      }
+    },
     tab: TABS.customers,
     cells: clientToCells({
       code,

@@ -1,0 +1,314 @@
+/* Button and Input — Figma `02 · Components`, sets 12:122 (Button) and 14:98 (Input).
+ *
+ * 20 Button variants (4 Style x 5 State) and 20 Input variants (4 Type x 5 State), built as one
+ * base class plus modifiers rather than 40 rules, because in Figma every variant of a set shares
+ * its geometry and differs only in fill, border and label colour.
+ *
+ * GEOMETRY IS BOUND TO TOKENS, NOT TO THE DRAWN PIXELS. The component set was drawn in Preview
+ * mode, so it shows padding 24px inline (space/control-x) and gap 12px (space/tight). Those are
+ * mode-scoped: in Admin the same component is 16px and 4px. Hard-coding the preview numbers would
+ * freeze the button into one realm and break the asymmetry the handoff calls "the whole design
+ * decision". Width is content-driven for the same reason — Figma's 143px is the width of the
+ * default label 'Save Product' at 12px Bold uppercase, not a constraint.
+ *
+ * One sub-pixel note: Figma reports the button at 40.8px tall. The browser computes
+ * 10.4*2 + 12*1.65 = 40.6px, because Figma rounds the 12px/1.65 line box up to 20px and the
+ * browser keeps 19.8px. The padding and the type scale are exact; the 0.2px is the line-height
+ * model, and forcing an explicit height would break the admin compression instead of fixing it.
+ */
+
+/* ═══ Button ═══════════════════════════════════════════════════════════════════════════════════ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  gap: var(--tight);
+  /* Inside stroke: see the note above .btn — the border is subtracted from the padding so a
+     bordered Secondary is exactly as tall as a borderless Primary, as Figma draws them. */
+  padding: calc(var(--control-y) - var(--rule-width)) calc(var(--control-x) - var(--rule-width));
+  border: var(--rule-width) solid transparent;
+  border-radius: var(--radius);
+  font-family: var(--heading);
+  font-size: var(--size-label);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-body);
+  letter-spacing: 0;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  /* Prestige's own hover wipe is gated behind (pointer: fine) and reduced-motion; motion/quick is
+     the 150ms the theme uses for every small hover in both modes. */
+  transition:
+    background-color var(--motion-quick) var(--motion-ease),
+    border-color var(--motion-quick) var(--motion-ease),
+    color var(--motion-quick) var(--motion-ease);
+}
+
+.btn__icon {
+  display: inline-flex;
+  flex: none;
+  width: var(--size-icon);
+  height: var(--size-icon);
+}
+
+/* Focus is ink at 2px in every mode, never the brand red — red is the error colour, and a red ring
+   on a red-bordered invalid field is unreadable (handoff 66:440, and revision 161:371). */
+.btn:focus-visible {
+  outline: var(--border-width-focus) solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.btn:disabled:not(.is-loading),
+.btn[aria-disabled='true']:not(.is-loading) {
+  cursor: default;
+}
+
+/* ── Primary ── */
+.btn--primary {
+  background: var(--action-primary);
+  color: var(--text-on-action);
+}
+.btn--primary:hover:not(:disabled):not([aria-disabled='true']) {
+  background: var(--action-primary-hover); /* the storefront's real scheme-1 hover, not a tint */
+  color: var(--text-on-brand);
+}
+.btn--primary:active:not(:disabled):not([aria-disabled='true']) {
+  background: var(--action-danger-hover);
+  color: var(--text-on-brand);
+}
+.btn--primary:disabled:not(.is-loading),
+.btn--primary[aria-disabled='true']:not(.is-loading) {
+  background: var(--subtle);
+  color: var(--ink-muted);
+}
+
+/* ── Secondary ──
+   Hover and active fill the brand red, exactly as drawn (12:38 / 12:44). This makes a Secondary
+   hover visually identical to a Primary hover; it follows from the component's own description
+   and is reported as a conflict rather than silently softened to a neutral tint. */
+.btn--secondary {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--ink);
+}
+.btn--secondary:hover:not(:disabled):not([aria-disabled='true']) {
+  background: var(--action-primary-hover);
+  border-color: var(--action-primary-hover);
+  color: var(--text-on-brand);
+}
+.btn--secondary:active:not(:disabled):not([aria-disabled='true']) {
+  background: var(--action-danger-hover);
+  border-color: var(--action-danger-hover);
+  color: var(--text-on-brand);
+}
+.btn--secondary:disabled:not(.is-loading),
+.btn--secondary[aria-disabled='true']:not(.is-loading) {
+  background: transparent;
+  border-color: var(--rule); /* drops from border/strong to --border-color when disabled */
+  color: var(--ink-muted);
+}
+
+/* ── Ghost ──
+   Hover and active are pixel-identical in Figma (12:68 / 12:74). There is no distinct :active
+   design, so none is invented. */
+.btn--ghost {
+  background: transparent;
+  color: var(--ink);
+}
+.btn--ghost:hover:not(:disabled):not([aria-disabled='true']),
+.btn--ghost:active:not(:disabled):not([aria-disabled='true']) {
+  background: var(--subtle);
+  color: var(--ink);
+}
+.btn--ghost:disabled:not(.is-loading),
+.btn--ghost[aria-disabled='true']:not(.is-loading) {
+  background: transparent;
+  color: var(--ink-muted);
+}
+
+/* ── Destructive ──
+   Hover and active are likewise pixel-identical (12:98 / 12:104). */
+.btn--destructive {
+  background: var(--action-danger);
+  color: var(--text-on-brand);
+}
+.btn--destructive:hover:not(:disabled):not([aria-disabled='true']),
+.btn--destructive:active:not(:disabled):not([aria-disabled='true']) {
+  background: var(--action-danger-hover);
+  color: var(--text-on-brand);
+}
+.btn--destructive:disabled:not(.is-loading),
+.btn--destructive[aria-disabled='true']:not(.is-loading) {
+  background: var(--subtle);
+  color: var(--ink-muted);
+}
+
+/* ── Loading ──
+   The four Loading variants keep their style's resting fill and swap the label to 'Saving…'. The
+   set description says loading "forces its own spinner", but no spinner is drawn in any of the four
+   variants — so none is drawn here either. Reported as a gap. */
+.btn.is-loading {
+  cursor: progress;
+}
+.btn.is-loading .btn__icon {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: none;
+  }
+}
+
+/* ═══ Input ════════════════════════════════════════════════════════════════════════════════════
+   Padding is deliberately off the 4pt grid — 10.4 block / 12.8 inline are Prestige's own
+   --input-padding-block / --input-padding-inline. Rounding them to 12 would make every input
+   3.2px taller than the storefront's and break the visual match on the preview (handoff 67:11). */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tight);
+}
+
+.field__label {
+  font-family: var(--heading);
+  font-size: var(--size-label);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-body);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.field__message {
+  font-size: var(--text-xs);
+  line-height: var(--leading-body);
+  color: var(--ink-muted);
+}
+/* Two tones for the same slot. Danger is a field that is wrong (A2, 47:44); warning is a field that
+   is merely unavailable (A3, 47:67 — "Too many attempts"), which is why only danger sets
+   aria-invalid and only danger paints the red border. */
+.field__message--danger {
+  color: var(--danger);
+}
+.field__message--warning {
+  color: var(--warning);
+}
+
+/* The wrapper exists only for the types that carry a trailing affordance (Select's chevron,
+   Password's reveal). Text and Textarea use it too so every field has one box model. */
+.input-wrap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: calc(var(--input-y) - var(--rule-width)) calc(var(--input-x) - var(--rule-width));
+  border: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+}
+
+.input::placeholder {
+  color: var(--ink-muted);
+  opacity: 1; /* Firefox dims placeholders by default; the token already carries the intent */
+}
+
+/* Figma draws focus as a 2px border. Rendering it as an inset outline gives the same 2px ring
+   without the 1px content shift a border-width change would cause. */
+.input:focus,
+.input:focus-visible {
+  outline: var(--border-width-focus) solid var(--border-focus);
+  outline-offset: calc(-1 * var(--border-width-focus));
+}
+
+.input[aria-invalid='true'],
+.input.is-error {
+  border-color: var(--danger);
+}
+
+.input:disabled,
+.input[readonly] {
+  background: var(--subtle);
+  color: var(--ink-muted);
+}
+.input:disabled {
+  cursor: default;
+}
+
+/* Select and Password reserve room for the 16px trailing glyph, which sits --input-x from the
+   right edge (Figma places it at x=291.2 in a 320-wide input: 320 − 291.2 − 16 = 12.8). */
+.input--select,
+.input--password {
+  padding-right: calc(var(--input-x) * 2 + var(--size-icon));
+}
+
+.input--select {
+  appearance: none;
+}
+
+.input__affordance {
+  position: absolute;
+  top: 50%;
+  right: var(--input-x);
+  transform: translateY(-50%);
+  display: inline-flex;
+  width: var(--size-icon);
+  height: var(--size-icon);
+  color: var(--ink-soft);
+  pointer-events: none;
+}
+
+/* The password reveal is a real button: it must be reachable and operable from the keyboard. */
+button.input__affordance {
+  pointer-events: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+button.input__affordance:focus-visible {
+  outline: var(--border-width-focus) solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.input-wrap:has(.input:disabled) .input__affordance {
+  color: var(--ink-muted);
+}
+
+.input--textarea {
+  min-height: 96px;
+  align-items: flex-start;
+  resize: vertical;
+}
+
+/* Visually-hidden, still announced. Defined here so controls.css is self-contained across all three
+   realms — admin.css has no copy, and a labelled control must not depend on which stylesheet the
+   page happened to import. Identical to the rule in preview.css and editorial.css. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The reveal button holds both glyphs and swaps them (Icon / Eye 14:14, Icon / Eye Off 14:18).
+   `hidden` alone is not enough: the UA rule is display:none, but these svgs sit in an inline-flex
+   button, and relying on attribute-vs-layout precedence here is how both glyphs ended up visible.
+   Stating it explicitly is cheaper than debugging it twice. */
+.input__affordance svg[hidden] {
+  display: none;
+}

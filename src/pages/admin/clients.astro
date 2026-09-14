@@ -5,6 +5,9 @@
 export const prerender = false;
 
 import AdminLayout from '../../components/admin/AdminLayout.astro';
+import Button from '../../components/ui/Button.astro';
+import Modal from '../../components/ui/Modal.astro';
+import CredentialPanel from '../../components/ui/CredentialPanel.astro';
 import { clientLink } from '../../lib/admin/clients.ts';
 import { adminRuntime } from '../../lib/admin/http.ts';
 import { fetchAdminSnapshot, type AdminSnapshot } from '../../lib/admin/read.ts';
@@ -31,70 +34,99 @@ const data = { clients, siteOrigin: new URL(adminRuntime.siteUrl).origin };
 <AdminLayout title="Serio Ludere — Clients" active="clients">
   {error && <div class="msg err on">Could not read the sheet: {error}</div>}
 
-  <section class="stack" aria-labelledby="h-link">
-    <h3 id="h-link">Unique link</h3>
-    <div class="row">
-      <div class="grow">
-        <input
-          id="cl_name"
-          placeholder="Client name — e.g. Nadia"
-          autocomplete="off"
-          aria-label="Client name"
-        />
-      </div>
-      <div class="grow">
-        <input id="cl_note" placeholder="Note (optional)" autocomplete="off" aria-label="Note" />
-      </div>
-      <div class="grow">
-        <input
-          id="cl_pw"
-          placeholder="Password (optional)"
-          autocomplete="off"
-          aria-label="Password"
-          maxlength="200"
-        />
-      </div>
-      <button class="go" id="btnGenerate" type="button">Generate link</button>
-    </div>
-    <p class="hint">
-      Leave the password blank and one is generated — three words and two digits, easy to read down a phone.
-      Type your own if you would rather; eight characters or more.
+  {
+    /*
+      F3 · Customers — new customer link, Figma 112:2968.
+
+      PART OF F3 CANNOT BE BUILT, and this is the reason rather than an omission. The frame draws a
+      live "Their link will be" preview that "updates as you type", and errors with "hala-nasser is
+      already taken. Try hala-nasser-2" — both assume the route is DERIVED from the name. The owner's
+      requirement of 2026-09-13 replaced that with a scrambled, randomly generated route
+      (src/lib/admin/clients.ts): half the name's letters, shuffled, with digits and separators woven
+      in. There is nothing to preview, because the code does not exist until the server makes it, and
+      no "-2" to suggest, because a retry simply draws a different code.
+
+      So the preview row is replaced by a line that says what actually happens, and the taken-code
+      case is reported by the server's own 409 (see the create endpoint's precheck) rather than
+      guessed at while typing. F3's title, field and password guidance are used verbatim.
+    */
+  }
+  <Modal id="new-client" title="New customer link">
+    <p>
+      One name. The link is generated for you — a scrambled address that cannot be guessed from the name — and
+      the password is shown once, immediately after.
     </p>
-    <div id="m8" class="msg"></div>
-    <div id="linkOut" class="stack" hidden>
+    <div class="modal__fields">
       <div class="row">
-        <div class="grow"><input id="linkInput" readonly aria-label="Client link" /></div>
-        <button class="go alt" id="btnCopy" type="button">Copy</button>
-      </div>
-      <div class="row" id="pwOut" hidden>
-        <div class="grow"><input id="pwInput" readonly aria-label="Customer password" /></div>
-        <button class="go alt" id="btnCopyPw" type="button">Copy password</button>
+        <div class="grow">
+          <input
+            id="cl_name"
+            placeholder="Client name — e.g. Nadia"
+            autocomplete="off"
+            aria-label="Client name"
+          />
+        </div>
+        <div class="grow">
+          <input id="cl_note" placeholder="Note (optional)" autocomplete="off" aria-label="Note" />
+        </div>
+        <div class="grow">
+          <input
+            id="cl_pw"
+            placeholder="Password (optional)"
+            autocomplete="off"
+            aria-label="Password"
+            maxlength="200"
+          />
+        </div>
+        <button class="go" id="btnGenerate" type="button">Generate link</button>
       </div>
       <p class="hint">
-        Code <span class="mono" id="linkCode"></span> — <span id="linkNote"></span>
+        Generated on create, in a readable four-part format so it survives WhatsApp and can be read aloud.
+        Shown once, immediately after. Type your own instead if you would rather; eight characters or more.
       </p>
-      <p class="hint" id="pwNote" hidden>
-        This password is shown once and stored only as a hash. Send it with the link; if it is lost, use Reset
-        password on the row below to mint a new one.
-      </p>
+      <div id="m8" class="msg"></div>
+      {
+        /*
+          F4 · Customers — link created (reveal once), Figma 52:1115 / 20:91.
+
+          This replaces a pair of separate Copy and Copy-password buttons. The component
+          documentation is explicit that separating them is the failure mode the design removes:
+          one button copies BOTH, because a link and a password are pasted into one message, and
+          copying them one at a time is how half a credential gets sent.
+
+          Populated by src/scripts/admin/clients.ts after the create/reset response — the plaintext
+          exists only in that response body and is never re-read from the sheet.
+        */
+      }
+      <div id="linkOut" class="stack" hidden>
+        <CredentialPanel url="" password="" />
+        <p class="hint">
+          Code <span class="mono" id="linkCode"></span> — <span id="linkNote"></span>
+        </p>
+      </div>
     </div>
-  </section>
+  </Modal>
 
   <section class="stack" aria-labelledby="h-clients">
-    <h3 id="h-clients">Clients</h3>
+    <div class="page-head">
+      <p class="page-head__count">
+        {clients.length}
+        {clients.length === 1 ? 'link' : 'links'}
+      </p>
+      <span class="page-head__rule"></span>
+      <Button icon="plus" data-open="new-client">New customer link</Button>
+    </div>
     <div id="m9" class="msg"></div>
     <div class="table-wrap">
       <table id="clientTable">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Code</th>
-            <th>Status</th>
-            <th>Created</th>
-            <th>Visits</th>
-            <th>Last seen</th>
-            <th>Saves</th>
+            <th>Customer</th>
             <th>Link</th>
+            <th>Created</th>
+            <th>Visited</th>
+            <th>Last seen</th>
+            <th>Active</th>
             <th></th>
           </tr>
         </thead>
@@ -102,29 +134,39 @@ const data = { clients, siteOrigin: new URL(adminRuntime.siteUrl).origin };
           {
             clients.map((c) => (
               <tr data-code={c.code} data-version={c.version} data-status={c.status}>
-                <td>{c.name}</td>
-                <td class="mono">{c.code}</td>
-                <td class:list={['status', c.status]}>{c.status}</td>
-                <td class="mono">{c.createdAt}</td>
-                <td class="n" data-visits>
-                  —
-                </td>
-                <td class="mono" data-last-seen>
-                  —
-                </td>
-                <td class="n" data-saves>
-                  —
+                {/* F5 (52:1207): the name is the way in to a buyer's detail screen. */}
+                <td>
+                  <a href={`/admin/clients/${encodeURIComponent(c.code)}`}>{c.name}</a>
                 </td>
                 <td class="mono">
                   <a href={c.link} target="_blank" rel="noopener">
                     {c.link}
                   </a>
                 </td>
+                <td>{c.createdAt}</td>
                 <td>
-                  <button type="button" class="chip" data-act={c.status === 'active' ? 'revoke' : 'restore'}>
-                    {c.status === 'active' ? 'Revoke' : 'Restore'}
+                  <span class="badge" data-visits>
+                    Not visited
+                  </span>
+                </td>
+                <td data-last-seen>—</td>
+                <td>
+                  <label class="toggle">
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      class="toggle__track"
+                      data-act="toggle"
+                      checked={c.status === 'active'}
+                      aria-label={`Link active for ${c.name}`}
+                    />
+                  </label>
+                </td>
+                <td class="acts">
+                  <button type="button" class="copy" data-copy={c.link} data-label="Copy link">
+                    <span data-copy-label>Copy link</span>
                   </button>
-                  <button type="button" class="chip" data-act="password">
+                  <button type="button" class="btn btn--ghost" data-act="password">
                     Reset password
                   </button>
                 </td>
@@ -134,6 +176,10 @@ const data = { clients, siteOrigin: new URL(adminRuntime.siteUrl).origin };
         </tbody>
       </table>
     </div>
+    <p class="hint">
+      Copy-link is the most-used action here — the control changes icon, label and colour for 2 seconds. A
+      toast alone is missable when copying several in a row.
+    </p>
     {clients.length === 0 && <div class="msg busy on">No clients yet.</div>}
   </section>
 
@@ -184,7 +230,14 @@ const data = { clients, siteOrigin: new URL(adminRuntime.siteUrl).origin };
   <script is:inline type="application/json" id="admin-data" set:html={jsonForScript(data)} />
   <script>
     import { initClients } from '../../scripts/admin/clients.ts';
+    import { initOverlays } from '../../scripts/ui/overlay.ts';
+    import { initCopy } from '../../scripts/ui/copy.ts';
     initClients();
+    initOverlays();
+    // Drives the Credential Panel's three copy controls. Bound once here: the panel is
+    // server-rendered (hidden) so its buttons already exist, and copy.ts reads data-copy at click
+    // time, which is what lets clients.ts re-point them when the response arrives.
+    initCopy();
   </script>
 </AdminLayout>
 

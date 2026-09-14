@@ -22,7 +22,8 @@ import {
   mergeRungs,
   type RungDraft,
 } from './ladder.ts';
-import { priceToUsd, retailSuggestion } from './money.ts';
+import { priceToUsd } from './money.ts';
+import { pricingRuleName, supplierRetail } from '../price.ts';
 import { RobotsCache, defaultRobotsCache, isPathAllowed, robotsAllows, type RobotsRules } from './robots.ts';
 import { looksLikeJson, parseShopifyProduct, shopifyRung, shouldProbeShopify } from './shopify.ts';
 import { HostThrottle, defaultHostThrottle } from './throttle.ts';
@@ -133,14 +134,20 @@ export function finalisePricing(
     opts.roundStep !== undefined && Number.isInteger(opts.roundStep) && opts.roundStep > 0
       ? opts.roundStep
       : DEFAULT_ROUND_STEP;
-  const retail = retailSuggestion(priceUsd, opts.markup, step);
+  // Per-supplier formula where the owner supplied one, else the Settings multiplier (ADMIN_SPEC §7).
+  const retail = supplierRetail(out.supplier, priceUsd, opts.markup, step);
+  const rule = pricingRuleName(out.supplier);
   if (retail !== undefined) {
     out.suggestedRetailUsd = retail;
-    out.markupApplied = opts.markup;
+    // A formula has no single markup, so `markupApplied` stays undefined and `pricingRule` names the
+    // rule instead. Reporting an effective ratio here would read as a setting the owner could change.
+    out.markupApplied = rule === undefined ? opts.markup : undefined;
+    out.pricingRule = rule;
     out.roundStep = step;
   } else {
     out.suggestedRetailUsd = undefined;
     out.markupApplied = undefined;
+    out.pricingRule = undefined;
     out.roundStep = undefined;
   }
   return finaliseScraped(out);

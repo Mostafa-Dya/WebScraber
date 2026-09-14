@@ -145,7 +145,10 @@ export const RugInput = z.object({
   slug: Slug.optional(), // absent → derived from name (create) / kept (update)
   name: z.string().trim().min(1).max(120),
   description: Text(4000),
-  collection: z.string().trim().min(1).max(80), // must match a Collections.name (case-insensitive)
+  // Owner 2026-09-13: a product can sit in several collections. A bare string is accepted and split
+  // on "|", so a single-value caller still validates. 1-10 names, each matching a Collections.name
+  // (case-insensitive); de-duplicated case-insensitively before the 422 check.
+  collections: CollectionList, // string | string[] -> string[]
   tags: z
     .array(
       z
@@ -213,6 +216,11 @@ export const PhotoImportRequest = z.object({
     .min(1)
     .max(60)
     .regex(/^[A-Za-z0-9_-]+$/), // e.g. the slug; files are <prefix>-<n>.jpg
+  // Owner 2026-09-13: which supplier sent these photos, so the FIRST image gets that supplier's
+  // fixes on the way into Drive (src/lib/drive/transform.ts — Karavan's first image is rotated 90°).
+  // Sent explicitly, never sniffed from the photo host: Karavan is a Shopify store, so its images
+  // arrive from the shared cdn.shopify.com and the host does not identify the supplier.
+  supplier: z.enum(['ecarpetgallery', 'karavanrug', '']).default(''),
 });
 export const SettingsUpdate = z.object({
   key: z.enum([
@@ -348,10 +356,18 @@ auth.logout | auth.lockout`; `target_tab` ∈ `Rugs | Collections | Tags | Clien
 | key                            | seed      | parsed as                                               |
 | ------------------------------ | --------- | ------------------------------------------------------- |
 | `retail_markup`                | _(blank)_ | positive number (multiplier, e.g. `1.6`); blank = unset |
-| `retail_markup.ecarpetgallery` | _(blank)_ | per-supplier override                                   |
-| `retail_markup.karavanrug`     | _(blank)_ | per-supplier override                                   |
-| `price_round_step`             | `5`       | positive integer (§7)                                   |
-| `default_status`               | `active`  | `active                                                 | draft` |
+| `retail_markup.ecarpetgallery` | _(blank)_ | **no longer consulted** — see below                     |
+| `retail_markup.karavanrug`     | _(blank)_ | **no longer consulted** — see below                     |
+
+> **Per-supplier formulas supersede the markup for the two known suppliers (owner, 2026-09-13).**
+> `karavanrug` prices at `base × 0.7 × 2 + band(base)`, where the band is `+100` below 500, `+150`
+> across 500–1000 inclusive, and `+200` above 1000 — the band reads the **scraped** price, not the
+> multiplied one. `ecarpetgallery` prices at `USD × 1.5 + 150`. Both are then rounded up by
+> `price_round_step` as before. The formula ignores any `retail_markup.*` row for that supplier
+> rather than letting a stale setting silently reprice the catalogue; `retail_markup` still governs
+> owned stock and any unrecognised supplier. Implemented in `src/lib/price.ts` (`supplierRetail`).
+> | `price_round_step` | `5` | positive integer (§7) |
+> | `default_status` | `active` | `active                                                 | draft` |
 
 A bad value parses to `undefined` with a logged warning, never a crash. Lookup order for the markup:
 `retail_markup.<supplier>` → `retail_markup` → env `RETAIL_MARKUP` → unset (§4.7).
@@ -628,19 +644,56 @@ mimeType='application/vnd.google-apps.folder' and trashed=false"` (under `drive.
   visible, so the name lookup is unambiguous); else `files.create` `{ name, mimeType: application/vnd.google-apps.folder }`
   then `permissions.create` `{ type: 'anyone', role: 'reader' }` (`allowFileDiscovery: false`) once on the folder —
   files inherit it, so no per-file permission call. The id is logged with the advice to set `GOOGLE_DRIVE_FOLDER_ID`.
-- `uploadFromUrl(url, name)`: guarded undici download (host allow-list §4.5, `image/*`, ≤ 5 MB — the multipart cap;
+- `uploadFromUrl(url, name, intoFolderId?)`: guarded undici download (host allow-list §4.5, `image/*`, ≤ 5 MB — the multipart cap;
   ECG full images are ~0.9 MB, KV `?width=1600` ~0.4 MB) → `POST https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType`
   with `multipart/related` (metadata part `{ name: '<prefix>-<n>.jpg', parents: [folderId], mimeType }` + media part)
   → `HEAD https://lh3.googleusercontent.com/d/<id>=w800` with up to 3 retries × 2 s before the id is accepted
   (lh3 propagation delay for fresh files is unverified) → returns `{ id }` or `{ error }`.
+  `intoFolderId` targets a rug's own folder; omitted, the photo lands in the flat root.
+- `ensureProductFolders(productId, productName)` (brief §12): finds or creates `<root>/<id> — <name>` and its
+  `All Images` child, scoping each lookup to its parent so two rugs with the same name cannot collide. No
+  `permissions.create` on either — they are made inside the root, which is already shared with anyone holding the
+  link, and folders inherit that. Idempotent, so a retry after a half-finished import reuses what is there.
+  Returns `{ productId, allImagesId, name, url }`.
+- `copyFile(fileId, name, intoFolderId)`: `files/{id}/copy`; used once per rug to duplicate the primary up out of
+  `All Images` as `01-primary`.
+- `listFolder(folderId)`: one page of 100 as `name → id`. Exists for the retry (§5.3): filenames are deterministic,
+  so a name already in `All Images` is a photo that already landed.
+- `getMedia(fileId)`: one un-retried `files/{id}?alt=media`, body handed back unconsumed for `/api/image/[fileId]`.
+  Non-`image/*` is refused — the proxy serves from our own origin, so a stray HTML or SVG file in the photo folder
+  must never come back as same-origin script.
 - `scopeStatus()`: `OAuth2Client.getTokenInfo(accessToken)` (google-auth-library 11.0.2) → `driveScopeOk` cached 10 min;
   surfaced on `/api/health` and the dashboard.
 
 ### 5.3 Endpoint behaviour and fallback
 
 `POST /api/admin/photos` imports ≤ 12 URLs sequentially, returns per-URL results, audits `photo.import`
-(`target_tab: Drive`, `after: { ids, failed }`). The add form (§8) runs it **before** `rug.create` so the row is written
-with its `photos` ids (`|`-joined, first = card image), naming files `<slug>-<n>.jpg`.
+(`target_tab: Drive`, `after: { ids, failed }`). Given a `productId` it runs the brief §12 commit
+(`src/lib/drive/commit.ts`): folders first, then each photo into `All Images` as `01-primary` / `<prefix>-<n>`, with
+the primary copied up into the rug's folder; it answers with `driveFolderId` / `driveFolderUrl` / `complete`, which
+the add form writes onto the row alongside `Commit Status`. Without a `productId` it falls back to the flat
+`<prefix>-<n>.jpg` upload into the root folder.
+
+**Commit order (brief §12).** Validate the id → write the row `pending` → create the folders → upload one at a time
+→ update the row `complete`. The old order uploaded first and wrote the row afterwards, so a failure part-way left
+images in Drive that no row pointed at. Writing the row first inverts the failure: what is left is a visible row
+marked `pending`, which the products list badges "photos pending". `commitPhotos` never throws — every outcome is
+reported, because a half-finished import must leave something the admin can act on.
+
+`POST /api/admin/rugs/[id]/retry` finishes such a row, behind the "Finish photo import" button on the card. It
+re-scrapes `Source URL` for the photo list (the Products tab is the brief's fixed 42 columns, so the pending URLs are
+stored nowhere; the scraper is cached and idempotent) and lists `All Images` for what already landed, uploading only
+the difference. **Idempotent** — pressing it twice uploads nothing the second time. Refusals: `404` unknown id,
+`409 drive_not_authorised`, `422 no_source` / `no_photos`, `502 scrape_failed`, `409` on a stale version. It audits
+`photo.import` with `{ wanted, imported, reused, commitStatus }` and busts the catalogue snapshot, because the
+primary is a catalogue-visible cell.
+
+`GET /api/image/[fileId]?w=400|800|1600` serves every photo from our own origin, `immutable, max-age=31536000`.
+Two upstreams: **lh3 anonymously first** (the folder is shared with anyone holding the link, so it needs no token and
+downscales on demand), then the authenticated Drive API for a file that is not public. The width is a closed set and
+the id is matched against `^[A-Za-z0-9_-]{10,200}$` before it reaches a URL; there is no parameter that accepts a URL.
+`driveImageUrl()` returns this path — but `waitForLh3` and `scripts/check-photos.ts` still probe `lh3Url()`, since
+they exist to check Drive, not us.
 
 Fallback = store nothing: when `driveScopeOk` is false (scope missing, service-account mode, Drive API disabled) the
 checkbox "Save photos to Drive" is disabled with the hint _"Drive is not authorised — see SHEET_SETUP §6"_, the scrape
@@ -659,10 +712,28 @@ previews through the server so the admin's IP never reaches the suppliers.
 
 ### 6.1 Code format and generation (`src/lib/admin/clients.ts`, pure)
 
-`code = slugify(name).slice(0, 20).replace(/-+$/, '') + '-' + rand6` where `rand6` is 6 characters from `[a-z0-9]`
-drawn with rejection sampling from `crypto.randomBytes` (uniform), e.g. `nadia-k7m2pq`. Always matches
-`CLIENT_CODE_RE` and therefore the site's `^[A-Za-z0-9_-]{1,64}$`. Uniqueness checked against the `Clients` tab under
-the admin lock (retry once on collision). Empty slug (non-Latin name) → `client-<rand6>`.
+**Scrambled since 2026-09-13 (owner).** The code no longer reads as the customer's name. Half of the
+name's slugified characters (rounded up, minimum 3, pool padded to 4) are shuffled with Fisher–Yates
+and 3–4 fillers are woven into the **interior** gaps — digits three times out of four, otherwise `-`
+or `_`. The first and last characters are always alphanumeric. `Gida Hussami` → e.g. `i6a-s_d2u`.
+
+**The filler alphabet is `-` and `_` only, and that is a correctness constraint, not taste.** `~` and
+`.` are equally unreserved in a URL path (RFC 3986 §2.3) and were the owner's preference, but the same
+string is stored as `customer_slug` in `Customers` and as `client` on every `Reactions` row, both of
+which parse against `/^[A-Za-z0-9_-]{1,64}$/`. A `~` there makes the customer's own row unparseable
+and the buyer vanishes from the catalogue. The generator is constrained to the intersection of the two
+alphabets; `CLIENT_CODE_RE` and the customer realm's `SLUG_RE` both encode it.
+
+Randomness is uniform via rejection sampling over `crypto.randomBytes`; the source is injectable so
+tests can pin the shuffle. Uniqueness is checked against the `Customers` tab under the admin lock, now
+with **eight** attempts rather than two — the old scheme prefixed the full name, so a collision meant
+two buyers with the same name _and_ the same six random characters; this one is shorter and drawn from
+the name's own letters, so two buyers called "Ana Lee" collide far more often. A non-Latin name
+slugifies to nothing and falls back to a fully random code of the same shape rather than throwing.
+
+The code is a **locator, not a credential**: it leaks roughly half the buyer's letters by design and
+carries on the order of 25 bits. That is acceptable only because §10 puts a password gate behind the
+route — the URL alone opens nothing.
 
 ### 6.2 Link and site behaviour (no site change required)
 
@@ -800,8 +871,19 @@ report as in §6.3 with a **Refresh** button (`GET …/report`).
 filter inputs (action select, target id text) applied client-side, **Load more** (offset paging). Rows from the sheet
 are rendered as text only.
 
-**`/admin/login`** — `.fields` with one password input (`autocomplete="current-password"`), **Log in** (`button.go`),
-generic `.msg.err` _"Login failed."_, `Retry-After` shown as _"Try again in n s."_. `/admin` dashboard as in §2.1.
+**`/admin/login`** — rebuilt on Figma A1 (47:3) / A2 (47:28) / A3 (47:51) on 2026-09-14. A 400-wide card:
+wordmark + "preview admin", one password `Input` (`autocomplete="current-password"`, with the reveal eye),
+and a full-width primary `Button`. The three states differ only in the field.
+
+The failure copy is now Figma's, **superseding this section's earlier generic _"Login failed."_**: A2 says
+_"That password is not correct."_ in `--danger`, A3 says _"Too many attempts — wait 60s. n s remaining."_ in
+`--warning` with the whole control greyed and the button relabelled **Locked**. The generic wording existed to
+prevent username enumeration; this form has no username — one shared password is the only secret — so the
+specific message tells an attacker nothing the generic one did not. The throttle, which is the control that
+actually matters, is unchanged, and `Retry-After` is still both a header and the visible hint.
+
+A3 is _unavailable_, not _invalid_: the attempt was refused before the password was read, so the field does
+**not** set `aria-invalid` and its message takes the warning tone. `/admin` dashboard as in §2.1.
 
 ---
 

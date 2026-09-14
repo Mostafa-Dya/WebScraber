@@ -1,14 +1,22 @@
 ---
 // The filter strip (Figma 53:42).
 //
-// Square chips, 36 tall, 8px apart, wrapping. The selected one is filled with ink; the rest sit on
+// Square chips, 36 tall, 8px apart. The selected one is filled with ink; the rest sit on
 // `action/subtle`. They are square, not pills — a 1:1 render of the strip settles it, and only the
 // reaction circles are round in this system.
 //
+// The row wraps at 1440 (53:42) but NOT at 390: 58:239 is a row with clip and no wrap whose tags
+// total 378 inside a 358 box, so the mobile strip scrolls sideways and the last tag is cut at the
+// frame edge rather than folding onto a second line. The cut IS the affordance, which is why no
+// scrollbar is drawn.
+//
 // The design filters by rug **type** rather than by collection, which is what a buyer actually scans
-// for, and closes the row with a "Liked" chip that narrows the grid to their own shortlist. That
-// count is rendered as a placeholder and corrected on load from the visitor's own stored reactions,
-// because it is per-visitor and the page is cached.
+// for, and offers a "Liked" chip that narrows the grid to their own shortlist. Where that chip sits
+// is breakpoint-specific: at 1440 it closes the row (53:59); at 390 it is the SECOND chip, straight
+// after "All" and ahead of the type tags (58:242), because the mobile strip does not wrap and a
+// trailing shortlist chip would start off-screen entirely. The count on it is rendered as a
+// placeholder and corrected on load from the visitor's own stored reactions, because it is
+// per-visitor and the page is cached.
 interface Props {
   tags: Array<{ slug: string; name: string; count: number }>;
 }
@@ -76,14 +84,44 @@ const { tags } = Astro.props;
     width: 12px;
     height: 12px;
   }
+  /* 53:59 draws '♡ Liked  38' as ONE text run in one fill; the count is not dimmed. */
   .pv-chip-count {
     color: inherit;
-    opacity: 0.65;
   }
 
   /* A chip with nothing behind it is noise; filters.ts hides those rather than offering a dead end. */
   .pv-chip[hidden] {
     display: none;
+  }
+
+  @media (max-width: 767px) {
+    /* 58:239 draws the mobile strip as a row with clip and NO wrap: 378px of tags inside a 358 box,
+       so it scrolls sideways and the last tag is cut at the frame edge. The desktop wrap (53:42) is
+       untouched. The nav sits inside .pv-wrap, whose mobile padding-inline is var(--stack-lg), which
+       is the same 16 the frame draws — so the scroll box lines up with the frame edge. */
+    .pv-filters {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
+    }
+    .pv-filters::-webkit-scrollbar {
+      display: none;
+    }
+    .pv-chip {
+      flex: none;
+    }
+
+    /* 58:242 puts the shortlist chip SECOND at 390 — straight after "All", ahead of the type tags —
+       where 53:59 closes the desktop row with it. Done with flex `order` rather than by moving the
+       markup, so the DOM order filters.ts walks is identical at both widths; "All" takes the lower
+       value or the reordered Liked chip would jump ahead of it. */
+    .pv-chip[data-filter='all'] {
+      order: -2;
+    }
+    .pv-chip-liked {
+      order: -1;
+    }
   }
 </style>
 

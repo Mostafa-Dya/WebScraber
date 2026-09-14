@@ -1,0 +1,140 @@
+---
+// Input — Figma `02 · Components` set 14:98. 20 variants = 4 Type x 5 State.
+//
+// As with Button, Focus is a pseudo-class in code and lives in CSS; Default/Filled are the same
+// element with and without a value. Only Error and Disabled surface as props.
+//
+// The label, hint and error message come from the Field molecule (69:74), which Figma models
+// separately — they are rendered here so that every control is labelled by construction. A field
+// with no visible label must still pass one via `label` plus `hideLabel`.
+import Icon from './Icon.astro';
+
+interface Props {
+  /** Figma's Type variant. */
+  type?: 'text' | 'select' | 'password' | 'textarea' | 'email' | 'url' | 'number' | 'search';
+  name: string;
+  id?: string;
+  label: string;
+  /** Keeps the label for assistive tech while removing it visually. */
+  hideLabel?: boolean;
+  value?: string | number;
+  placeholder?: string;
+  hint?: string;
+  /** Renders in --danger and sets aria-invalid, wiring the message as the description. */
+  error?: string;
+  /**
+   * Tone of the `error` message. Default `danger`.
+   *
+   * `warning` is for a message that occupies the field's description slot without the field itself
+   * being wrong — A3 (Figma 47:67) says "Too many attempts — wait 60s" in --warning while the input
+   * is merely locked, not invalid. That state must NOT set aria-invalid: the password the buyer last
+   * typed was not judged, so announcing the field as invalid would be a lie.
+   */
+  errorTone?: 'danger' | 'warning';
+  required?: boolean;
+  disabled?: boolean;
+  readonly?: boolean;
+  autocomplete?: string;
+  inputmode?: 'none' | 'text' | 'tel' | 'url' | 'email' | 'numeric' | 'decimal' | 'search';
+  rows?: number;
+  class?: string;
+}
+
+const {
+  type = 'text',
+  name,
+  id = name,
+  label,
+  hideLabel = false,
+  value,
+  placeholder,
+  hint,
+  error,
+  errorTone = 'danger',
+  required = false,
+  disabled = false,
+  readonly = false,
+  rows,
+  class: className,
+  ...rest
+} = Astro.props;
+
+const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
+// `is-error` paints the red border, so it follows the DANGER tone only: A3 (47:58) draws the locked
+// input on --subtle with the ordinary rule, not a red one — it is unavailable, not wrong.
+const inputClasses = ['input', `input--${type}`, error && errorTone === 'danger' && 'is-error', className]
+  .filter(Boolean)
+  .join(' ');
+const shared = {
+  id,
+  name,
+  'aria-invalid': error && errorTone === 'danger' ? ('true' as const) : undefined,
+  'aria-describedby': describedBy,
+  required,
+  disabled,
+  readonly,
+  ...rest,
+};
+---
+
+<div class:list={['field', className]}>
+  <label class:list={['field__label', hideLabel && 'sr-only']} for={id}>{label}</label>
+
+  <div class="input-wrap">
+    {
+      type === 'textarea' ? (
+        <textarea class={inputClasses} placeholder={placeholder} rows={rows ?? 3} {...shared}>
+          {value}
+        </textarea>
+      ) : type === 'select' ? (
+        <select class={inputClasses} {...shared}>
+          <slot />
+        </select>
+      ) : (
+        <input class={inputClasses} type={type} value={value} placeholder={placeholder} {...shared} />
+      )
+    }
+
+    {type === 'select' && <Icon name="chevron-down" class="input__affordance" />}
+
+    {
+      type === 'password' && (
+        <button
+          type="button"
+          class="input__affordance"
+          data-reveal={id}
+          aria-controls={id}
+          aria-pressed="false"
+        >
+          <Icon name="eye" data-glyph="eye" />
+          <Icon name="eye-off" data-glyph="eye-off" hidden />
+          <span class="sr-only">Show password</span>
+        </button>
+      )
+    }
+  </div>
+
+  {
+    hint && !error && (
+      <p class="field__message" id={`${id}-hint`}>
+        {hint}
+      </p>
+    )
+  }
+  {
+    error && (
+      <p
+        class:list={['field__message', `field__message--${errorTone}`]}
+        id={`${id}-error`}
+        role={errorTone === 'danger' ? 'alert' : undefined}
+      >
+        {error}
+      </p>
+    )
+  }
+</div>
+
+<script>
+  import { initReveal } from '../../scripts/ui/reveal.ts';
+  initReveal();
+</script>

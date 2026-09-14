@@ -1,70 +1,105 @@
 ---
-// Admin shell (docs/ADMIN_SPEC.md §8.1): the legacy page's head and header, tabs as LINKS
-// (native keyboard navigation), a logout form, then the page. No rates JSON, no pre-paint script,
-// no inline handlers or style attributes (hash CSP). Every admin route is on-demand and no-store.
+// Admin shell — Figma `04 · Admin`, App Shell 25:200.
+//
+// Rebuilt on the drawn shell: a 220px left nav with the three destinations the file specifies, and a
+// topbar carrying the page title, a quiet status line and logout. The previous six-tab strip came
+// from docs/ADMIN_SPEC.md, which predates the design file.
+//
+// Terminology follows the file, not the old code: Catalogue -> Products, Clients -> Customers. The
+// ROUTES are unchanged (/admin/rugs, /admin/clients) because renaming them would break every link
+// and bookmark for a label change.
+//
+// Audit log and Google keep nav slots as secondary items — see the departure note in AppShell.
+// Every admin route stays on-demand and no-store; nothing inline, for the hash CSP.
 import '../../styles/tokens.css';
 import '../../styles/modes.css';
+import '../../styles/controls.css';
+import '../../styles/components.css';
+import '../../styles/motion-spec.css';
 import '../../styles/admin.css';
+import AppShell, { type ShellTab } from '../ui/AppShell.astro';
+import Icon from '../ui/Icon.astro';
 
+/** The legacy keys are kept so callers need no sweep; they map onto the drawn nav. */
 export type AdminTab = 'dashboard' | 'add' | 'rugs' | 'collections' | 'clients' | 'audit' | 'google';
+
+const TAB_TO_SHELL: Partial<Record<AdminTab, ShellTab>> = {
+  add: 'products',
+  rugs: 'products',
+  collections: 'collections',
+  clients: 'customers',
+  audit: 'audit',
+  google: 'google',
+};
 
 interface Props {
   title: string;
   active?: AdminTab;
-  /** false on the login page (no session yet). */
+  /** false on the login page (no session yet), which renders bare. */
   nav?: boolean;
-  /** Shown under the wordmark instead of "Admin — private". */
+  /** The topbar status line, e.g. 'Sheet synced 4 min ago'. */
+  meta?: string;
+  /** Heading shown on the bare (login) layout. */
   sub?: string;
 }
-const { title, active, nav = true, sub = 'Admin — private' } = Astro.props;
-
-const tabs: Array<{ key: AdminTab; href: string; label: string }> = [
-  { key: 'add', href: '/admin/rugs/new', label: 'Add rug' },
-  { key: 'rugs', href: '/admin/rugs', label: 'Catalogue' },
-  { key: 'collections', href: '/admin/collections', label: 'Collections' },
-  { key: 'clients', href: '/admin/clients', label: 'Clients' },
-  { key: 'audit', href: '/admin/audit', label: 'Audit log' },
-  { key: 'google', href: '/admin/google', label: 'Google' },
-];
+const { title, active, nav = true, meta, sub = 'Admin — private' } = Astro.props;
+const shellTab = active ? TAB_TO_SHELL[active] : undefined;
+/** The topbar title is the page name, not the document title. */
+const heading = title.replace(/^Serio Ludere\s*—\s*/, '');
 ---
 
 <html lang="en" data-mode="admin">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    {
+      /*
+        `interactive-widget=resizes-content` is what makes MA3 (Figma 89:3174) work. With the default
+        (`resizes-visual`) the on-screen keyboard slides OVER the page: the layout viewport does not
+        change, `dvh` does not change, and the bottom-anchored Add-product sheet stays exactly where
+        it was — underneath the keyboard, with the field being typed into hidden.
+
+        Resizing the CONTENT instead shrinks the layout viewport, so the sheet moves up and its
+        max-height shrinks with it. That is precisely what MA3 draws: the sheet at y=60 and 448 tall
+        where MA2 has it at y=144 and 700 tall.
+
+        Admin only. The customer preview has no keyboard-up frame and no bottom-anchored input.
+      */
+    }
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content"
+    />
     <meta name="robots" content="noindex, nofollow" />
     <title>{title}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
   </head>
   <body>
-    <h1><a href="/admin">Serio Ludere</a></h1>
-    <p class="sub">{sub}</p>
     {
-      nav && (
-        <nav class="tabs" aria-label="Admin">
-          {tabs.map((t) => (
-            <a
-              href={t.href}
-              class:list={[{ on: t.key === active }]}
-              aria-current={t.key === active ? 'page' : undefined}
-            >
-              {t.label}
-            </a>
-          ))}
-          <form method="post" action="/admin/logout" class="logout">
-            <button class="chip" type="submit">
-              Log out
+      nav ? (
+        <AppShell active={shellTab} title={heading} meta={meta}>
+          <form method="post" action="/admin/logout" class="logout" slot="topbar">
+            <button class="shell__logout" type="submit">
+              <Icon name="logout" />
+              <span class="sr-only">Log out</span>
             </button>
           </form>
-        </nav>
+          <slot />
+        </AppShell>
+      ) : (
+        <div class="bare">
+          <h1 class="bare__wordmark">
+            <a href="/admin">Serio Ludere</a>
+          </h1>
+          <p class="sub">{sub}</p>
+          <main>
+            <slot />
+          </main>
+        </div>
       )
     }
-    <main>
-      <slot />
-    </main>
   </body>
 </html>

@@ -11,6 +11,7 @@ import type { Rotate, Status } from '../sheets/types.ts';
 import { buildInsertRows, cellOrClear } from '../sheets/write.ts';
 import { auditRowToCells, type AuditAction, type AuditRow } from './audit.ts';
 import { withAdminLock } from './lock.ts';
+import { joinCollections } from '../text.ts';
 import { rowVersion, rugVersion } from './read.ts';
 
 /** Grid rows added at once when an insert lands past the current row count. */
@@ -61,7 +62,8 @@ export interface RugFields {
   slug: string;
   name: string;
   description: string;
-  collection: string;
+  /** Every collection the product belongs to, primary first; written pipe-joined into one cell. */
+  collections: string[];
   tags: string[];
   photos: string[];
   widthCm?: number;
@@ -146,7 +148,7 @@ export function productFieldsToCells(f: RugFields, id: string): Cells {
   cells[PRODUCT_COLS.age] = f.age;
   cells[PRODUCT_COLS.pile] = f.pile ?? '';
   cells[PRODUCT_COLS.shape] = f.shape ?? '';
-  cells[PRODUCT_COLS.collection] = f.collection;
+  cells[PRODUCT_COLS.collection] = joinCollections(f.collections);
   cells[PRODUCT_COLS.sourceUrl] = f.sourceUrl;
   cells[PRODUCT_COLS.sourceSite] = f.supplier;
   cells[PRODUCT_COLS.driveFolderId] = f.driveFolderId ?? '';
@@ -163,7 +165,7 @@ export function rugFieldsToBP(f: RugFields): Cells {
     f.slug,
     f.name,
     f.description,
-    f.collection,
+    joinCollections(f.collections),
     f.tags.join('|'),
     f.photos.join('|'),
     f.widthCm,
@@ -538,12 +540,27 @@ export async function insertRowAtBottom(
 /** Clients: newest-first at row 2 (no formulas on that tab), with the audit row in the same batch. */
 export async function insertTopRow(
   client: Client,
-  args: { tab: typeof TABS.customers; cells: Cells; audit: AuditRow },
+  args: {
+    tab: typeof TABS.customers;
+    cells: Cells;
+    audit: AuditRow;
+    /**
+     * Runs INSIDE the admin lock, immediately before the insert, and may throw to abort it.
+     *
+     * The caller builds its row from a snapshot read outside the lock, which leaves a window where
+     * another write lands in between. That was academic while customer codes were `name-<6 random>`;
+     * since the codes became short scrambles of the name itself (owner, 2026-09-13) the keyspace is
+     * far smaller and two buyers with similar names are a realistic collision. This hook is where
+     * the caller re-checks the thing it cannot afford to be stale about.
+     */
+    precheck?: () => Promise<void>;
+  },
 ): Promise<CommitResult> {
   const width = widthOf(args.tab);
   if (args.cells.length !== width)
     throw new UnsafeRequestError(`${args.tab} row needs ${width} cells, got ${args.cells.length}`);
   return withAdminLock(async () => {
+    await args.precheck?.();
     const sheetId = await client.sheetIdByTitle(args.tab);
     const auditSheetId = await client.sheetIdByTitle(TABS.auditLog);
     try {

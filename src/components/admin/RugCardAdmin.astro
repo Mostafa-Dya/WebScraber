@@ -6,7 +6,8 @@ import type { AdminRug } from '../../lib/admin/read.ts';
 import { driveImageUrl } from '../../lib/images.ts';
 import { dataRot } from '../../lib/rotate.ts';
 import { dims } from '../../lib/units.ts';
-import { collectionSlug } from '../../lib/text.ts';
+import { collectionSlug, collectionSlugs } from '../../lib/text.ts';
+import { badgesFor } from '../../lib/view.ts';
 import type { Collection } from '../../lib/sheets/types.ts';
 
 interface Props {
@@ -18,7 +19,12 @@ const photo = rug.photos[0] ? driveImageUrl(rug.photos[0], 800) : undefined;
 const meta = [dims(rug.widthCm, rug.lengthCm, 'cm'), rug.material, rug.age, rug.origin].filter(Boolean);
 const price = rug.priceUsd ? `$${rug.priceUsd.toLocaleString('en-US')}` : '';
 const slug = rug.collection.trim() ? collectionSlug(rug.collection, collections) : '';
+// Every slug the rug belongs to, so one chip filter drives cards and rows alike.
+const slugs = rug.collections.length ? collectionSlugs(rug.collections, collections).join(' ') : '';
 const search = [rug.name, rug.id, rug.supplierRef, rug.slug].join(' ').toLowerCase().replace(/[<>]/g, ' '); // a haystack, never markup
+// The same corner badge the buyer sees (owner, 2026-09-13), so the owner is looking at their
+// catalogue the way their customer will.
+const badges = badgesFor(rug.tags);
 ---
 
 <a
@@ -27,12 +33,22 @@ const search = [rug.name, rug.id, rug.supplierRef, rug.slug].join(' ').toLowerCa
   data-card
   data-id={rug.id}
   data-collection={slug}
+  data-collections={slugs}
   data-status={rug.status}
   data-search={search}
 >
   <div class="ph">
     {photo ? <img src={photo} alt="" loading="lazy" data-rot={dataRot(rug.rotate)} /> : <span>no photo</span>}
     {rug.photos.length > 1 && <span class="cnt">{rug.photos.length}</span>}
+    {
+      badges.length > 0 && (
+        <ul class="badges">
+          {badges.map((b) => (
+            <li class="badge-corner">{b}</li>
+          ))}
+        </ul>
+      )
+    }
   </div>
   <div class="nm">{rug.name}</div>
   <div class="mt">
@@ -41,4 +57,29 @@ const search = [rug.name, rug.id, rug.supplierRef, rug.slug].join(' ').toLowerCa
   </div>
   {price && <div class="pr">{price}</div>}
   <div class:list={['status', rug.status]}>{rug.status}</div>
+  {
+    /* Brief §12: a row whose photo import did not finish says so, and the list offers to finish it.
+       The button sits outside the card's own link, so pressing it does not navigate. */
+    rug.commitStatus === 'pending' && (
+      <div class="pending">
+        <span class="status revoked">photos pending</span>
+      </div>
+    )
+  }
 </a>
+{
+  rug.commitStatus === 'pending' && (
+    <button type="button" class="chip retry" data-retry={rug.id}>
+      Finish photo import
+    </button>
+  )
+}
+
+<style>
+  .pending {
+    margin-top: 4px;
+  }
+  .retry {
+    margin-top: 4px;
+  }
+</style>

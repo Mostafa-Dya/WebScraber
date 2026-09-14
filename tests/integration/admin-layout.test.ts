@@ -1,47 +1,74 @@
-// The admin shell rendered with Astro's container API (docs/ADMIN_SPEC.md §8.1): noindex head, the
-// same fonts link as the site, tabs as links with aria-current, a logout form, and nothing the
-// hash-based CSP would refuse (no inline handlers, no style attributes, no inline scripts).
+// The admin shell rendered with Astro's container API — now Figma App Shell 25:200 (`04 · Admin`):
+// a 220px left nav with the three drawn destinations, Audit log and Google below a rule as
+// secondary, and a topbar carrying the page title plus logout. Nothing the hash-based CSP would
+// refuse: no inline handlers, no style attributes, no inline scripts.
 import { experimental_AstroContainer as AstroContainer } from 'astro/container';
 import { describe, expect, it } from 'vitest';
 import AdminLayout from '../../src/components/admin/AdminLayout.astro';
 
 describe('AdminLayout', () => {
-  it('renders the legacy header, link tabs with the active one marked, and the logout form', async () => {
+  it('renders the drawn shell with the active destination marked', async () => {
     const container = await AstroContainer.create();
     const html = await container.renderToString(AdminLayout, {
-      props: { title: 'Serio Ludere — Admin', active: 'rugs' },
+      props: { title: 'Serio Ludere — Products', active: 'rugs', meta: 'Sheet synced 4 min ago' },
       slots: { default: '<p id="body">body</p>' },
     });
     expect(html).toContain('<meta name="robots" content="noindex, nofollow">');
-    expect(html).toContain('fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono');
-    expect(html).toContain('<title>Serio Ludere — Admin</title>');
-    expect(html).toContain('<h1><a href="/admin">Serio Ludere</a></h1>');
-    expect(html).toContain('<p class="sub">Admin — private</p>');
-    expect(html).toMatch(/<nav class="tabs" aria-label="Admin">/);
-    expect(html).toMatch(/<a href="\/admin\/rugs\/new"[^>]*>\s*Add rug\s*<\/a>/);
-    expect(html).toMatch(/<a href="\/admin\/rugs" class="on" aria-current="page">\s*Catalogue\s*<\/a>/);
-    expect(html).toMatch(/<a href="\/admin\/collections"[^>]*>\s*Collections\s*<\/a>/);
-    expect(html).toMatch(/<a href="\/admin\/clients"[^>]*>\s*Clients\s*<\/a>/);
-    expect(html).toMatch(/<a href="\/admin\/audit"[^>]*>\s*Audit log\s*<\/a>/);
-    expect(html).not.toMatch(/href="\/admin\/collections"[^>]*aria-current/);
-    expect(html).toMatch(
-      /<form method="post" action="\/admin\/logout" class="logout">\s*<button class="chip" type="submit">\s*Log out\s*<\/button>\s*<\/form>/,
+    expect(html).toContain(
+      'fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400',
     );
-    expect(html).toMatch(/<main>\s*<p id="body">body<\/p>\s*<\/main>/);
+    expect(html).toContain('<title>Serio Ludere — Products</title>');
+
+    // The shell, not the legacy header.
+    expect(html).toContain('<div class="shell">');
+    expect(html).toMatch(/<nav class="shell__nav" aria-label="Admin sections">/);
+    expect(html).toContain('<span class="shell__realm">preview admin</span>');
+
+    // The topbar title is the page name, with the document-title prefix stripped.
+    expect(html).toMatch(/<h1 class="shell__title">Products<\/h1>/);
+    expect(html).toContain('<span class="shell__meta">Sheet synced 4 min ago</span>');
+
+    // Figma's three destinations, using the file's labels rather than the old ones.
+    expect(html).toMatch(/href="\/admin\/rugs" aria-current="page">[\s\S]*?<span>Products<\/span>/);
+    expect(html).toMatch(/href="\/admin\/collections">[\s\S]*?<span>Collections<\/span>/);
+    expect(html).toMatch(/href="\/admin\/clients">[\s\S]*?<span>Customers<\/span>/);
+
+    // Secondary routes the file does not draw, kept reachable and visually subordinate.
+    expect(html).toMatch(/class="shell__link shell__link--secondary" href="\/admin\/audit"/);
+    expect(html).toMatch(/class="shell__link shell__link--secondary" href="\/admin\/google"/);
+
+    // Exactly one active destination — the double-highlight the file's own revision log calls out.
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+
+    expect(html).toMatch(/<form method="post" action="\/admin\/logout" class="logout">/);
+    expect(html).toMatch(/<main class="shell__content">\s*<p id="body">body<\/p>\s*<\/main>/);
+
     // hash CSP: nothing inline
     expect(html).not.toMatch(/\son[a-z]+=/i);
     expect(html).not.toMatch(/\sstyle="/);
     expect(html).not.toMatch(/<script(?![^>]*src=)[^>]*>[^<]/);
     expect(html).not.toContain('sl-rates');
   });
-  it('hides the nav on the login page and takes a custom sub line', async () => {
+
+  it('maps the add-product tab onto Products, because adding is an action on the list', async () => {
+    const container = await AstroContainer.create();
+    const html = await container.renderToString(AdminLayout, {
+      props: { title: 'Serio Ludere — Add rug', active: 'add' },
+      slots: { default: '<p>body</p>' },
+    });
+    expect(html).toMatch(/href="\/admin\/rugs" aria-current="page"/);
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+  });
+
+  it('renders bare on the login page and takes a custom sub line', async () => {
     const container = await AstroContainer.create();
     const html = await container.renderToString(AdminLayout, {
       props: { title: 'Login', nav: false, sub: 'Admin — sign in' },
       slots: { default: '<form></form>' },
     });
-    expect(html).not.toContain('class="tabs"');
+    expect(html).not.toContain('class="shell__nav"');
     expect(html).not.toContain('/admin/logout');
     expect(html).toContain('<p class="sub">Admin — sign in</p>');
+    expect(html).toContain('<div class="bare">');
   });
 });

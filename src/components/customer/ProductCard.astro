@@ -11,7 +11,7 @@
 // 4:5 box is the crop; the artwork inside it is never trimmed.
 import { money, type RateTable } from '../../lib/currency.ts';
 import { dims, PREVIEW_SEP } from '../../lib/units.ts';
-import type { CardView } from '../../lib/view.ts';
+import { badgesFor, visibleLikes, type CardView } from '../../lib/view.ts';
 import Reactions from './Reactions.astro';
 
 interface Props {
@@ -27,6 +27,9 @@ interface Props {
 const { card, rates, baseCurrency, href, eager = false, priority = false } = Astro.props;
 const sizeText = dims(card.widthCm, card.lengthCm, 'cm', PREVIEW_SEP);
 const priceText = money(card.priceUsd, baseCurrency, rates, 'en-US');
+// Owner, 2026-09-13: Signed / Antique badge top-left; like count only from five.
+const badges = badgesFor(card.tags.map((t) => t.name));
+const likes = visibleLikes(card.likes);
 ---
 
 <article class="pv-card">
@@ -44,8 +47,21 @@ const priceText = money(card.priceUsd, baseCurrency, rates, 'en-US');
         <span class="pv-card-empty">Photo to come</span>
       )
     }
+    {
+      badges.length > 0 && (
+        <ul class="pv-card-badges">
+          {badges.map((b) => (
+            <li class="pv-badge">{b}</li>
+          ))}
+        </ul>
+      )
+    }
     <a class="pv-card-hit" href={href} tabindex="-1" aria-hidden="true"></a>
     <div class="pv-card-react">
+      {/* Rendered server-side from the shared count; prefs.ts keeps it in step as reactions land. */}
+      <span class="pv-card-likes" data-like-count={card.likes} hidden={likes === undefined}>
+        {likes ?? ''}
+      </span>
       <Reactions rugId={card.id} mode="card" />
     </div>
   </div>
@@ -103,11 +119,51 @@ const priceText = money(card.priceUsd, baseCurrency, rates, 'en-US');
     inset: 0;
     z-index: 1;
   }
+  /* Bottom-right, on the owner's instruction (2026-09-13). Figma 53:62 pins this control to the TOP
+     right; moving it frees that corner for the Signed / Antique badge, so the two changes fit
+     together rather than fighting for the same spot. */
   .pv-card-react {
     position: absolute;
-    top: var(--tight);
+    bottom: var(--tight);
     right: var(--tight);
     z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: var(--tight);
+  }
+
+  /* The count sits left of the heart so the circle stays hard against the corner. Mono, so a card
+     ticking from 9 to 10 does not shift the heart sideways. */
+  .pv-card-likes {
+    font-family: var(--mono);
+    font-size: var(--text-sm);
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-raised);
+    color: var(--ink-soft);
+  }
+
+  /* Top-left, opposite the heart. A list because a rug can be both Signed and Antique. */
+  .pv-card-badges {
+    position: absolute;
+    top: var(--tight);
+    left: var(--tight);
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--stack-xs);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .pv-badge {
+    padding: 2px 6px;
+    background: var(--ink);
+    color: var(--surface);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+    white-space: nowrap;
   }
 
   .pv-card-text {

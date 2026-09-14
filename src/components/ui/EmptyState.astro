@@ -1,0 +1,74 @@
+---
+// Empty State — Figma set 24:231. Type = First run | No results | Sheet unreachable | Failed commits.
+//
+// First-run and no-results are different problems and get different copy and different actions;
+// collapsing them into one generic 'no data' is the common miss. The two error types are folded in
+// here as variants rather than duplicated as a separate Error State component — same anatomy,
+// different copy (handoff 69:177).
+//
+// Copy below is verbatim from the file. First run is the only variant with a Primary button; the
+// other three use a Secondary outline, because retrying or clearing a filter is not the thing the
+// screen most wants you to do.
+import Icon, { type IconName } from './Icon.astro';
+import Button from './Button.astro';
+
+type EmptyType = 'first-run' | 'no-results' | 'sheet-unreachable' | 'failed-commits';
+
+interface Props {
+  type: EmptyType;
+  /** Overrides the drawn copy — the failed-commits title counts real rows. */
+  title?: string;
+  message?: string;
+  href?: string;
+  class?: string;
+}
+
+const PRESET: Record<
+  EmptyType,
+  { icon: IconName; title: string; message: string; action: string; primary: boolean }
+> = {
+  'first-run': {
+    icon: 'plus',
+    title: 'No products yet',
+    message:
+      'Paste a supplier URL to fetch your first rug. It takes about 45 seconds from paste to committed.',
+    action: 'Add your first product',
+    primary: true,
+  },
+  'no-results': {
+    icon: 'search',
+    title: 'Nothing matches those filters',
+    message: 'Try a different collection, or clear the search on ID and title.',
+    action: 'Clear filters',
+    primary: false,
+  },
+  'sheet-unreachable': {
+    icon: 'alert',
+    title: "Can't reach the sheet",
+    message:
+      "The catalogue is stored in Google Sheets and the connection failed. Nothing has been lost — retry when you're ready.",
+    action: 'Retry',
+    primary: false,
+  },
+  'failed-commits': {
+    icon: 'refresh',
+    title: "3 products didn't finish saving",
+    message:
+      'Their Drive folders exist but no sheet row was written. Retry each one, or open the folder to check.',
+    action: 'Retry all',
+    primary: false,
+  },
+};
+
+const { type, title, message, href, class: className } = Astro.props;
+const preset = PRESET[type];
+---
+
+<div class:list={['empty', className]}>
+  <Icon name={preset.icon} size={24} class="empty__icon" />
+  <h2 class="empty__title">{title ?? preset.title}</h2>
+  <p class="empty__message">{message ?? preset.message}</p>
+  <Button style={preset.primary ? 'primary' : 'secondary'} href={href} data-empty-action={type}>
+    {preset.action}
+  </Button>
+</div>

@@ -1,0 +1,34 @@
+---
+// Drawer — Figma 73:237. The Add product slide-over.
+//
+// "Adding a product is an action on the list, not a destination" (revision 161:195). The drawer
+// keeps the list mounted behind it, so cancelling costs nothing and you keep your place in the
+// scroll — which is the whole reason this is not a route.
+//
+// At 390 it becomes a bottom sheet with a grabber, a sticky header and a keyboard-aware footer;
+// that is a media query in components.css, not a second component.
+//
+// Rendered as <dialog>: the top layer, backdrop, Esc-to-close and focus trapping are exactly what a
+// slide-over needs, and re-implementing them on a div is how drawers become inaccessible.
+import Icon from './Icon.astro';
+
+interface Props {
+  id: string;
+  title: string;
+  class?: string;
+}
+const { id, title, class: className } = Astro.props;
+---
+
+<dialog id={id} class:list={['drawer', className]} aria-labelledby={`${id}-title`}>
+  <div class="drawer__grabber" aria-hidden="true"></div>
+  <div class="drawer__header">
+    <h2 class="drawer__title" id={`${id}-title`}>{title}</h2>
+    <button type="button" class="drawer__close" data-close={id}>
+      <Icon name="close" />
+      <span class="sr-only">Close</span>
+    </button>
+  </div>
+  <div class="drawer__body"><slot /></div>
+  <div class="drawer__footer"><slot name="footer" /></div>
+</dialog>

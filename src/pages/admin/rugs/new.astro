@@ -6,6 +6,7 @@ export const prerender = false;
 
 import AdminLayout from '../../../components/admin/AdminLayout.astro';
 import RugFields from '../../../components/admin/RugFields.astro';
+import FetchModal from '../../../components/ui/FetchModal.astro';
 import { adminRuntime } from '../../../lib/admin/http.ts';
 import { nextRugId } from '../../../lib/admin/ids.ts';
 import { fetchAdminSnapshot, type AdminSnapshot } from '../../../lib/admin/read.ts';
@@ -76,4 +77,16 @@ const data = {
     import { initRugForm } from '../../../scripts/admin/rug-form.ts';
     initRugForm();
   </script>
+
+  {
+    /*
+      P5-P9 · the fetch modal (Figma 81:1865, 81:1974, 85:2332, 85:2508, 85:2652).
+
+      An empty shell: every state's content is built by src/scripts/admin/fetch-modal.ts, because the
+      five states share almost no structure and a page carrying all of them at once would be four
+      times the DOM for the one that is ever visible. rug-form.ts drives it, and falls back to
+      applying the scrape directly on any page that does not render this.
+    */
+  }
+  <FetchModal id="fetch-result" title="Fetching" />
 </AdminLayout>

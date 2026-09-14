@@ -102,7 +102,7 @@
   font-weight: 700;
   line-height: var(--leading-body);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 
 .pv-lede {
@@ -175,7 +175,7 @@
   font-weight: 700;
   line-height: var(--leading-body);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   cursor: pointer;
   transition: background-color var(--motion-transition, 150ms) ease;
 }
@@ -191,7 +191,8 @@
 
 /* ---------- header ---------- */
 
-/* 152 tall on desktop: 64 above the wordmark, the wordmark's own 24, 64 below, then the hairline. */
+/* 152 tall on the catalog header: 64 above the wordmark, the wordmark's own 24, 64 below, then the
+   hairline. The detail header is 148, because its wordmark is H4 (57:229) and its box is 19. */
 .pv-header {
   display: flex;
   align-items: center;
@@ -250,6 +251,22 @@
   color: var(--ink-soft);
 }
 
+/* The footer's exceptions, re-asserted above `.pv-footer-col p` (0,1,1) which would otherwise win:
+   the wordmark is the H4 in ink (130:277), the contact label is the muted Label (130:280), and the
+   email is Body 13 in ink (130:281) — its h21 in the file is 13 x 1.65, where the true 12px lines
+   in the same footer measure h20. */
+.pv-footer-col p.pv-h4 {
+  font-size: var(--h4);
+  color: var(--ink);
+}
+.pv-footer-col p.pv-muted {
+  color: var(--ink-muted);
+}
+.pv-footer-col p.pv-footer-email {
+  font-size: var(--text-base);
+  color: var(--ink);
+}
+
 .pv-footer-fine {
   margin-left: auto;
   text-align: right;
@@ -263,6 +280,14 @@
 .pv-footer a {
   color: var(--ink-soft);
   text-decoration: none;
+}
+
+/* The email is the one footer link drawn in ink (130:281 / 131:297). Its `<p>` already carries --ink
+   from the exceptions block above, but the rule directly above declares a colour on the anchor
+   itself, so inheritance never reaches the link text. Same specificity as `.pv-footer a` (0,1,1),
+   which is why it has to sit below it; the hover below is (0,2,1) and still wins on hover. */
+.pv-footer-email a {
+  color: var(--ink);
 }
 
 .pv-footer a:hover {
@@ -284,8 +309,12 @@
 }
 
 /* ---------- 390 ----------
-   The mobile frames are not a squeeze of the desktop: the gutter halves to 16, the header shrinks to
-   52 with the wordmark one step down the scale, and the section rhythm tightens. */
+   The mobile frames are not a squeeze of the desktop: the gutter halves to 16 and the header shrinks
+   to 52 with the wordmark one step down the scale. The section rhythm does NOT tighten — DIFF-2 in
+   the handoff reads "Section gap 64 everywhere, both breakpoints", and Figma 58:231 measures it
+   (header h52 at y=0, title block y=116, filters 245, grid 345). That is why this query leaves
+   .pv-main alone and modes.css leaves --section-gap at 64 here; the earlier "the section rhythm
+   tightens" clause is what licensed the 40px literals that used to sit in this block. */
 @media (max-width: 767px) {
   .pv-wrap {
     padding-inline: var(--stack-lg);
@@ -295,14 +324,22 @@
     padding: var(--stack-lg);
   }
 
-  .pv-header .pv-wordmark {
-    font-size: var(--h4);
+  /* M3 (58:327) is the one header with neither a hairline nor a trailing wordmark — M2 (58:232) and
+     desktop G3 (57:226) keep both. Scoped to the detail variant so the catalog header at 390 is
+     untouched (DIFF-3 item 6). */
+  .pv-header--detail {
+    border-bottom: 0;
   }
 
-  .pv-main {
-    gap: 40px;
-    padding-top: 40px;
+  .pv-header--detail .pv-wordmark-trailing {
+    display: none;
   }
+
+  /* The wordmark takes no font-size override here on purpose. It carries .pv-h3, and --h3 remaps to
+     --h3-mobile (16.2) inside this breakpoint — exactly the H4 16.2 that Figma 58:233 draws at
+     (16,16.5), which is what makes the header 390x52 = 16 + 19.44 + 16. The `font-size: var(--h4)`
+     that used to sit here read a token this same query had already floored to 14.4, shrinking the
+     header to ~49. */
 
   .pv-footer {
     padding: var(--section-gap) var(--stack-lg);
@@ -310,7 +347,9 @@
 
   .pv-footer-row {
     flex-direction: column;
-    gap: var(--stack-lg);
+    /* 12, not the desktop 16: Figma 131:293 tightens the stack when it folds into a column
+       (wordmark ends y=83, next block at y=95; that block ends y=140, caption at y=152). */
+    gap: var(--stack-md);
   }
 
   .pv-footer-fine {

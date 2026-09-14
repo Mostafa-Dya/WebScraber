@@ -51,10 +51,15 @@ const shown = rows.filter((r) => (r.key === 'Size' ? hasSize : r.value.trim() !=
     padding: var(--section-gap);
   }
   .pv-spec-title {
-    margin-bottom: var(--stack-md);
+    /* The panel's auto-layout gap is 8, not 12 (57:266). */
+    margin-bottom: var(--stack-sm);
   }
   .pv-spec-list {
     margin: 0;
+    /* Six rows at a 45px pitch = 37 row + 8 gap (57:268). Stacking them flush loses 36px of panel. */
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-sm);
   }
   .pv-spec-row {
     display: flex;
@@ -77,12 +82,23 @@ const shown = rows.filter((r) => (r.key === 'Size' ? hasSize : r.value.trim() !=
     .pv-spec {
       padding: var(--stack-lg);
     }
+    /* M3 (58:347) keeps the DESKTOP H4 step, 16.2, where the token layer drops --h4 to 14.4 at 390;
+       DIFF-1 lists this heading as unchanged across breakpoints. --size-h4 is a primitive and stays
+       private to modes.css, so the same 16.2 is read here through the mobile H3 step. */
+    .pv-spec-title {
+      font-size: var(--h3-mobile);
+    }
     .pv-spec-row {
       gap: var(--stack-sm);
       padding-block: var(--stack-xs);
     }
     .pv-spec-row dt {
       flex-basis: 110px;
+    }
+    /* DIFF-1 steps the spec VALUE 13 -> 12 at 390 (58:348 is Body S); the key keeps the Label size,
+       so only dd moves. */
+    .pv-spec-row dd {
+      font-size: var(--text-sm);
     }
   }
 </style>

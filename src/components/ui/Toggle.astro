@@ -1,0 +1,31 @@
+---
+// Toggle — Figma set 16:79. State = Off | On | Disabled. Track 32 x 18, pill.
+//
+// Used for Active / revoked on a customer link — which is why it is a real checkbox rather than a
+// button with aria-pressed: revoking a link is a form value, and it must survive a page without JS.
+//
+// Figma exports each state as a flat SVG with the knob position baked in. Rebuilt in CSS at the same
+// geometry, because the knob has to move with :checked and an exported asset cannot. Departure.
+interface Props {
+  name: string;
+  id?: string;
+  label: string;
+  checked?: boolean;
+  disabled?: boolean;
+  class?: string;
+}
+const { name, id = name, label, checked = false, disabled = false, class: className } = Astro.props;
+---
+
+<label class:list={['toggle', className]} for={id}>
+  <input
+    class="toggle__track"
+    type="checkbox"
+    role="switch"
+    id={id}
+    name={name}
+    checked={checked}
+    disabled={disabled}
+  />
+  <span>{label}</span>
+</label>

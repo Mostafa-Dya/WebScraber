@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DRIVE_API, createDriveHttp } from '../../../src/lib/drive/client.ts';
-import { createFolderResolver, escapeDriveQuery, folderQuery } from '../../../src/lib/drive/folder.ts';
+import {
+  createFolderLister,
+  createFolderResolver,
+  createProductFolderResolver,
+  escapeDriveQuery,
+  folderQuery,
+} from '../../../src/lib/drive/folder.ts';
 import { PHOTOS_FOLDER_NAME } from '../../../src/lib/drive/types.ts';
 import { silentLogger } from '../../../src/lib/sheets/errors.ts';
 
@@ -166,5 +172,92 @@ describe('createFolderResolver', () => {
       return json(500, {});
     });
     await expect(createFolderResolver(http(m.fn))()).rejects.toMatchObject({ status: 502 });
+  });
+});
+
+/* ---------- per-product folders (brief §12) ---------- */
+
+const PRODUCT = '1PRODUCTfolderIdAAAAAAAAAAAAAAAA';
+const ALL = '1ALLimagesFolderIdBBBBBBBBBBBBBBB';
+
+describe('createProductFolderResolver', () => {
+  it('creates <root>/<id> — <name>/All Images and asks for no permission of its own', async () => {
+    const m = mockFetch((c) => {
+      if (c.url.startsWith(LIST_URL)) return json(200, { files: [] });
+      if (c.method === 'POST' && (c.body as { name?: string }).name?.startsWith('SL-021'))
+        return json(200, { id: PRODUCT });
+      if (c.method === 'POST') return json(200, { id: ALL });
+      return json(500, {});
+    });
+    const out = await createProductFolderResolver(http(m.fn), async () => FOLDER)('SL-021', 'Winks');
+
+    expect(out).toEqual({
+      productId: PRODUCT,
+      allImagesId: ALL,
+      name: 'SL-021 — Winks',
+      url: `https://drive.google.com/drive/folders/${PRODUCT}`,
+    });
+    // The folders inherit the root's "anyone with the link" share, so no permissions call is made.
+    expect(m.calls.some((c) => c.url.includes('/permissions'))).toBe(false);
+    expect(m.calls.filter((c) => c.method === 'POST').map((c) => c.body)).toEqual([
+      { name: 'SL-021 — Winks', mimeType: 'application/vnd.google-apps.folder', parents: [FOLDER] },
+      { name: 'All Images', mimeType: 'application/vnd.google-apps.folder', parents: [PRODUCT] },
+    ]);
+  });
+
+  it('scopes each lookup to its parent, so two rugs with the same name cannot collide', async () => {
+    const m = mockFetch((c) =>
+      c.url.startsWith(LIST_URL) ? json(200, { files: [{ id: PRODUCT }] }) : json(500, {}),
+    );
+    await createProductFolderResolver(http(m.fn), async () => FOLDER)('SL-021', 'Winks');
+    const queries = m.calls.map((c) => decodeURIComponent(new URL(c.url).searchParams.get('q') ?? ''));
+    expect(queries[0]).toContain(`'${FOLDER}' in parents`);
+    expect(queries[1]).toContain(`'${PRODUCT}' in parents`);
+  });
+
+  it('reuses what is already there, so a retry after a half-finished import creates nothing', async () => {
+    const m = mockFetch((c, n) =>
+      c.url.startsWith(LIST_URL) ? json(200, { files: [{ id: n === 1 ? PRODUCT : ALL }] }) : json(500, {}),
+    );
+    const out = await createProductFolderResolver(http(m.fn), async () => FOLDER)('SL-021', 'Winks');
+    expect(out.productId).toBe(PRODUCT);
+    expect(out.allImagesId).toBe(ALL);
+    expect(m.calls.every((c) => c.method === 'GET')).toBe(true);
+  });
+});
+
+describe('createFolderLister', () => {
+  it('maps the filenames already in a folder to their ids', async () => {
+    const m = mockFetch(() =>
+      json(200, {
+        files: [
+          { id: 'f1', name: '01-primary' },
+          { id: 'f2', name: 'winks-02' },
+        ],
+      }),
+    );
+    const names = await createFolderLister(http(m.fn))(ALL);
+    expect([...names]).toEqual([
+      ['01-primary', 'f1'],
+      ['winks-02', 'f2'],
+    ]);
+    const q = decodeURIComponent(new URL(m.calls[0]!.url).searchParams.get('q') ?? '');
+    expect(q).toBe(`'${ALL}' in parents and trashed=false`);
+  });
+
+  it('keeps the first of two files sharing a name, and tolerates a nameless entry', async () => {
+    const m = mockFetch(() =>
+      json(200, {
+        files: [{ id: 'first', name: 'winks-02' }, { id: 'second', name: 'winks-02' }, { id: 'x' }],
+      }),
+    );
+    const names = await createFolderLister(http(m.fn))(ALL);
+    expect(names.get('winks-02')).toBe('first');
+    expect(names.size).toBe(1);
+  });
+
+  it('returns an empty map for an empty folder', async () => {
+    const m = mockFetch(() => json(200, {}));
+    expect((await createFolderLister(http(m.fn))(ALL)).size).toBe(0);
   });
 });

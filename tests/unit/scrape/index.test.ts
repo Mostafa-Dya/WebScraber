@@ -101,24 +101,33 @@ describe('scrapeRug: ecarpetgallery.com', () => {
       seenPrice: 700,
       seenCurrency: 'USD',
       priceUsd: 700,
-      suggestedRetailUsd: 1120,
-      markupApplied: 1.6,
+      // ecarpetgallery's own formula (owner, 2026-09-13): 700 × 1.5 + 150 = 1200. The Settings
+      // markup of 1.6 is deliberately ignored — the formula IS the rule for this supplier.
+      suggestedRetailUsd: 1200,
+      markupApplied: undefined,
+      pricingRule: 'ecarpetgallery: USD × 1.5 + 150',
       roundStep: 5,
     });
     expect(calls.map((c) => [c.url, c.client])).toEqual([[ECG_380114_URL, 'impit']]);
 
-    // Second call: cache hit, pricing re-derived with the new settings, no fetch.
+    // Second call: cache hit, pricing re-derived with the new settings, no fetch. The rounding step
+    // still applies (1200 is already a multiple of 50); the markup still does not.
     const again = await scrapeRug(ECG_380114_URL, { fetchImpl, cache, ...g, markup: 2, roundStep: 50 });
     expect(again).toMatchObject({ ok: true, cached: true, via: 'impit' });
     if (again.ok)
-      expect(again.data).toMatchObject({ suggestedRetailUsd: 1400, markupApplied: 2, roundStep: 50 });
+      expect(again.data).toMatchObject({
+        suggestedRetailUsd: 1200,
+        markupApplied: undefined,
+        roundStep: 50,
+      });
     expect(calls).toHaveLength(1);
 
-    // force bypasses the cache; no markup → no suggestion.
+    // force bypasses the cache. A supplier WITH a formula still gets a suggestion without any
+    // Settings markup at all — that is the point of moving the rule out of Settings.
     const forced = await scrapeRug(ECG_380114_URL, { fetchImpl, cache, ...g, force: true });
     expect(forced).toMatchObject({ ok: true, cached: false });
     if (forced.ok) {
-      expect(forced.data.suggestedRetailUsd).toBeUndefined();
+      expect(forced.data.suggestedRetailUsd).toBe(1200);
       expect(forced.data.markupApplied).toBeUndefined();
     }
     expect(calls).toHaveLength(2);
@@ -243,7 +252,8 @@ describe('scrapeRug: karavanrug.com', () => {
         seenCurrency: 'USD',
         currencyAssumed: false,
         priceUsd: 4000,
-        suggestedRetailUsd: 6000,
+        // karavanrug (owner, 2026-09-13): 4000 × 0.7 × 2 = 5600, +200 because 4000 > 1000.
+        suggestedRetailUsd: 5800,
       });
     }
     expect(calls.map((c) => c.url)).toEqual([`${kvBase}.js`, kvBase]);
@@ -351,19 +361,21 @@ describe('finalisePricing (ADMIN_SPEC §4.7 / §7)', () => {
     warnings: ['existing'],
   };
 
-  it('converts through the Rates tab, then applies markup and rounding, without mutating the input', () => {
+  it("converts through the Rates tab, then applies the supplier's formula, without mutating the input", () => {
     const out = finalisePricing(base, {
       convertToUsd: (a, c) => (c === 'EUR' ? a * 1.1 : undefined),
       markup: 1.6,
     });
     expect(out.priceUsd).toBe(990);
-    expect(out.suggestedRetailUsd).toBe(1585);
+    // 990 × 1.5 + 150 = 1635. The 1.6 markup passed above is ignored: `base` is an ecarpetgallery
+    // rug, and that supplier has a formula.
+    expect(out.suggestedRetailUsd).toBe(1635);
     expect(out.warnings).toEqual(['existing', 'price converted from EUR 900 with the Rates tab (estimate)']);
     expect(base.warnings).toEqual(['existing']);
     expect(base.priceUsd).toBeUndefined();
   });
 
-  it('leaves priceUsd blank with a warning when no rate exists, and no suggestion without a markup', () => {
+  it('leaves priceUsd blank with a warning when no rate exists, and prices from the formula', () => {
     const out = finalisePricing(base, {});
     expect(out.priceUsd).toBeUndefined();
     expect(out.suggestedRetailUsd).toBeUndefined();
@@ -372,7 +384,8 @@ describe('finalisePricing (ADMIN_SPEC §4.7 / §7)', () => {
       { ...base, seenCurrency: 'USD', seenPrice: 833 },
       { markup: 1.6, roundStep: 0 },
     );
-    expect(usd).toMatchObject({ priceUsd: 833, suggestedRetailUsd: 1335, roundStep: 5 });
+    // 833 × 1.5 + 150 = 1399.5, rounded up to the next 5 → 1400 (roundStep 0 falls back to 5).
+    expect(usd).toMatchObject({ priceUsd: 833, suggestedRetailUsd: 1400, roundStep: 5 });
   });
 });
 

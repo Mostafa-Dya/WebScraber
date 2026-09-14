@@ -17,6 +17,8 @@ import {
 import { initChips, type ChipGroup } from './chips.ts';
 import { append, byId, clear, el, maybe, money, readJson, setDisabled } from './dom.ts';
 import { hide, hideVisible, msg } from './msg.ts';
+import { FetchModalView, fetchModalParts, type FetchedResult } from './fetch-modal.ts';
+import { bindMultiSelects, multiSelectValues, setMultiSelect } from '../ui/multi-select.ts';
 import { parsePrice, roundUpToStep } from './price.ts';
 
 /* ---------- data shapes (mirrors of the server types, kept structural) ---------- */
@@ -26,7 +28,7 @@ export interface RugLike {
   slug: string;
   name: string;
   description: string;
-  collection: string;
+  collections: string[];
   tags: string[];
   photos: string[];
   widthCm?: number;
@@ -97,7 +99,7 @@ export interface RugBody {
   slug?: string;
   name: string;
   description: string;
-  collection: string;
+  collections: string[];
   tags: string[];
   photos: string[];
   widthCm?: number;
@@ -116,6 +118,10 @@ export interface RugBody {
   notes: string;
   roundPrice: boolean;
   version?: string;
+  /** Brief §12: `pending` until every photo has landed in the rug's Drive folder. */
+  commitStatus?: string;
+  driveFolderId?: string;
+  driveFolderUrl?: string;
 }
 
 export interface RugFormOptions extends ApiOptions {
@@ -126,6 +132,8 @@ export interface RugFormOptions extends ApiOptions {
 export interface RugForm {
   mode: 'add' | 'edit';
   fetchUrl(force?: boolean): Promise<void>;
+  /** Confirms the fetch modal's result into the form (P7/P8 "Use these"). */
+  useFetched(): void;
   manualEntry(): void;
   add(): Promise<void>;
   save(): Promise<void>;
@@ -176,7 +184,16 @@ export function initRugForm(doc: Document = document, opts: RugFormOptions = {})
   /* ---------- elements ---------- */
   const input = (id: string): HTMLInputElement => byId<HTMLInputElement>(id, doc);
   const yourName = maybe<HTMLInputElement>('yourName', doc);
-  const collection = byId<HTMLSelectElement>('f_collection', doc);
+  const collection = byId<HTMLElement>('f_collection', doc);
+  /**
+   * P5-P9 (Figma 81:1865 … 85:2652). Undefined on any page that does not render the modal — the
+   * flow then degrades to applying the scrape directly, which is what it did before this existed.
+   */
+  let modal: FetchModalView | undefined;
+  let pending: Partial<ScrapedLike> | undefined;
+  // The form owns the control, so the form binds it: every page that renders RugFields gets the
+  // summary line, Esc-to-close and close-on-outside-click without having to remember to ask.
+  bindMultiSelects(doc);
   const chips = initChips(byId('tagChips', doc), { multi: true });
   const newTag = input('newTag');
   const btnNewTag = byId<HTMLButtonElement>('btnNewTag', doc);
@@ -330,8 +347,12 @@ export function initRugForm(doc: Document = document, opts: RugFormOptions = {})
     f.slug.value = rug.slug;
     f.name.value = rug.name;
     f.description.value = rug.description;
-    collection.value =
-      data.collections.find((c) => c.name.toLowerCase() === rug.collection.trim().toLowerCase())?.name ?? '';
+    setMultiSelect(
+      collection,
+      rug.collections
+        .map((n) => data.collections.find((c) => c.name.toLowerCase() === n.trim().toLowerCase())?.name)
+        .filter((n): n is string => n !== undefined),
+    );
     chips.set(rug.tags.map((t) => hasTag(t) ?? t));
     f.width.value = rug.widthCm === undefined ? '' : String(rug.widthCm);
     f.length.value = rug.lengthCm === undefined ? '' : String(rug.lengthCm);
@@ -357,7 +378,7 @@ export function initRugForm(doc: Document = document, opts: RugFormOptions = {})
     const body: RugBody = {
       name: f.name.value.trim() || (yourName?.value.trim() ?? ''),
       description: f.description.value.trim(),
-      collection: collection.value,
+      collections: multiSelectValues(collection),
       tags: chips.values(),
       photos: ids,
       widthCm: intOf(f.width.value),
@@ -480,6 +501,18 @@ export function initRugForm(doc: Document = document, opts: RugFormOptions = {})
       manualEntry();
     });
     const text = fail.status === 400 ? issuesText(fail) : fail.message;
+    if (modal) {
+      // P9 (85:2652). The host is named because "blocked the request" is only useful when you know
+      // who blocked it, and it is the one part of the message the owner can act on.
+      let host = 'The supplier';
+      try {
+        host = new URL(url?.value.trim() ?? '').hostname;
+      } catch {
+        /* an unparseable link is already reported by the 400 path */
+      }
+      modal.failed(text, host);
+      return;
+    }
     msg(m1, [text, '  |  ', link], 'err');
   };
 
@@ -493,11 +526,25 @@ export function initRugForm(doc: Document = document, opts: RugFormOptions = {})
     hide(m2);
     setBusy(true);
     msg(m1, 'Reading the supplier page…', 'busy');
+    if (modal) {
+      let host = 'the supplier';
+      try {
+        host = new URL(link).hostname;
+      } catch {
+        /* validated server-side; the stage label just reads less well */
+      }
+      modal.fetching(f.id.value.trim() || data.nextId || 'this product', host);
+      // The three stages are the shape of the request, not a progress bar: the scrape is one round
+      // trip, so "parsing" begins when the response lands and there is nothing honest to report in
+      // between. Marking them in order still tells the owner where it got to if it fails.
+      modal.stage('reaching');
+    }
     const r = await post<{ data: ScrapedLike; via: string; cached: boolean; ms: number }>(
       '/api/admin/scrape',
       { url: link, force },
       { ...api, timeoutMs: SCRAPE_TIMEOUT_MS },
     );
+    modal?.stage('images');
     setBusy(false);
     if (!r.ok) {
       lastManual = (r.body?.manual as ManualLike | null | undefined) ?? undefined;
@@ -506,14 +553,64 @@ export function initRugForm(doc: Document = document, opts: RugFormOptions = {})
       showFetchError(r);
       return;
     }
-    applyScrape(r.data.data);
-    const n = r.data.data.photos.length;
+    // Named `fetched`, not `data`: `data` is the page's own admin-data block in the enclosing
+    // scope, and shadowing it here put nextId in the temporal dead zone for the P5 call above.
+    const fetched = r.data.data;
+    const n = fetched.photos.length;
+
+    // P7/P8: the result is REVIEWED before it is applied. That ordering is the whole point of the
+    // modal — a scrape of the wrong rug is recognised from its photo and thrown away before a single
+    // field has been read, and nothing has been written either way.
+    if (modal) {
+      pending = fetched;
+      if (fetched.photos[0]?.url) modal.photo(fetched.photos[0].url);
+      modal.result(resultOf(fetched));
+      return;
+    }
+
+    applyScrape(fetched);
     msg(
       m1,
       `Found it${n ? ` — ${n} photo${n > 1 ? 's' : ''} on the page` : ''}${r.data.cached ? ' (cached)' : ''}. Check the fields, then add.`,
       'ok',
     );
     f.name.focus();
+  };
+
+  /** The scrape as P7 lists it: the fields the frame shows, in its order, flagged when absent. */
+  const resultOf = (d: Partial<ScrapedLike>): FetchedResult => {
+    const rows: Array<[string, string | undefined]> = [
+      ['Material', d.material],
+      ['Method', d.method],
+      ['Origin', d.origin],
+      ['Age', d.age],
+      ['Size', d.widthCm && d.lengthCm ? `${d.widthCm} · ${d.lengthCm} cm` : undefined],
+      ['Price', d.priceUsd === undefined ? undefined : `$${d.priceUsd.toLocaleString('en-US')}`],
+    ];
+    const fields = rows.map(([label, value]) => ({
+      label,
+      value: value ?? '',
+      missing: !value,
+    }));
+    // P8: a price the page carried but could not be read is an ERROR, not a blank — the owner needs
+    // to know the page said something and it was refused, or they will assume it was simply absent.
+    const priceRow = fields.find((x) => x.label === 'Price');
+    if (priceRow && d.priceUsd === undefined && d.retailEstimate) {
+      priceRow.value = d.retailEstimate;
+      priceRow.missing = false;
+      (priceRow as { error?: string }).error =
+        `Couldn't read a number from “${d.retailEstimate}”. Enter a price, or clear the field.`;
+    }
+    return {
+      id: f.id.value.trim() || data.nextId || '',
+      title: d.supplierTitle ?? f.name.value.trim(),
+      fields,
+      tags: d.tagsSuggested ?? [],
+      photoUrl: d.photos?.[0]?.url,
+      photoCount: d.photos?.length ?? 0,
+      found: fields.filter((x) => !x.missing).length,
+      total: fields.length,
+    };
   };
 
   const manualEntry = (): void => {
@@ -539,9 +636,9 @@ export function initRugForm(doc: Document = document, opts: RugFormOptions = {})
   /* ---------- add / save / status ---------- */
 
   const validate = (): boolean => {
-    if (!collection.value) {
+    if (multiSelectValues(collection).length === 0) {
       msg(m2, "Pick a collection first — without it the rug won't appear anywhere.", 'err');
-      collection.focus();
+      collection.querySelector<HTMLElement>('summary')?.focus();
       return false;
     }
     if (!(f.name.value.trim() || yourName?.value.trim())) {
@@ -570,17 +667,44 @@ export function initRugForm(doc: Document = document, opts: RugFormOptions = {})
     setBusy(true);
     let imported: string[] = [];
     let photoNote = '';
+    let folderId = '';
+    let folderUrl = '';
+    let allLanded = true;
     const urls = savePhotos?.checked && !manual ? selectedPhotoUrls() : [];
+    // The row goes in first, marked pending, so a failure half-way leaves something visible and
+    // retryable rather than orphaned files in Drive.
     if (urls.length) {
       msg(m2, `Saving ${urls.length} photo${urls.length > 1 ? 's' : ''} to Drive…`, 'busy');
       const prefix = (f.slug.value.trim() || slugify(f.name.value.trim()) || f.id.value.trim() || 'rug')
         .replace(/[^A-Za-z0-9_-]+/g, '-')
         .slice(0, 60);
-      const p = await post<{ photos: Array<{ url: string; id?: string; error?: string }>; imported: number }>(
+      const p = await post<{
+        photos: Array<{ url: string; id?: string; error?: string }>;
+        imported: number;
+        complete?: boolean;
+        driveFolderId?: string;
+        driveFolderUrl?: string;
+      }>(
         '/api/admin/photos',
-        { urls, namePrefix: prefix },
+        // The id and name are what turn a flat import into the rug's own folder tree.
+        {
+          urls,
+          namePrefix: prefix,
+          productId: f.id.value.trim(),
+          productName: f.name.value.trim(),
+          // Lets the server apply that supplier's first-image fixes (owner, 2026-09-13). Sent from
+          // here because the photo URLs themselves do not say: Karavan serves from cdn.shopify.com.
+          supplier: f.supplier.value,
+        },
         { ...api, timeoutMs: PHOTOS_TIMEOUT_MS },
       );
+      if (p.ok) {
+        folderId = p.data.driveFolderId ?? '';
+        folderUrl = p.data.driveFolderUrl ?? '';
+        allLanded = p.data.complete !== false;
+      } else {
+        allLanded = false;
+      }
       const outcome = p.ok
         ? p.data.photos
         : ((p.body?.photos as Array<{ id?: string; error?: string }> | undefined) ?? []);
@@ -593,12 +717,17 @@ export function initRugForm(doc: Document = document, opts: RugFormOptions = {})
     }
     const body = collect();
     body.photos = [...new Set([...imported, ...body.photos])];
+    // `pending` marks a row whose photos did not all land; the catalogue shows it and offers Retry.
+    body.commitStatus = urls.length === 0 ? '' : allLanded ? 'complete' : 'pending';
+    body.driveFolderId = folderId;
+    body.driveFolderUrl = folderUrl;
     msg(m2, 'Writing the row…', 'busy');
     const r = await post<{ rug: RugLike; row: number; audit: { row: number; action: string } }>(
       '/api/admin/rugs',
       body,
       api,
     );
+    modal?.stage('images');
     setBusy(false);
     if (!r.ok) {
       msg(m2, `${r.status === 400 ? issuesText(r) : r.message}${photoNote ? ` (${photoNote})` : ''}`, 'err');
@@ -703,7 +832,7 @@ export function initRugForm(doc: Document = document, opts: RugFormOptions = {})
     lastManual = undefined;
     if (yourName) yourName.value = '';
     if (url) url.value = '';
-    if (!keepCollection) collection.value = '';
+    if (!keepCollection) setMultiSelect(collection, []);
     chips.set([]);
     for (const node of [
       f.id,
@@ -817,9 +946,52 @@ export function initRugForm(doc: Document = document, opts: RugFormOptions = {})
   }
   applyStatusUi();
 
+  // P5-P9. Built last so every handler it closes over already exists.
+  const parts = fetchModalParts(doc);
+  if (parts) {
+    modal = new FetchModalView(
+      parts,
+      {
+        // Nothing was written, so cancelling costs exactly nothing — which is what P5 promises.
+        onCancel: () => {
+          pending = undefined;
+          modal?.close();
+          if (m1) msg(m1, 'Fetch cancelled — nothing was written.', 'busy');
+        },
+        onUse: () => {
+          if (pending) applyScrape(pending);
+          const n = pending?.photos?.length ?? 0;
+          pending = undefined;
+          modal?.close();
+          if (m1) {
+            msg(
+              m1,
+              `Using the fetched values${n ? ` — ${n} photo${n > 1 ? 's' : ''} will upload on save` : ''}. Check the fields, then add.`,
+              'ok',
+            );
+          }
+          f.name.focus();
+        },
+        // P9: the link is kept as source attribution either way, which manualEntry() already does.
+        onManual: () => {
+          pending = undefined;
+          modal?.close();
+          manualEntry();
+        },
+        onRetry: () => {
+          modal?.close();
+          void fetchUrl(true);
+        },
+      },
+      doc,
+    );
+  }
+
   return {
     mode,
     fetchUrl,
+    /** P7/P8: take the reviewed result into the form. Exposed so tests drive the real path. */
+    useFetched: () => doc.querySelector<HTMLButtonElement>('[data-fetch-footer] .btn--primary')?.click(),
     manualEntry,
     add,
     save,

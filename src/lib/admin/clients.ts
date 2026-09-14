@@ -7,6 +7,7 @@ import { TABS } from '../sheets/contract.ts';
 import { assertHeaders } from '../sheets/parse.ts';
 import { slugify } from '../text.ts';
 import { CLIENT_CODE_RE } from './dto.ts';
+import { isReservedSlug } from '../customer/auth.ts';
 
 export { CLIENT_CODE_RE };
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789'; // 36 symbols
@@ -25,22 +26,133 @@ export function rand6(): string {
   return out;
 }
 
-export function clientCode(name: string, rand: () => string = rand6): string {
-  const base = slugify(name).slice(0, 20).replace(/-+$/, '');
-  const code = `${base || 'client'}-${rand()}`;
+/* ---------------------------------------------------------------------------------------------
+   The scrambled customer route (owner, 2026-09-13).
+
+   "Customer link route should take half the letters from the name I will provide, then shuffle them
+    and adds symbols within it to make it as their page route, for example: a customer named Gida
+    Hussami, the route should be: preview.serioludere.com/hi6g2a3a%s. no fixed rule, just like that."
+
+   Two departures from that sentence, both deliberate:
+
+   1. NOT "%". The owner's example uses it, but "%" begins a percent-escape in a URL path, and "%s"
+      is not valid hex — browsers and the router would mangle or reject the link.
+
+      The fillers are "-" and "_" only. `~` and `.` are equally unreserved in a path segment
+      (RFC 3986 §2.3) and were the first choice, but this code is ALSO written into the sheet as
+      `customer_slug` and into every Reactions row as `client`, both of which parse against
+      /^[A-Za-z0-9_-]{1,64}$/. A "~" there does not merely look odd: the customer's own row fails to
+      parse and the buyer disappears from the catalogue entirely.
+
+   2. Never first or last. A code that starts with "." or ends with "-" is legal in a path but reads
+      as broken, and a leading dot hides the segment on some filesystems if it is ever mirrored.
+
+   This code is a locator, not a credential. It leaks roughly half the buyer's letters by design, and
+   the shuffle plus fillers is on the order of 25 bits — guessable by someone determined. That is
+   acceptable ONLY because §10 puts a password gate behind the route; the URL alone opens nothing.
+--------------------------------------------------------------------------------------------- */
+
+/** Unreserved in a URL path AND accepted by the sheet's customer_slug / client column. */
+const FILLER_SYMBOLS = '-_';
+const FILLER_DIGITS = '0123456789';
+
+/** A uniform integer in [0, max), rejection-sampled from crypto bytes. Injectable for tests. */
+export type RandomInt = (max: number) => number;
+
+export const cryptoRandomInt: RandomInt = (max) => {
+  if (max <= 0) throw new Error('cryptoRandomInt: max must be positive');
+  // Reject the tail of the byte range so every value is equally likely (no modulo bias).
+  const limit = Math.floor(256 / max) * max;
+  for (;;) {
+    for (const b of randomBytes(32)) if (b < limit) return b % max;
+  }
+};
+
+/** Fisher–Yates, driven by the injected source so a test can make it deterministic. */
+function shuffled<T>(items: readonly T[], rnd: RandomInt): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = rnd(i + 1);
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
+/**
+ * Half the name's characters, shuffled, with digits and symbols woven between them.
+ *
+ * "Half" rounds up and never falls below 3, and the pool itself is padded to 4: a one- or two-letter
+ * name would otherwise produce a route so short it is both ugly and trivially enumerable. Non-Latin
+ * names slugify to nothing, so they fall back to a fully random code of the same shape rather than
+ * throwing and blocking the owner from adding that customer at all.
+ */
+export function scrambleName(name: string, rnd: RandomInt = cryptoRandomInt): string {
+  const letters = slugify(name).replace(/[^a-z0-9]/g, '');
+  let pool = letters || Array.from({ length: 6 }, () => ALPHABET[rnd(ALPHABET.length)]).join('');
+  // A one-character name ("X") would otherwise yield a one-character code, which CLIENT_CODE_RE
+  // rejects outright — the owner would simply be unable to add that customer. Pad with random
+  // characters until there is enough to scramble.
+  while (pool.length < 4) pool += ALPHABET[rnd(ALPHABET.length)];
+  const take = Math.min(pool.length, Math.max(3, Math.ceil(pool.length / 2)));
+  const picked = shuffled([...pool], rnd).slice(0, take);
+
+  // Weave 3–4 fillers into the INTERIOR gaps only, so the code always begins and ends alphanumeric.
+  const fillerCount = Math.min(picked.length - 1, 3 + rnd(2));
+  const gaps = shuffled(
+    Array.from({ length: picked.length - 1 }, (_, i) => i + 1),
+    rnd,
+  ).slice(0, Math.max(0, fillerCount));
+
+  const out: string[] = [];
+  for (let i = 0; i < picked.length; i++) {
+    if (gaps.includes(i)) {
+      // Digits outnumber symbols 3:1, matching the owner's example (three digits, one symbol).
+      const useSymbol = rnd(4) === 0;
+      out.push(
+        useSymbol ? FILLER_SYMBOLS[rnd(FILLER_SYMBOLS.length)]! : FILLER_DIGITS[rnd(FILLER_DIGITS.length)]!,
+      );
+    }
+    out.push(picked[i]!);
+  }
+  return out.join('');
+}
+
+/**
+ * The customer's route segment. `rnd` is injectable so tests can pin the shuffle.
+ *
+ * Throws rather than returning a malformed code: a bad route here would 404 a buyer's only link, and
+ * failing at creation time is far cheaper than discovering it after the link has been sent.
+ */
+export function clientCode(name: string, rnd: RandomInt = cryptoRandomInt): string {
+  const code = scrambleName(name, rnd);
   if (!CLIENT_CODE_RE.test(code)) throw new Error(`generated client code "${code}" is malformed`);
+  // Defence in depth, currently unreachable: every reserved slug is pure letters (or starts with
+  // "_", or contains "."), and every generated code carries at least one interior digit-or-symbol
+  // and never begins with one. The check costs nothing and survives a future change to the weave.
+  if (isReservedSlug(code)) throw new Error(`generated client code "${code}" is a reserved route`);
   return code;
 }
 
-/** Retries once on a collision with `existing` (case-insensitive), then throws. */
-export function newClientCode(name: string, existing: Iterable<string>, rand: () => string = rand6): string {
+/**
+ * A code not already taken (case-insensitive) and not a reserved route.
+ *
+ * Eight attempts, not the previous two: the old scheme prefixed the name, so a collision meant two
+ * buyers with the same name AND the same six random characters — vanishingly rare. This one is
+ * shorter and drawn from the name's own letters, so two buyers called "Ana Lee" collide far more
+ * often. Eight tries makes exhausting them a signal that something is wrong, not bad luck.
+ */
+export function newClientCode(
+  name: string,
+  existing: Iterable<string>,
+  rnd: RandomInt = cryptoRandomInt,
+): string {
   const taken = new Set<string>();
   for (const c of existing) taken.add(String(c).trim().toLowerCase());
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const code = clientCode(name, rand);
-    if (!taken.has(code)) return code;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const code = clientCode(name, rnd);
+    if (!taken.has(code.toLowerCase())) return code;
   }
-  throw new Error('client code collision twice in a row');
+  throw new Error('client code collision eight times in a row');
 }
 
 /**

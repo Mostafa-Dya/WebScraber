@@ -5,6 +5,10 @@
 export const prerender = false;
 
 import AdminLayout from '../../components/admin/AdminLayout.astro';
+import Button from '../../components/ui/Button.astro';
+import Input from '../../components/ui/Input.astro';
+import Modal from '../../components/ui/Modal.astro';
+import EmptyState from '../../components/ui/EmptyState.astro';
 import { fetchAdminSnapshot, type AdminSnapshot } from '../../lib/admin/read.ts';
 import { getClient } from '../../lib/runtime.ts';
 import { consoleLogger, serializeError } from '../../lib/sheets/errors.ts';
@@ -38,80 +42,120 @@ const data = {
   {error && <div class="msg err on">Could not read the sheet: {error}</div>}
 
   <section class="stack" aria-labelledby="h-collections">
-    <h3 id="h-collections">Collections</h3>
+    <div class="page-head">
+      <p class="page-head__count" id="collectionCount">
+        {collections.length}
+        {collections.length === 1 ? 'collection' : 'collections'}
+      </p>
+      <span class="page-head__rule"></span>
+      <Button icon="plus" data-open="new-collection">New collection</Button>
+    </div>
+
     <p class="hint">
       Order = the tabs on the site. Renaming a collection does not rewrite its rugs — they keep the old name
       and drop out of the tab until re-saved.
     </p>
     <div id="m5" class="msg"></div>
-    <div class="table-wrap">
-      <table id="collectionTable">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Name</th>
-            <th>Slug</th>
-            <th>Description</th>
-            <th>Cover (Drive id / URL)</th>
-            <th>Rugs</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {
-            collections.map((c, i) => (
-              <tr data-id={c.id} data-version={c.version} data-name={c.name}>
-                <td class="n">{c.sortOrder ?? i + 1}</td>
-                <td>
-                  <input data-field="name" value={c.name} aria-label={`Name of ${c.name}`} />
-                </td>
-                <td class="mono">{c.slug}</td>
-                <td>
-                  <input
-                    data-field="description"
-                    value={c.description}
-                    aria-label={`Description of ${c.name}`}
-                  />
-                </td>
-                <td>
-                  <input data-field="cover" value={c.coverImageUrl ?? ''} aria-label={`Cover of ${c.name}`} />
-                </td>
-                <td class="n">{rugCount(c.name)}</td>
-                <td class="acts">
-                  <button type="button" class="chip" data-act="up" aria-label={`Move ${c.name} up`}>
-                    ▲
-                  </button>
-                  <button type="button" class="chip" data-act="down" aria-label={`Move ${c.name} down`}>
-                    ▼
-                  </button>
-                  <button type="button" class="chip" data-act="save">
-                    Save
-                  </button>
-                </td>
-              </tr>
-            ))
-          }
-        </tbody>
-      </table>
+
+    <div class="crow__columns" aria-hidden="true">
+      <span class="crow__col-name">Collection</span>
+      <span class="crow__rule"></span>
+      <span class="crow__col-count">Products</span>
     </div>
-    {collections.length === 0 && <div class="msg busy on">No collections yet.</div>}
-    <div class="fields">
-      <div class="f">
-        <label for="c_name">New collection</label>
-        <input id="c_name" placeholder="Name" autocomplete="off" />
+
+    <ul class="crow-list" id="collectionList" aria-labelledby="h-collections">
+      {
+        collections.map((c, i) => (
+          <li
+            class="crow"
+            data-id={c.id}
+            data-version={c.version}
+            data-name={c.name}
+            data-order={String(c.sortOrder ?? i + 1)}
+            data-slug={c.slug}
+          >
+            <div class="crow__head">
+              <span class="crow__name">{c.name}</span>
+              <span class="crow__rule" />
+              <span class="crow__count">
+                {rugCount(c.name)} {rugCount(c.name) === 1 ? 'product' : 'products'}
+              </span>
+              <button type="button" class="btn btn--ghost" data-act="up" aria-label={`Move ${c.name} up`}>
+                ▲
+              </button>
+              <button type="button" class="btn btn--ghost" data-act="down" aria-label={`Move ${c.name} down`}>
+                ▼
+              </button>
+              <button type="button" class="btn btn--ghost" data-act="edit">
+                Edit
+              </button>
+            </div>
+            {c.description && <p class="crow__description">{c.description}</p>}
+            {c.description && (
+              <button type="button" class="crow__more" data-act="expand">
+                See more
+              </button>
+            )}
+            <div class="crow__edit" hidden>
+              <input class="input" data-field="name" value={c.name} aria-label={`Name of ${c.name}`} />
+              <input
+                class="input"
+                data-field="description"
+                value={c.description}
+                aria-label={`Description of ${c.name}`}
+              />
+              <input
+                class="input"
+                data-field="cover"
+                value={c.coverImageUrl ?? ''}
+                aria-label={`Cover of ${c.name}`}
+              />
+              <button type="button" class="btn btn--primary" data-act="save">
+                Save
+              </button>
+              <button type="button" class="btn btn--ghost" data-act="cancel">
+                Cancel
+              </button>
+            </div>
+          </li>
+        ))
+      }
+    </ul>
+
+    {
+      collections.length === 0 && (
+        <EmptyState
+          type="first-run"
+          title="No collections yet"
+          message="Collections group the catalogue for the buyer. A rug can only sit in one."
+        />
+      )
+    }
+
+    <p class="hint">
+      Each collection carries its own description. Collapsed clamps it to one line so the list stays
+      scannable; See more expands that row in place rather than navigating away, so two collections can be
+      compared side by side.
+    </p>
+
+    <Modal id="new-collection" title="New collection">
+      <p>Collections group the catalogue for the buyer. A rug can only sit in one.</p>
+      <div class="modal__fields">
+        <Input name="c_name" label="Name" placeholder="Shiraz" hint="Required, and must be unique." />
+        <Input
+          type="textarea"
+          name="c_description"
+          label="Description"
+          hint="Shown to buyers on the collection. The list clamps it to one line and expands on See more."
+        />
+        <Input name="c_cover" label="Cover image (Drive id / URL)" />
       </div>
-      <div class="f">
-        <label for="c_description">Description</label>
-        <input id="c_description" autocomplete="off" />
-      </div>
-      <div class="f">
-        <label for="c_cover">Cover image (Drive id / URL)</label>
-        <input id="c_cover" autocomplete="off" />
-      </div>
-    </div>
-    <div class="actions">
-      <button class="go" id="btnAddCollection" type="button">Add collection</button>
-    </div>
+      <Fragment slot="footer">
+        <Button style="ghost" data-close="new-collection">Cancel</Button>
+        <Button id="btnAddCollection" icon="plus">Create collection</Button>
+      </Fragment>
+    </Modal>
+
     <div id="m6" class="msg"></div>
   </section>
 
@@ -178,7 +222,9 @@ const data = {
   <script is:inline type="application/json" id="admin-data" set:html={jsonForScript(data)} />
   <script>
     import { initCollections } from '../../scripts/admin/collections.ts';
+    import { initOverlays } from '../../scripts/ui/overlay.ts';
     initCollections();
+    initOverlays();
   </script>
 </AdminLayout>
 

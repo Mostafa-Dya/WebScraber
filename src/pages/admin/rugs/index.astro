@@ -183,7 +183,21 @@ const syncLabel_ = snapshot ? syncLabel(snapshot.fetchedAt) : undefined;
   <p class="hint" id="count" role="status" aria-live="polite"></p>
   <div id="m-retry" class="msg"></div>
   <div id="empty-first" hidden={rugs.length !== 0}>
-    <EmptyState type="first-run" href="/admin/rugs/new" />
+    {/* A product needs at least one collection (`CollectionList` is min(1)), so on a freshly
+        provisioned sheet — which is created deliberately empty — the Add form cannot be submitted
+        yet. Sending the studio there would dead-end them on their very first action: fill the whole
+        form, press Save, get "Pick a collection first", then go hunting for where collections live.
+        When there are none, the first run points at the thing that has to happen first. */}
+    {collections.length === 0 ? (
+      <EmptyState
+        type="first-run"
+        title="Start with a collection"
+        message="Collections group the catalogue for the buyer, and every product belongs to at least one — so the first one comes before the first rug."
+        href="/admin/collections"
+      />
+    ) : (
+      <EmptyState type="first-run" href="/admin/rugs/new" />
+    )}
   </div>
   <div id="empty-none" hidden>
     <EmptyState type="no-results" />

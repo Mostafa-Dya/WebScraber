@@ -1238,6 +1238,100 @@ survives every write path, and a component test rendering RugRow and RugCardAdmi
 so the two views cannot drift apart again. All mutation-tested. Gates: **1074 tests**, 0 typecheck
 errors, lint clean, build with no warnings, 15/15 live geometry.
 
+### D28 — Pre-deployment sweep: the credential the reset destroyed, and four more (2026-09-14)
+
+**Decision.** Asked for a bug check before going live, five confirmed defects were fixed. One was
+worse than anything in the original audit.
+
+**Resetting a customer's password destroyed it.** `#linkOut` — the reveal-once credential panel —
+lives inside `<Modal id="new-client">`. "Reset password" is a control on a TABLE ROW, outside that
+modal. `showLink()` only un-hid the panel, so a reset wrote the one-time plaintext into a hidden
+element inside a CLOSED dialog, announced "copy it now, it is not shown again", and the new password
+was already live in the sheet. **The buyer was locked out of their preview with no way back**, and
+resetting again repeated it. It worked on the CREATE path only because the modal is already open
+there, which is why it survived review. `showLink` now opens the dialog and hides the create form so
+the panel stands alone as F4 (52:1115) draws it; the opener restores the form for the next create.
+
+**`/api/catalogue` published every rug's exact like count.** It is on the PUBLIC allowlist whenever
+`PUBLIC_CATALOGUE` is on — the default — so the endpoint served unauthenticated what the card was
+carefully hiding below five. `rating` and `dislikes` are nulled with it: `rating = likes / (likes +
+dislikes) x 5` hands the number straight back.
+
+**"Finish photo import" never rotated the Karavan primary.** `retry.ts` called `commitPhotos` without
+`supplier`, so `transformsFor('', 0)` returned `[]`. A half-imported Karavan rug finished from the
+Products list came out unrotated while the same rug imported in one go came out correct — the two
+paths disagreed silently.
+
+**Every visitor shared one rate-limit bucket.** `clientIp` had two sources: a host header, trusted
+only when `CLIENT_IP_HEADER` is set (NOT the default), and `X-Forwarded-For`. With neither present it
+returned undefined and `ipHash` hashed the literal `"unknown"` — so five wrong admin passwords from
+one person locked every admin out for fifteen minutes, and one visitor could exhaust the vote limit
+for the whole site. Astro's `context.clientAddress` is now the last resort, wired at all five call
+sites. Deliberately LAST: behind a proxy the socket peer is the proxy, which would recreate the
+shared bucket. Read through `socketAddressOf`, never destructured — the getter throws when the
+adapter cannot supply an address. Setting `CLIENT_IP_HEADER` at deploy is still correct; this is the
+floor, not the ceiling.
+
+**Non-USD prices silently lost their retail suggestion on a cold server.** `convertToUsd` reads
+`getCache().peek()` — the in-memory snapshot, deliberately not loading it, because the conversion is
+synchronous and a scrape must not block on a sheet read. On a fresh process that snapshot is empty,
+and no admin page warms it, so a freshly deployed server could stay cold indefinitely. The scrape
+endpoint now awaits `warmRates()` alongside its existing Settings read, so it costs no extra latency.
+
+**The Signed badge was inert on every fresh sheet.** `badgesFor()` keys off a rug's TAGS, but
+"Signed" is seeded as a COLLECTION and the Tags tab was built only from names the reference catalogue
+happened to contain — which has Antique and not Signed. No Tags row meant no chip in the rug form,
+meant no way to apply it, meant a badge that could never appear. `BADGE_TAG_NAMES` is now seeded
+unconditionally, case-insensitively so Antique is not duplicated. NOTE: this fixes new sheets only —
+an existing sheet needs the tag adding once from the admin's "+ new tag".
+
+**Also observed, not a code defect:** the suite failed four integration files with load errors on one
+run and passed three consecutive runs after. A Windows transform race under load. Worth knowing
+before wiring CI, which will occasionally go red for no reason.
+
+Gates: **1084 tests**, 0 typecheck errors, lint clean, build with no warnings, 15/15 live geometry.
+Every fix mutation-tested.
+
+### D29 — The studio creates its own catalogue sheet (2026-09-14)
+
+**Decision.** `npm run sheet:init` assumes a developer: a terminal, a checkout, and a `.env` to write
+the new spreadsheet id into. For this deployment the person setting the site up is the CLIENT. They
+open `/admin/google` on the live site, connect their Google account, and expect a catalogue. There
+was no path from there to a working sheet at all — `GOOGLE_SHEET_ID` is an astro:env variable, read
+at startup, and the app simply threw until a developer intervened.
+
+**The provisioning logic is now shared, not duplicated.** Phases 1–7 of `scripts/init-sheet.ts` moved
+to `src/lib/sheets/provision.ts`; the CLI is a thin wrapper over it (347 lines → 81) and the admin
+endpoint calls the same function. Two copies — one for the terminal, one for the button — would drift
+within a release, and the failure mode is a sheet that looks initialised and is not.
+
+**The id lives in DATA_DIR**, in a store shaped like the Google token store beside it, for the same
+reason: it is a value the server learns after it started. **Env still wins.** A deployment that pins
+`GOOGLE_SHEET_ID` is stating which sheet is live, and a button in the admin must not quietly move the
+site onto a different one.
+
+**The endpoint refuses in three cases, each deliberate.**
+- A sheet already exists → 409. Creating a second would orphan the first WITH THE STUDIO'S DATA IN IT,
+  and they would have no way to tell which of two identical spreadsheets the site reads.
+- No Google connection → 409. The sheet is created in the studio's own Drive; a service account has
+  no Drive storage and cannot own one, which is the same error the CLI reports.
+- **No DATA_DIR → 409.** This is the important one. Without it the id is remembered for this process
+  only, so the next restart shows "no catalogue yet", the studio presses the button again, and the
+  first sheet is orphaned. Refusing is kinder than the silent version of that, and the admin says so
+  in words rather than hiding the button.
+
+**Seeded with `seed: 'none'`.** Nobody wants twenty reference rugs in a client's catalogue. The badge
+tags remain the exception — they are contract, not samples, and the corner badge cannot work without
+them (D28), so `provisionSheet` writes them whatever the seed mode.
+
+**Ordering.** The id is stored LAST, after every phase has succeeded, so a failure never points the
+site at a half-built sheet; on failure the response carries the spreadsheet id so the studio can find
+and delete it rather than being left with an invisible orphan. `resetSheetClient()` then drops the
+Sheets client and the snapshot cache, which were both built around "no sheet" and would otherwise
+keep failing until a restart.
+
+Gates: **1092 tests**, 0 typecheck errors, lint clean, build with no warnings, 15/15 live geometry.
+
 ## 5. Sheet contract (created/validated by `scripts/init-sheet.ts`)
 
 Column headers are the contract; Zod validates the header row on every read (D5.2 governs what happens on mismatch).

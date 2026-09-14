@@ -21,6 +21,20 @@ export interface IpOptions {
   header: string;
   /** Number of trusted proxies appending to X-Forwarded-For (default 1). */
   trustedHops: number;
+  /**
+   * The socket peer address, from Astro's `context.clientAddress` (the Node adapter exposes it in
+   * standalone mode). LAST resort, and it is what stops the whole site sharing one rate-limit bucket.
+   *
+   * With `CLIENT_IP_HEADER` unset — the default — and no `X-Forwarded-For`, both sources above
+   * return undefined and `ipHash` hashed the literal string "unknown". Every visitor then shared a
+   * single bucket, so five wrong passwords from ONE person locked every admin out for fifteen
+   * minutes, and one visitor could exhaust the vote limit for everybody. Behind a proxy this is
+   * never reached; exposed directly, it is the difference between per-client limits and none.
+   *
+   * It is deliberately last: behind a proxy the socket peer is the PROXY, which would put everyone
+   * in one bucket again — so it is only consulted when the header sources yield nothing at all.
+   */
+  socketAddress?: string | undefined;
 }
 
 export function clientIp(headers: Headers, opts: IpOptions): string | undefined {
@@ -33,14 +47,16 @@ export function clientIp(headers: Headers, opts: IpOptions): string | undefined 
     }
   }
   const xff = headers.get('x-forwarded-for');
-  if (!xff) return undefined;
+  if (!xff) return isIp(opts.socketAddress ?? '') ? opts.socketAddress : undefined;
   const parts = xff
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
   const hops = Math.max(1, Math.floor(opts.trustedHops));
   const idx = parts.length - hops;
-  if (idx < 0) return undefined; // fewer entries than trusted proxies: cannot be a proxied request
+  // Fewer entries than trusted proxies: cannot be a proxied request, so fall back to the socket.
+  if (idx < 0) return isIp(opts.socketAddress ?? '') ? opts.socketAddress : undefined;
   const v = parts[idx] ?? '';
-  return isIp(v) ? v : undefined;
+  if (isIp(v)) return v;
+  return isIp(opts.socketAddress ?? '') ? opts.socketAddress : undefined;
 }

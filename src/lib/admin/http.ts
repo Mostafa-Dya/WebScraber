@@ -20,6 +20,7 @@ import {
   noStore,
   rejectCrossSite,
   requestIpHash,
+  socketAddressOf,
   revalidateState,
 } from '../api.ts';
 import { getCache, getClient } from '../runtime.ts';
@@ -156,7 +157,7 @@ export function adminContext(context: APIContext): AdminCtx {
     context,
     session: requireSession(context),
     requestId: context.locals.requestId ?? 'none',
-    ipHash: requestIpHash(context.request),
+    ipHash: requestIpHash(context.request, socketAddressOf(context)),
     actor: adminRuntime.user,
   };
 }
@@ -165,7 +166,7 @@ export function adminContext(context: APIContext): AdminCtx {
 export function auditBase(context: APIContext): Pick<AuditInput, 'actor' | 'ipHash' | 'requestId'> {
   return {
     actor: adminRuntime.user,
-    ipHash: requestIpHash(context.request),
+    ipHash: requestIpHash(context.request, socketAddressOf(context)),
     requestId: context.locals.requestId ?? 'none',
   };
 }

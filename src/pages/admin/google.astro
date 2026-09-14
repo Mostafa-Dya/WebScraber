@@ -12,9 +12,11 @@ export const prerender = false;
 
 import { GOOGLE_AUTH_MODE, GOOGLE_OAUTH_CLIENT_ID } from 'astro:env/server';
 import AdminLayout from '../../components/admin/AdminLayout.astro';
+import Button from '../../components/ui/Button.astro';
+import Input from '../../components/ui/Input.astro';
 import { adminRuntime } from '../../lib/admin/http.ts';
 import { googleAuthAdvice, missingScopes, redirectUriFor } from '../../lib/google/oauth.ts';
-import { getGoogleConnection, getGoogleStore } from '../../lib/runtime.ts';
+import { getGoogleConnection, getGoogleStore, getSheetIdStore, sheetIdIfAny } from '../../lib/runtime.ts';
 
 const mode = GOOGLE_AUTH_MODE;
 const connection = getGoogleConnection();
@@ -41,6 +43,15 @@ const MESSAGES: Record<string, string> = {
   failed: 'The exchange with Google failed.',
 };
 const message = outcome ? (MESSAGES[outcome] ?? 'Something went wrong.') : undefined;
+
+// The catalogue sheet. `npm run sheet:init` assumes a developer with a terminal and a .env to write
+// the new id into; the person setting this site up is usually the studio. So when a Google account
+// is connected and there is no sheet yet, the admin offers to create one.
+const sheetId = sheetIdIfAny();
+const sheetStore = getSheetIdStore();
+const storedSheet = sheetStore.read();
+const sheetFromEnv = Boolean(sheetId && !storedSheet);
+const canProvision = Boolean(health?.connected) && !sheetId && sheetStore.durable;
 ---
 
 <AdminLayout title="Serio Ludere — Google" active="google">
@@ -162,6 +173,61 @@ const message = outcome ? (MESSAGES[outcome] ?? 'Something went wrong.') : undef
               Copy
             </button>
           </div>
+        </>
+      )
+    }
+  </section>
+
+  <section class="stack" aria-labelledby="h-sheet">
+    <h3 id="h-sheet">Catalogue sheet</h3>
+
+    {
+      sheetId ? (
+        <>
+          <p class="hint">
+            {sheetFromEnv
+              ? 'Set by GOOGLE_SHEET_ID on the server, which is where this site takes its catalogue from.'
+              : `Created ${storedSheet?.createdAt?.slice(0, 10) ?? ''}${storedSheet?.createdBy ? ` in ${storedSheet.createdBy}` : ''}.`}
+          </p>
+          <p class="hint">
+            <a href={`https://docs.google.com/spreadsheets/d/${sheetId}/edit`} target="_blank" rel="noopener">
+              Open the sheet in Google Sheets
+            </a>
+          </p>
+        </>
+      ) : !health?.connected ? (
+        <p class="hint">Connect a Google account first — the catalogue is created in that account’s Drive.</p>
+      ) : !sheetStore.durable ? (
+        /* Without DATA_DIR the new id is remembered for this process only, so the next restart would
+           show this screen again and invite a SECOND sheet — leaving the first orphaned with the
+           studio's data in it. Refusing is kinder than the silent version of that. */
+        <div class="msg err on">
+          This server has no writable data directory, so a new sheet’s id would be forgotten when it
+          restarts. Set <span class="mono">DATA_DIR</span> and reload this page.
+        </div>
+      ) : (
+        <>
+          <p class="hint">
+            No catalogue yet. This creates a spreadsheet in your Google account, builds every tab and
+            column, and installs the formulas. It imports no products — the catalogue starts empty.
+          </p>
+          <div class="row">
+            <div class="grow">
+              <Input
+                type="text"
+                id="sheetTitle"
+                name="title"
+                label="Name it in your Drive"
+                value="Serio Ludere — Catalogue"
+              />
+            </div>
+          </div>
+          <div class="actions">
+            <Button id="btnCreateSheet" style="primary">
+              Create the catalogue sheet
+            </Button>
+          </div>
+          <div id="mSheet" class="msg" />
         </>
       )
     }

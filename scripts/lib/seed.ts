@@ -5,6 +5,7 @@ import { sizeBandOf, sizeLabelOf } from '../../src/lib/size.ts';
 import { canonicalCollection, slugify } from '../../src/lib/text.ts';
 import { extractDriveId } from '../../src/lib/images.ts';
 import { REFERENCE_COLLECTION_ORDER } from '../../src/lib/sheets/contract.ts';
+import { BADGE_TAG_NAMES } from '../../src/lib/view.ts';
 import type { CellValue } from '../../src/lib/sheets/client.ts';
 
 export interface LegacyRug {
@@ -141,7 +142,25 @@ export function buildSeed(rugs: LegacyRug[], now: string): SeedRows {
     notes.push(`collection "${name}" is not in the reference list; appended with sort_order ${order - 1}`);
   }
 
-  const tags: CellValue[][] = [...tagNames.values()]
+  /*
+   * The badge tags are seeded whether or not the reference catalogue happens to use them.
+   *
+   * `badgesFor()` (src/lib/view.ts BADGE_TAG_NAMES) keys the Signed / Antique corner badge off a
+   * rug's TAGS — the owner requirement of 2026-09-13, on both the admin and the customer card. But
+   * "Signed" is seeded as a COLLECTION (REFERENCE_COLLECTION_ORDER) and the Tags tab was built only
+   * from names the reference JSON happened to contain, which has Antique and not Signed. So on a
+   * fresh sheet the Signed half of the feature was unreachable: no Tags row, therefore no chip in
+   * the rug form, therefore no way to apply it, therefore a badge that could never appear.
+   *
+   * Seeding both means the feature works the moment the sheet exists. Case-insensitive so a
+   * reference tag of "antique" does not produce a duplicate row.
+   */
+  const seen = new Map([...tagNames.values()].map((n) => [n.trim().toLowerCase(), n]));
+  for (const name of BADGE_TAG_NAMES) {
+    if (!seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name);
+  }
+
+  const tags: CellValue[][] = [...seen.values()]
     .sort((a, b) => a.localeCompare(b))
     .map((name) => [slugify(name), slugify(name), name, '']);
 

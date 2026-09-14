@@ -7,6 +7,7 @@ import { msg } from './msg.ts';
 
 export interface GooglePage {
   disconnect(): Promise<void>;
+  createSheet(): Promise<void>;
 }
 
 export function initGoogle(doc: Document = document, api: ApiOptions = {}): GooglePage | undefined {
@@ -14,8 +15,11 @@ export function initGoogle(doc: Document = document, api: ApiOptions = {}): Goog
   const copy = doc.getElementById('btnCopyRedirect') as HTMLButtonElement | null;
   const disconnectBtn = doc.getElementById('btnDisconnect') as HTMLButtonElement | null;
   const out = doc.getElementById('m12');
+  const createBtn = doc.getElementById('btnCreateSheet') as HTMLButtonElement | null;
+  const sheetTitle = doc.getElementById('sheetTitle') as HTMLInputElement | null;
+  const sheetOut = doc.getElementById('mSheet');
   // The page renders nothing to wire in service-account mode or before the client is configured.
-  if (!redirect && !disconnectBtn) return undefined;
+  if (!redirect && !disconnectBtn && !createBtn) return undefined;
 
   copy?.addEventListener('click', () => {
     if (!redirect) return;
@@ -50,6 +54,36 @@ export function initGoogle(doc: Document = document, api: ApiOptions = {}): Goog
     setTimeout(() => location.reload(), 1200);
   };
 
+  /**
+   * Creates the catalogue spreadsheet in the connected Google account.
+   *
+   * Deliberately slow-looking: this is one click that creates a real document in someone's Drive and
+   * then writes ten tabs, their headers, the formats and the formulas into it. The button is disabled
+   * for the whole round trip so a second click cannot start a second sheet — the failure the endpoint
+   * also guards server-side, because a double-click is faster than a network round trip.
+   */
+  const createSheet = async (): Promise<void> => {
+    if (!createBtn) return;
+    createBtn.disabled = true;
+    if (sheetOut) msg(sheetOut, 'Creating the spreadsheet and building its tabs…', 'busy');
+    const r = await post<{ sheetId: string; url: string }>(
+      '/api/admin/google/provision',
+      { title: sheetTitle?.value.trim() || 'Serio Ludere — Catalogue' },
+      // Ten tabs, their headers, formats, protections and formulas: several round trips to Google.
+      { timeoutMs: 120_000, ...api },
+    );
+    if (!r.ok) {
+      createBtn.disabled = false;
+      if (sheetOut) msg(sheetOut, r.message, 'err');
+      return;
+    }
+    if (sheetOut) msg(sheetOut, 'Catalogue created. Loading it…', 'ok');
+    // Everything on this page is server-rendered from the sheet's existence, so a reload is the
+    // honest way to show the new state.
+    setTimeout(() => location.reload(), 1200);
+  };
+
   disconnectBtn?.addEventListener('click', () => void disconnect());
-  return { disconnect };
+  createBtn?.addEventListener('click', () => void createSheet());
+  return { disconnect, createSheet };
 }

@@ -315,6 +315,8 @@ export function initClients(doc: Document = document, api: ApiOptions = {}): Cli
   const generate = byId<HTMLButtonElement>('btnGenerate', doc);
   const m8 = byId('m8', doc);
   const linkOut = byId('linkOut', doc);
+  /** The create form inside the modal; hidden when the panel is opened from a row (a reset). */
+  const fields = doc.querySelector<HTMLElement>('#new-client .modal__fields > .row');
   const linkCode = byId('linkCode', doc);
   const linkNote = byId('linkNote', doc);
   // F4 (Figma 52:1115): the Credential Panel replaces the two readonly inputs and their two separate
@@ -337,6 +339,36 @@ export function initClients(doc: Document = document, api: ApiOptions = {}): Cli
    * The reveal-once panel (brief §10). The plaintext exists only in this response body: it is never
    * stored, never re-read from the sheet, and disappears from the page on the next action.
    */
+  /**
+   * Reveals the credential panel — and OPENS the dialog it lives in.
+   *
+   * `#linkOut` sits inside `<Modal id="new-client">`. On the create path that modal is already open,
+   * so un-hiding the panel was enough and this looked correct for as long as anyone only ever
+   * created customers. "Reset password" is a control on a TABLE ROW, outside the modal: it wrote the
+   * one-time plaintext into a hidden element inside a CLOSED dialog, printed "copy it now, it is not
+   * shown again", and the password was already live in the sheet. The buyer was locked out with no
+   * way back — resetting again just repeated it.
+   *
+   * `showModal()` on an already-open dialog throws, hence the `open` check.
+   */
+  const revealPanel = (): void => {
+    const dialog = doc.getElementById('new-client');
+    if (dialog instanceof HTMLDialogElement && !dialog.open) {
+      dialog.showModal();
+      // Arriving from a row, the create form is noise and its inputs are the wrong thing to focus:
+      // this is a reveal-once panel, not a form. F4 (52:1115) draws the panel alone.
+      fields?.setAttribute('hidden', '');
+    }
+  };
+
+  // …and put it back. A reset hides the create form so the panel stands alone; without this, the
+  // next "New customer link" would open a modal with no form in it.
+  const opener = doc.querySelector<HTMLElement>('[data-open="new-client"]');
+  opener?.addEventListener('click', () => {
+    fields?.removeAttribute('hidden');
+    linkOut.hidden = true;
+  });
+
   const showLink = (c: ClientLike, password?: string): void => {
     credUrl.textContent = c.link;
     credPassword.textContent = password ?? '';
@@ -357,6 +389,7 @@ ${password ?? ''}`,
       );
     }
     linkOut.hidden = false;
+    revealPanel();
   };
 
   const doGenerate = async (): Promise<void> => {

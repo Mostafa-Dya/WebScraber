@@ -21,6 +21,9 @@ vi.mock('astro:env/server', async () => ({ ...(await import('./fake-sheets.ts'))
 vi.mock('../../../src/lib/runtime.ts', () => ({
   getClient: () => (state.sheet as FakeSheet).client,
   getCache: () => state.cache,
+  // Loads the catalogue snapshot so the synchronous convertToUsd has rates on a cold process.
+  // A no-op here: this suite supplies convertToUsd directly.
+  warmRates: async () => {},
   getAdminDeps: () => ({
     authMode: state.drive ? 'oauth_refresh' : 'service_account',
     drive: state.drive,

@@ -19,7 +19,7 @@ import {
   recordAuditEvent,
 } from '../../../lib/admin/http.ts';
 import { markupFor, parseSettings, roundStepOf, type AdminSettings } from '../../../lib/admin/settings.ts';
-import { getAdminDeps, getClient } from '../../../lib/runtime.ts';
+import { getAdminDeps, getClient, warmRates } from '../../../lib/runtime.ts';
 import { detectSupplier, scrapeRug, type ScrapeErrorCode } from '../../../lib/scrape/index.ts';
 import { TABS } from '../../../lib/sheets/contract.ts';
 import { consoleLogger, serializeError } from '../../../lib/sheets/errors.ts';
@@ -58,7 +58,14 @@ export const POST = adminPost(
     const started = Date.now();
     const det = detectSupplier(body.url);
     const supplier = 'error' in det ? undefined : det.supplier;
-    const settings = supplier ? await readSettings() : EMPTY_SETTINGS;
+    // `convertToUsd` reads the in-memory snapshot synchronously and does not load it, so on a cold
+    // process a non-USD supplier price got no conversion and therefore no retail suggestion —
+    // silently, and with no admin page that would ever warm it. The Settings read is already a round
+    // trip; this runs alongside it rather than adding latency.
+    const [settings] = await Promise.all([
+      supplier ? readSettings() : Promise.resolve(EMPTY_SETTINGS),
+      warmRates(),
+    ]);
     const deps = getAdminDeps();
     const result = await scrapeRug(body.url, {
       force: body.force,

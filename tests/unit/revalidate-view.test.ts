@@ -150,6 +150,27 @@ describe('catalogueDto', () => {
     expect(dto.rugs[0]?.photos[0]).toMatch(/^\/api\/image\/[A-Za-z0-9_-]+\?w=1600$/);
     expect(dto.rates[0]).toEqual({ currency: 'AED', rateToBase: 3.67, symbol: 'AED ' });
   });
+
+  it('never publishes a like count below the threshold', async () => {
+    // `/api/catalogue` is on the PUBLIC allowlist (customer/gate.ts) whenever PUBLIC_CATALOGUE is on,
+    // which is the default. It was serving every rug's exact like count to anyone who asked, while
+    // the card that displays the number was carefully hiding it below five (owner requirement,
+    // 2026-09-13). Hiding a count in the UI and serving it raw from an unauthenticated JSON endpoint
+    // is not hiding it.
+    const snap = await cacheWith(() => 5000, { n: 0 }).get();
+    const dto = catalogueDto(snap);
+    for (const rug of dto.rugs) {
+      if (rug.likes !== null) expect(rug.likes).toBeGreaterThanOrEqual(5);
+      // `rating` and `dislikes` go with it: rating is likes / (likes + dislikes) x 5, so publishing
+      // those two alongside hands back the number the threshold just removed.
+      if (rug.likes === null) {
+        expect(rug.rating).toBeNull();
+        expect(rug.dislikes).toBeNull();
+      }
+    }
+    // Non-vacuous: the fixture has rugs under the threshold, so something must actually be nulled.
+    expect(dto.rugs.some((r) => r.likes === null)).toBe(true);
+  });
 });
 
 describe('view helpers (ADR D12)', () => {

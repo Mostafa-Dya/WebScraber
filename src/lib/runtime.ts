@@ -30,7 +30,8 @@ import { RatesCache } from './rates.ts';
 import { guardedAgent } from './scrape/guard.ts';
 import { CatalogueCache } from './sheets/cache.ts';
 import { SheetsClient, createTokenSource, type TokenSource } from './sheets/client.ts';
-import { authFromEnv, sheetIdFromEnv } from './sheets/config.ts';
+import { authFromEnv } from './sheets/config.ts';
+import { createSheetIdStore, type SheetIdStore } from './sheets/id-store.ts';
 import { REACTIONS_WINDOW_ROWS } from './sheets/contract.ts';
 import { consoleLogger, serializeError } from './sheets/errors.ts';
 import { fetchMeta, fetchRanges, snapshotFromRanges } from './sheets/read.ts';
@@ -50,6 +51,7 @@ const env = {
 
 let tokens: TokenSource | undefined;
 let googleStore: GoogleTokenStore | undefined;
+let sheetIdStore: SheetIdStore | undefined;
 let googleConnection: GoogleConnection | undefined;
 let client: SheetsClient | undefined;
 let cache: CatalogueCache | undefined;
@@ -112,6 +114,32 @@ export function getGoogleStore(): GoogleTokenStore {
   return googleStore;
 }
 
+/** Where a STUDIO-created spreadsheet's id lives; memory-only when DATA_DIR is unset. */
+export function getSheetIdStore(): SheetIdStore {
+  if (!sheetIdStore) sheetIdStore = createSheetIdStore(DATA_DIR || undefined);
+  return sheetIdStore;
+}
+
+/**
+ * The live spreadsheet id: the environment first, then whatever the studio provisioned.
+ *
+ * Env wins deliberately. A deployment that pins `GOOGLE_SHEET_ID` is stating which sheet is live,
+ * and a button in the admin must not quietly move the site onto a different one. The store is for
+ * the case the env cannot serve — the client connects Google on the deployed site and presses
+ * "Create the catalogue sheet", and the id has to be remembered by a server that cannot write .env.
+ */
+export function activeSheetId(): string {
+  const fromEnv = (GOOGLE_SHEET_ID ?? '').trim();
+  if (fromEnv) return fromEnv;
+  const stored = getSheetIdStore().read();
+  if (stored) return stored.id;
+  // Same message as before, plus the route a non-technical studio actually has.
+  throw new Error(
+    'No catalogue sheet yet — connect Google in /admin/google and create one, or set GOOGLE_SHEET_ID ' +
+      '(developers: `npm run sheet:init`).',
+  );
+}
+
 /**
  * The live connection for oauth_refresh mode. Undefined in service_account mode, where there is
  * nothing for an owner to connect: the deployment already carries its own key.
@@ -139,11 +167,31 @@ export function getGoogleConnection(): GoogleConnection | undefined {
  * made in the browser takes effect on the next request rather than on the next deploy. The
  * service-account path is unchanged.
  */
-function getTokens(): TokenSource {
+/** Exported for the provisioning endpoint, which creates a spreadsheet before any client exists. */
+export function getTokens(): TokenSource {
   const connection = getGoogleConnection();
   if (connection) return { getAccessToken: () => connection.getAccessToken() };
   if (!tokens) tokens = createTokenSource(authFromEnv(env));
   return tokens;
+}
+
+/** The live sheet id, or undefined — the question `activeSheetId()` answers by throwing. */
+export function sheetIdIfAny(): string | undefined {
+  const fromEnv = (GOOGLE_SHEET_ID ?? '').trim();
+  if (fromEnv) return fromEnv;
+  return getSheetIdStore().read()?.id;
+}
+
+/**
+ * Drops the Sheets client and the snapshot cache.
+ *
+ * Both are built once, around the sheet id that existed at the time — so after the studio provisions
+ * a catalogue from /admin/google the singletons still point at "no sheet" and every request would
+ * keep failing until a restart. Called immediately after the id is stored.
+ */
+export function resetSheetClient(): void {
+  client = undefined;
+  cache = undefined;
 }
 
 export function getClient(): SheetsClient {
@@ -151,7 +199,7 @@ export function getClient(): SheetsClient {
     const connection = getGoogleConnection();
     client = new SheetsClient(
       {
-        spreadsheetId: sheetIdFromEnv(env),
+        spreadsheetId: activeSheetId(),
         // With a live connection the client never touches this, and reading it from the environment
         // would throw before the owner has had a chance to connect one.
         auth: connection
@@ -233,6 +281,16 @@ const guardedFetch: typeof fetch = (input, init) =>
     } as Parameters<typeof undiciFetch>[1],
   ) as unknown as Promise<Response>;
 
+/**
+ * Rates come from the catalogue snapshot, read with `peek()` — the IN-MEMORY snapshot, which this
+ * deliberately does not load: the conversion is synchronous and a scrape must not block on a sheet
+ * read. On a cold process that snapshot is empty, so a non-USD supplier price got no conversion and
+ * therefore no retail suggestion, silently, until some public page happened to warm the cache. The
+ * admin has no page that warms it, so on a freshly deployed server it could stay cold indefinitely.
+ *
+ * `warmRates()` below is what the scrape endpoint calls first; this stays synchronous and simply
+ * reports "no rate" if it is still cold, which the caller already surfaces as a warning.
+ */
 function convertToUsd(amount: number, currency: string): number | undefined {
   const code = currency.trim().toUpperCase();
   if (code === 'USD') return amount;
@@ -245,6 +303,23 @@ function convertToUsd(amount: number, currency: string): number | undefined {
   const rate = rates?.find((r) => r.currency === code);
   if (!rate || !(rate.rateToBase > 0)) return undefined;
   return amount / rate.rateToBase; // rate_to_base = units of `currency` per USD
+}
+
+/**
+ * Loads the catalogue snapshot if it is not already in memory, so the synchronous `convertToUsd`
+ * above has rates to read. Awaited by the admin scrape endpoint, which is the only place a non-USD
+ * price is converted and the one admin path that must not depend on a visitor having been here first.
+ *
+ * Never fatal: a failure just leaves the conversion cold, which degrades to "no retail suggestion"
+ * exactly as it did before.
+ */
+export async function warmRates(): Promise<void> {
+  try {
+    if (getCache().peek()) return;
+    await getCache().get();
+  } catch {
+    /* the caller's own warning path covers this */
+  }
 }
 
 export function getAdminDeps(): AdminDeps {

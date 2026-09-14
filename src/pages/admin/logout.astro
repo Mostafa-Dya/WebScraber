@@ -6,7 +6,7 @@ export const prerender = false;
 
 import { clearSessionCookie } from '../../lib/admin/auth.ts';
 import { adminRuntime, recordAuditEvent } from '../../lib/admin/http.ts';
-import { requestIpHash } from '../../lib/api.ts';
+import { requestIpHash, socketAddressOf } from '../../lib/api.ts';
 
 if (!adminRuntime.configured) {
   return new Response('Not found', { status: 404, headers: { 'cache-control': 'no-store' } });
@@ -24,7 +24,7 @@ if (session) {
     action: 'auth.logout',
     targetTab: '-',
     targetId: session.user,
-    ipHash: requestIpHash(Astro.request),
+    ipHash: requestIpHash(Astro.request, socketAddressOf(Astro)),
     requestId: Astro.locals.requestId ?? 'none',
   });
 }

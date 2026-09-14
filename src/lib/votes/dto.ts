@@ -2,7 +2,7 @@
 // Never vote state, visitor hashes, user agents or client ids.
 import { driveImageUrl } from '../images.ts';
 import type { Snapshot } from '../sheets/types.ts';
-import { activeRugs } from '../view.ts';
+import { activeRugs, visibleLikes } from '../view.ts';
 
 export interface CatalogueDto {
   ok: true;
@@ -25,9 +25,9 @@ export interface CatalogueDto {
     priceUsd: number | null;
     rotate: 'force' | 'true' | 'false';
     featured: boolean;
-    likes: number;
-    dislikes: number;
-    rating: number;
+    likes: number | null;
+    dislikes: number | null;
+    rating: number | null;
   }>;
   collections: Array<{ slug: string; name: string; description: string; sortOrder: number | null }>;
   tags: Array<{ slug: string; name: string; color: string | null }>;
@@ -57,9 +57,16 @@ export function catalogueDto(snapshot: Snapshot): CatalogueDto {
       priceUsd: r.priceUsd ?? null,
       rotate: r.rotate,
       featured: r.featured,
-      likes: r.likes,
-      dislikes: r.dislikes,
-      rating: r.rating,
+      /*
+       * Thresholded, like every other surface. `/api/catalogue` is on the PUBLIC allowlist
+       * (customer/gate.ts) whenever PUBLIC_CATALOGUE is on, which it is by default — so this
+       * endpoint published every rug's exact like count to anyone who asked, while the card that
+       * shows the number was carefully hiding it below five. Hiding a count in the UI and serving
+       * it raw from an unauthenticated JSON endpoint is not hiding it.
+       */
+      likes: visibleLikes(r.likes) ?? null,
+      dislikes: visibleLikes(r.likes) === undefined ? null : r.dislikes,
+      rating: visibleLikes(r.likes) === undefined ? null : r.rating,
     })),
     collections: c.collections.map((x) => ({
       slug: x.slug,

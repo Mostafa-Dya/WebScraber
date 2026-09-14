@@ -100,6 +100,13 @@ export const POST = adminPost(RugCommit.partial({ version: true }), async ({ con
       urls: wanted,
       namePrefix: rug.slug || rug.id,
       reuseExisting: true,
+      /*
+       * Without this, `transformsFor('', 0)` returns [] and the Karavan 90-degree rotation (owner
+       * requirement, 2026-09-13) silently does not run on the retry path — so a half-imported
+       * Karavan rug finished from the Products list came out unrotated, while the same rug imported
+       * in one go came out correct. The field is already on the loaded row.
+       */
+      supplier: rug.supplier,
     },
     { drive: deps.drive, logger: consoleLogger },
   );

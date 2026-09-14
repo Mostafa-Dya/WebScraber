@@ -8,7 +8,7 @@ export const prerender = false;
 import AdminLayout from '../../components/admin/AdminLayout.astro';
 import Button from '../../components/ui/Button.astro';
 import Input from '../../components/ui/Input.astro';
-import { requestIpHash } from '../../lib/api.ts';
+import { requestIpHash, socketAddressOf } from '../../lib/api.ts';
 import { newSession, setSessionCookie, verifyPassword } from '../../lib/admin/auth.ts';
 import { adminRuntime, recordAuditEvent } from '../../lib/admin/http.ts';
 import { sanitiseNext } from '../../lib/admin/login.ts';
@@ -34,7 +34,7 @@ if (request.method === 'POST') {
   }
   const password = String(form?.get('password') ?? '');
   next = sanitiseNext(form?.get('next') ?? next);
-  const ipHash = requestIpHash(request);
+  const ipHash = requestIpHash(request, socketAddressOf(Astro));
   const requestId = locals.requestId ?? 'none';
   const check = adminRuntime.throttle.check(ipHash);
   if (!check.ok) {

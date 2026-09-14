@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PRODUCT_COLS, PRODUCT_WIDTH } from '../../src/lib/sheets/contract.ts';
 import { buildSeed, type LegacyRug } from '../../scripts/lib/seed.ts';
+import { BADGE_TAG_NAMES } from '../../src/lib/view.ts';
 
 const NOW = '2026-09-05T00:00:00.000Z';
 const live = JSON.parse(
@@ -90,5 +91,24 @@ describe('buildSeed → Products rows', () => {
     const slugs = seed.tags.map((t) => t[1]);
     expect(new Set(slugs).size).toBe(slugs.length);
     expect(seed.tags.every((t) => /^[a-z0-9-]+$/.test(String(t[1])))).toBe(true);
+  });
+
+  it('seeds the badge tags, so the Signed / Antique corner badge is reachable on a fresh sheet', () => {
+    // `badgesFor()` keys the corner badge off a rug's TAGS (owner requirement, 2026-09-13). "Signed"
+    // is seeded as a COLLECTION, and the Tags tab was built only from names the reference catalogue
+    // happened to contain — which has Antique and not Signed. So on a fresh sheet there was no Tags
+    // row, therefore no chip in the rug form, therefore no way to apply it, therefore a badge that
+    // could never appear. Half the feature was inert the moment the sheet was created.
+    const names = seed.tags.map((t) => String(t[2]).toLowerCase());
+    for (const badge of BADGE_TAG_NAMES) {
+      expect(names, `${badge} must be applicable from the admin`).toContain(badge.toLowerCase());
+    }
+  });
+
+  it('does not duplicate a badge tag the reference catalogue already uses', () => {
+    // The reference set contains "Antique"; seeding it again would put two rows in the Tags tab and
+    // two identical chips in the rug form.
+    const antique = seed.tags.filter((t) => String(t[2]).toLowerCase() === 'antique');
+    expect(antique).toHaveLength(1);
   });
 });

@@ -20,8 +20,29 @@ if (!isSecureSite && process.env.NODE_ENV === 'production') {
   );
 }
 
-export function requestIpHash(request: Request): string {
-  const ip = clientIp(request.headers, { header: CLIENT_IP_HEADER, trustedHops: TRUSTED_PROXY_HOPS });
+/**
+ * Astro's `context.clientAddress`, or undefined. The getter THROWS when the adapter cannot supply a
+ * peer address (a prerendered route, or an adapter without the capability), so it is never read bare.
+ */
+export function socketAddressOf(ctx: { clientAddress?: string } | undefined): string | undefined {
+  try {
+    return ctx?.clientAddress;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * @param socketAddress Astro's `context.clientAddress`. Pass it wherever a context is in scope: it is
+ * the last-resort identity that keeps every visitor out of one shared rate-limit bucket when no
+ * proxy header is configured. See `IpOptions.socketAddress`.
+ */
+export function requestIpHash(request: Request, socketAddress?: string): string {
+  const ip = clientIp(request.headers, {
+    header: CLIENT_IP_HEADER,
+    trustedHops: TRUSTED_PROXY_HOPS,
+    socketAddress,
+  });
   return ipHash(VOTE_SALT, ip);
 }
 

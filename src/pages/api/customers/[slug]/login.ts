@@ -11,7 +11,7 @@ export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import * as z from 'zod';
-import { noStore, rejectCrossSite, requestIpHash } from '../../../../lib/api.ts';
+import { noStore, rejectCrossSite, requestIpHash, socketAddressOf } from '../../../../lib/api.ts';
 import {
   hashPassword,
   makeCustomerToken,
@@ -28,7 +28,10 @@ const Body = z.object({ password: z.string().min(1).max(200) });
 /** A real scrypt verification against a throwaway hash, so a miss costs what a hit costs. */
 const DUMMY_HASH = hashPassword('customer-realm-timing-equaliser', { N: 2 ** 17, r: 8, p: 1 });
 
-export const POST: APIRoute = async ({ request, cookies, params }) => {
+export const POST: APIRoute = async (context) => {
+  // NOT destructured: `clientAddress` is a getter that throws when the adapter cannot supply a peer
+  // address, and destructuring would evaluate it eagerly, outside `socketAddressOf`'s try/catch.
+  const { request, cookies, params } = context;
   const rejected = rejectCrossSite(request);
   if (rejected) return rejected;
   if (!customerRuntime.configured) return noStore({ ok: false, error: 'not found' }, 404);
@@ -45,7 +48,7 @@ export const POST: APIRoute = async ({ request, cookies, params }) => {
   const parsed = Body.safeParse(raw);
   if (!parsed.success) return noStore({ ok: false, error: 'bad request' }, 400);
 
-  const ip = requestIpHash(request);
+  const ip = requestIpHash(request, socketAddressOf(context));
   const check = customerRuntime.throttle.check(ip);
   if (!check.ok) {
     return noStore({ ok: false, error: 'too many attempts', retryAfterSec: check.retryAfterSec }, 429, {

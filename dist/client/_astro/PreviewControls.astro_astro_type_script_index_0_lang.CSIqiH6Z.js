@@ -1,0 +1,1 @@
+import{t as e}from"./prefs.DMxD1gEK.js";e();

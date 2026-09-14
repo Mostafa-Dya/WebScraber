@@ -1,0 +1,1 @@
+function e(e,t,n){return e===`force`||e===`1`&&t>n}export{e as t};

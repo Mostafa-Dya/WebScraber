@@ -539,8 +539,8 @@ describe('row tabs (Collections / Tags / Clients / Settings)', () => {
     const order: string[] = [];
     await insertTopRow(f.client, {
       tab: 'Customers',
-      cells: ['a1b_2c', 'Nadia', 'scrypt.1.2.3.aa.bb', '', 'now', true],
-      audit: buildAuditRow({ ...audit, action: 'client.create', targetTab: 'Customers', targetId: 'a1b_2c' }),
+      cells: ['a1b-2c', 'Nadia', 'scrypt.1.2.3.aa.bb', '', 'now', true],
+      audit: buildAuditRow({ ...audit, action: 'client.create', targetTab: 'Customers', targetId: 'a1b-2c' }),
       precheck: async () => {
         order.push('precheck');
       },
@@ -555,12 +555,12 @@ describe('row tabs (Collections / Tags / Clients / Settings)', () => {
     await expect(
       insertTopRow(f.client, {
         tab: 'Customers',
-        cells: ['a1b_2c', 'Nadia', 'scrypt.1.2.3.aa.bb', '', 'now', true],
+        cells: ['a1b-2c', 'Nadia', 'scrypt.1.2.3.aa.bb', '', 'now', true],
         audit: buildAuditRow({
           ...audit,
           action: 'client.create',
           targetTab: 'Customers',
-          targetId: 'a1b_2c',
+          targetId: 'a1b-2c',
         }),
         precheck: async () => {
           throw new Error('code taken');

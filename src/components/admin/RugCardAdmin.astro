@@ -16,12 +16,21 @@ interface Props {
 }
 const { rug, collections } = Astro.props;
 const photo = rug.photos[0] ? driveImageUrl(rug.photos[0], 800) : undefined;
-const meta = [dims(rug.widthCm, rug.lengthCm, 'cm'), rug.material, rug.age, rug.origin].filter(Boolean);
+// Size only. With material, age and origin here too, a fully-filled rug ran four lines longer than
+// a sparse one, so the grid rows went ragged and the plates below them never lined up. Figma's card
+// carries id, title, size and price; the rest is one click away on the rug's own page.
+const meta = [dims(rug.widthCm, rug.lengthCm, 'cm')].filter(Boolean);
 const price = rug.priceUsd ? `$${rug.priceUsd.toLocaleString('en-US')}` : '';
 const slug = rug.collection.trim() ? collectionSlug(rug.collection, collections) : '';
 // Every slug the rug belongs to, so one chip filter drives cards and rows alike.
 const slugs = rug.collections.length ? collectionSlugs(rug.collections, collections).join(' ') : '';
-const search = [rug.name, rug.id, rug.supplierRef, rug.slug].join(' ').toLowerCase().replace(/[<>]/g, ' '); // a haystack, never markup
+// Figma's "All sources" dropdown, delivered without a control: `supplier` is a two-value enum
+// (dto.ts), so a 180px select for two options is furniture — typing "karavan" is faster, and it also
+// matches the supplier's own reference. A haystack, never markup.
+const search = [rug.name, rug.id, rug.supplierRef, rug.slug, rug.supplier]
+  .join(' ')
+  .toLowerCase()
+  .replace(/[<>]/g, ' ');
 // The same corner badge the buyer sees (owner, 2026-09-13), so the owner is looking at their
 // catalogue the way their customer will.
 const badges = badgesFor(rug.tags);
@@ -35,6 +44,7 @@ const badges = badgesFor(rug.tags);
   data-collection={slug}
   data-collections={slugs}
   data-status={rug.status}
+  data-attention={rug.commitStatus === 'pending' ? 'photos' : ''}
   data-search={search}
 >
   <div class="ph">

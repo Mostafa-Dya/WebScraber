@@ -518,6 +518,19 @@
   align-items: flex-start;
   width: 100%;
 }
+/* Zebra striping, which Figma draws on P2 (79:1344). The Products list is a <div> stack rather than
+   a <table> — every row is an editable form surface — so the `tbody tr` rule that stripes the real
+   tables elsewhere does not reach it, and these rows were separated by a hairline alone. Across a
+   1172px row the eye has nothing to track without it. */
+.irow:nth-child(even) .irow__line {
+  background: var(--subtle);
+}
+@media (hover: hover) {
+  .irow .irow__line:hover {
+    background: var(--paper-deep);
+  }
+}
+
 .irow__line {
   box-sizing: border-box;
   display: flex;
@@ -559,7 +572,9 @@
 .irow__action {
   flex: none;
   display: flex;
-  gap: var(--tight);
+  /* 12, not `--tight` — that is 4px in admin mode, which ran "Open" and "Edit" together into one
+     word at a glance. These are two separate destinations and must read as two. */
+  gap: var(--stack-md);
   font-size: var(--text-xs);
   color: var(--ink-muted);
 }
@@ -755,13 +770,28 @@
   -webkit-line-clamp: unset;
   overflow: visible;
 }
+/* The reorder pair. `chevron-up` is not in the handoff's icon set (69:2), so "up" is the same
+   chevron turned over — one glyph, two directions, and no nineteenth icon to keep in sync. */
+.crow__move {
+  flex: none;
+}
+.crow__move--up svg {
+  transform: rotate(180deg);
+}
+
 .crow__more {
   align-self: flex-start;
   padding: 0;
   border: 0;
   background: none;
-  color: var(--ink-soft);
-  font-size: var(--text-xs);
+  /* Was a 12px underlined grey word hugging the description, indistinguishable from body copy.
+     Set off the ghost-button tokens so it reads as the row's disclosure control. */
+  color: var(--ink);
+  font-family: var(--heading);
+  font-weight: var(--weight-label);
+  text-transform: uppercase;
+  text-decoration: none;
+  font-size: var(--size-label);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -889,12 +919,14 @@
 .drawer::backdrop {
   background: var(--bg-overlay);
 }
+/* `--space-inline` is 8 in admin mode against the drawn 16, which is what made the drawer read as
+   cramped. The drawer's inset is its own, mode-invariant, so it matches Figma in both realms. */
 .drawer__header,
 .drawer__footer {
   display: flex;
   align-items: center;
   gap: var(--stack-sm);
-  padding: var(--space-inline);
+  padding: var(--stack-lg);
   background: var(--surface);
 }
 .drawer__header {
@@ -928,7 +960,19 @@
 .drawer__body {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: var(--space-inline);
+  padding: var(--stack-lg);
+}
+/* Without this a drawer whose caller passes no footer still rendered a ~17px empty bar under a
+   full-width rule, so every drawer appeared to end in a broken strip. */
+.drawer__footer:empty {
+  display: none;
+}
+/* `.addform` paints --surface plus a 1px rule, which is correct on a page and wrong inside a drawer
+   that is already --surface: it produced a same-coloured card on a card with doubled padding. */
+.drawer .addform {
+  padding: 0;
+  background: none;
+  border: 0;
 }
 .drawer__spacer {
   flex: 1 1 auto;
@@ -1227,22 +1271,15 @@
 }
 
 /* The login page renders bare — there is no session yet, so there is no nav to render. */
+/* A1 (47:3) centres the card in the viewport. This had no height and a --container-xxs (440) cap,
+   so the card sat 24px from the top of an otherwise empty grey page — and the cap minus two 24px
+   gutters also clamped `.alogin`'s own 400px down to 392, which is why the drawn width never held.
+   Dropping the cap lets the card be the 400 it asks for, and the grid centres it. */
 .bare {
-  max-width: var(--container-xxs);
-  margin: 0 auto;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
   padding: var(--space-section) var(--gutter);
-}
-.bare__wordmark {
-  margin: 0;
-  font-family: var(--heading);
-  font-size: var(--h3);
-  font-weight: var(--weight-heading);
-  line-height: var(--leading-heading);
-  text-transform: uppercase;
-}
-.bare__wordmark a {
-  color: inherit;
-  text-decoration: none;
 }
 
 .shell__main {
@@ -1554,16 +1591,33 @@
 .page-head__titles {
   flex: none;
 }
+/* The page's own heading. Figma draws it (79:1390 "Products" above 79:1392 "412 products · 3 failed
+   to save") and the build rendered only the count line, so every admin page opened with a small grey
+   sentence and no title — which is most of why the panel read as unfinished. The topbar name is a
+   breadcrumb, not a heading: it sits outside the content column and is set at caption size. */
+.page-head__title {
+  margin: 0;
+  font-family: var(--heading);
+  font-size: var(--h1);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-heading);
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
 .page-head__count {
   margin: 0;
   font-size: var(--text-xs);
   line-height: var(--leading-body);
   color: var(--ink-muted);
 }
+/* A SPACER, not a rule. Figma draws a 1px-tall frame here (79:1394 in P2, 25:235 in the App Shell
+   topbar) and it is the file's flex-gap idiom, not a hairline — `PreviewHeader.astro` documents the
+   same element on the customer side: "a zoomed render shows no line there", and `.pv-spacer` is
+   correctly invisible. The admin painted it, so every page header and collection row carried a long
+   thin line running into the button, which reads as a rendering fault rather than a design. */
 .page-head__rule {
   flex: 1 1 auto;
-  height: var(--rule-width);
-  background: var(--rule);
+  min-width: var(--stack-md);
 }
 
 @media (max-width: 767px) {
@@ -1615,10 +1669,10 @@
   line-height: var(--leading-heading);
   text-transform: uppercase;
 }
+/* Spacer, not a rule — same reading as `.page-head__rule` above. */
 .crow__rule {
   flex: 1 1 auto;
-  height: var(--rule-width);
-  background: var(--rule);
+  min-width: var(--stack-md);
 }
 .crow__count {
   flex: none;

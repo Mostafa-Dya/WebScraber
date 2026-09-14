@@ -8,6 +8,7 @@
 // uses (recorded as a deliberate deviation in docs/ADR.md D16).
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { hashPassword, verifyPassword } from '../admin/auth.ts';
+import { CUSTOMER_MIN_PASSWORD } from './password-policy.ts';
 
 export { hashPassword, verifyPassword };
 
@@ -106,22 +107,14 @@ const WORDS: readonly string[] = [
 ];
 
 /**
- * The floor for a password the owner types in themselves. Shorter than the admin's twelve because
- * this one is read down a phone and typed on a handset, and the login is already throttled to five
- * attempts per address per fifteen minutes. Anything the studio picks should still be more than a
- * first name.
+ * The password policy lives in ./password-policy.ts, which imports NOTHING from Node.
+ *
+ * It has to be reachable from the admin's browser bundle, and this module cannot be: it imports
+ * `node:crypto` above, whose browser stub throws on access, so importing the checker from here took
+ * the whole Customers screen's JavaScript down with it. Re-exported so every server caller keeps
+ * working unchanged.
  */
-export const CUSTOMER_MIN_PASSWORD = 8;
-
-/** The message the admin shows for a password that is too short; also the API's 400 text. */
-export function customerPasswordProblem(password: string): string | undefined {
-  const value = password.trim();
-  if (value.length < CUSTOMER_MIN_PASSWORD) {
-    return `A password needs at least ${CUSTOMER_MIN_PASSWORD} characters.`;
-  }
-  if (value.length > 200) return 'That password is too long.';
-  return undefined;
-}
+export { CUSTOMER_MIN_PASSWORD, customerPasswordProblem } from './password-policy.ts';
 
 /** Hashes a buyer's password under the customer realm's own minimum. */
 export function hashCustomerPassword(password: string): string {

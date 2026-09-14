@@ -1,7 +1,9 @@
 // /admin/clients (docs/ADMIN_SPEC.md §6, §8.3): generate a unique link (name, note → code → link +
 // Copy), revoke / restore rows, and the saves report (most saved + per-client lists) from
 // GET /api/admin/clients/report. Everything rendered as text nodes.
-import { customerPasswordProblem } from '../../lib/customer/auth.ts';
+// NOT from '../../lib/customer/auth.ts': that module imports `node:crypto`, whose browser stub
+// throws at import time, which used to kill every handler on this page.
+import { customerPasswordProblem } from '../../lib/customer/password-policy.ts';
 import { get, post, type ApiOptions } from './api.ts';
 import { byId, clear, el, readJson } from './dom.ts';
 import { hide, msg } from './msg.ts';
@@ -38,6 +40,34 @@ export interface ReportLike {
   }>;
   rowsRead: number;
   rowsDropped: number;
+}
+
+/**
+ * The Copy-link control, cloned from the `#copyTpl` template the page renders with `CopyButton`.
+ *
+ * This used to be hand-rolled here as a bare <button> with a single <span> — no icons, no
+ * `data-copied-label` — so `copy.ts` could swap the label but the `.copy__icon--default` →
+ * `.copy__icon--copied` rule had nothing to act on, and the caption printed directly under the table
+ * ("the control changes icon, label and colour for 2 seconds") described behaviour the page did not
+ * have. Rebuilding a row after a toggle also quietly replaced the server's correct markup with this
+ * poorer copy. Cloning the template keeps both paths identical by construction.
+ */
+function copyControl(link: string, doc: Document): HTMLElement {
+  const tpl = doc.getElementById('copyTpl');
+  if (tpl instanceof HTMLTemplateElement) {
+    const node = tpl.content.firstElementChild?.cloneNode(true);
+    if (node instanceof HTMLElement) {
+      node.setAttribute('data-copy', link);
+      return node;
+    }
+  }
+  // No template (an older page, or a test fixture): the plain control still copies.
+  return el(
+    'button',
+    { type: 'button', class: 'copy', 'data-copy': link, 'data-label': 'Copy link' },
+    el('span', { 'data-copy-label': '' }, 'Copy link', doc),
+    doc,
+  );
 }
 
 export function clientRow(c: ClientLike, doc: Document = document): HTMLTableRowElement {
@@ -90,12 +120,7 @@ export function clientRow(c: ClientLike, doc: Document = document): HTMLTableRow
         [
           // "Copy-link is the most-used action here — the control changes icon, label and colour for
           // 2 seconds. A toast alone is missable when copying several in a row." (52:1114)
-          el(
-            'button',
-            { type: 'button', class: 'copy', 'data-copy': c.link, 'data-label': 'Copy link' },
-            el('span', { 'data-copy-label': '' }, 'Copy link', doc),
-            doc,
-          ),
+          copyControl(c.link, doc),
           el(
             'button',
             { type: 'button', class: 'btn btn--ghost', 'data-act': 'password' },

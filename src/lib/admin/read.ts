@@ -68,6 +68,25 @@ export interface AdminSnapshot {
  * the site validates. 'missing' is reported when the tab has no header row at all — the owner has
  * not run `npm run sheet:init` yet.
  */
+/**
+ * The topbar's status line — Figma's App Shell draws "Sheet synced 4 min ago" (25:236) on the right
+ * of every admin screen, and it was the only thing between the page name and the logout glyph 1160px
+ * away. The slot was plumbed all the way through AdminLayout and AppShell; no page ever filled it,
+ * so the bar read as half-finished on every screen.
+ *
+ * Deliberately coarse. The exact second is noise to the owner — what they need to know is whether
+ * what they are looking at is current, and "4 min ago" answers that while "14:32:07" does not.
+ */
+export function syncLabel(fetchedAt: number, now: number = Date.now()): string {
+  const seconds = Math.max(0, Math.round((now - fetchedAt) / 1000));
+  if (seconds < 45) return 'Sheet synced just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `Sheet synced ${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `Sheet synced ${hours} h ago`;
+  return `Sheet synced ${Math.round(hours / 24)} d ago`;
+}
+
 export function assertAdminHeaders(headerRow: CellValue[] | undefined): AdminHeadersState {
   if (!headerRow || headerRow.every((c) => String(c ?? '').trim() === '')) return 'missing';
   assertHeaders(TABS.products, headerRow);

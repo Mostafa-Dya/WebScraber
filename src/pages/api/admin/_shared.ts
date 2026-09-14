@@ -7,7 +7,7 @@ import { consoleLogger } from '../../../lib/sheets/errors.ts';
 import { parseCollections, parseTags } from '../../../lib/sheets/parse.ts';
 import type { Rotate, Status } from '../../../lib/sheets/types.ts';
 import { AdminError, adminRuntime } from '../../../lib/admin/http.ts';
-import { clientLink, parseClients } from '../../../lib/admin/clients.ts';
+import { clientLink, parseClients, withoutSecrets } from '../../../lib/admin/clients.ts';
 import type { RugInputT } from '../../../lib/admin/dto.ts';
 import {
   adminRugFromCells,
@@ -108,7 +108,18 @@ type RugBody = Omit<RugInputT, 'id' | 'roundPrice' | 'slug'>;
 /** RugFields from a validated body plus the resolved slug / collection / tags and the price to store. */
 export function rugFieldsFrom(
   body: RugBody,
-  resolved: { slug: string; collections: string[]; tags: string[]; priceUsd: number | undefined },
+  resolved: {
+    slug: string;
+    collections: string[];
+    tags: string[];
+    priceUsd: number | undefined;
+    /**
+     * The row's existing scrape date, on update. `RugUpdate` has no `scrapedAt` — it is provenance
+     * the server owns, not something a form posts — so without this the rebuilt full-width row wrote
+     * an empty string over it on every save. Absent on create, where the caller stamps `now`.
+     */
+    scrapedAt?: string;
+  },
 ): RugFields {
   return {
     slug: resolved.slug,
@@ -134,6 +145,7 @@ export function rugFieldsFrom(
     commitStatus: body.commitStatus,
     driveFolderId: body.driveFolderId,
     driveFolderUrl: body.driveFolderUrl,
+    scrapedAt: resolved.scrapedAt,
   };
 }
 
@@ -163,6 +175,15 @@ export function fieldsOfRug(rug: AdminRug): RugFields {
     commitStatus: rug.commitStatus,
     driveFolderId: rug.driveFolderId,
     driveFolderUrl: rug.driveFolderUrl,
+    /**
+     * Server-owned provenance, carried through rather than re-derived.
+     *
+     * `productFieldsToCells` writes a FULL-WIDTH row and sets `cells[scrapedAt] = f.scrapedAt ?? ''`,
+     * so anything that rebuilds the row from a `RugFields` without this field silently erases the
+     * column. The create and retry paths both remembered to stamp it inline; `fieldsOfRug` did not,
+     * so a status change blanked it — and `rugFieldsFrom` did not either, so did every ordinary edit.
+     */
+    scrapedAt: rug.scrapedAt,
   };
 }
 
@@ -248,9 +269,16 @@ export async function freshClient(client: Pick<SheetsClient, 'batchGet'>, row: n
   return { ...c, row, version: rowVersion(cells, HEADERS.Customers.length) };
 }
 
-/** Clients as the UI shows them: the link always regenerated from the runtime SITE_URL (§3.2). */
-export function clientView(c: AdminClient): AdminClient {
-  return { ...c, link: clientLink(adminRuntime.siteUrl, c.code) };
+/**
+ * Clients as the UI shows them: the link always regenerated from the runtime SITE_URL (§3.2), and
+ * the stored password hash stripped.
+ *
+ * This used to spread `c` wholesale, which carried `passwordHash` into every clients API response
+ * and into the admin page's embedded JSON. A scrypt hash is not a password, but publishing one for
+ * every buyer turns a single admin-session leak into an offline cracking target for the whole list.
+ */
+export function clientView(c: AdminClient): Omit<AdminClient, 'passwordHash'> {
+  return { ...withoutSecrets(c), link: clientLink(adminRuntime.siteUrl, c.code) };
 }
 
 /** Raw `A{row}:D{row}` of a Settings row → its whole-row version token (the parsed rows carry none). */

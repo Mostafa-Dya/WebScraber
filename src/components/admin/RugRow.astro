@@ -29,7 +29,13 @@ const slug = rug.collection.trim() ? collectionSlug(rug.collection, collections)
 const slugs = rug.collections.length ? collectionSlugs(rug.collections, collections).join(' ') : '';
 const size = dims(rug.widthCm, rug.lengthCm, 'cm');
 const price = rug.priceUsd ? `$${rug.priceUsd.toLocaleString('en-US')}` : '';
-const search = [rug.name, rug.id, rug.supplierRef, rug.slug].join(' ').toLowerCase().replace(/[<>]/g, ' ');
+// Figma's "All sources" dropdown, delivered without a control: `supplier` is a two-value enum
+// (dto.ts), so a 180px select for two options is furniture — typing "karavan" is faster, and it also
+// matches the supplier's own reference. A haystack, never markup.
+const search = [rug.name, rug.id, rug.supplierRef, rug.slug, rug.supplier]
+  .join(' ')
+  .toLowerCase()
+  .replace(/[<>]/g, ' ');
 ---
 
 <div
@@ -40,6 +46,7 @@ const search = [rug.name, rug.id, rug.supplierRef, rug.slug].join(' ').toLowerCa
   data-collection={slug}
   data-collections={slugs}
   data-status={rug.status}
+  data-attention={rug.commitStatus === 'pending' ? 'photos' : ''}
   data-search={search}
 >
   <div class="irow__line">
@@ -50,6 +57,18 @@ const search = [rug.name, rug.id, rug.supplierRef, rug.slug].join(' ').toLowerCa
     <span class="irow__price">{price}</span>
     <span class="irow__spacer"></span>
     <span class="irow__action">
+      {
+        /* Brief §12: a row whose photo import did not finish says so, and the list offers to finish
+           it. RugCardAdmin has rendered this since it shipped; the ROW did not — and the row is the
+           DEFAULT view (view-switch.ts rests on 'list'), so the only route to a half-imported rug
+           was to switch to cards and scroll the catalogue hunting for badges. `retryPhotos()` in
+           rug-list.ts is bound by delegation, so this needs no new script. */
+        rug.commitStatus === 'pending' && (
+          <button type="button" class="chip retry" data-retry={rug.id}>
+            Finish photo import
+          </button>
+        )
+      }
       <a href={`/admin/rugs/${encodeURIComponent(rug.id)}`}>Open</a>
       <button type="button" data-edit={rug.id}>Edit</button>
     </span>

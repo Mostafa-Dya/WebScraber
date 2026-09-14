@@ -27,9 +27,15 @@ export function bindOverlays(opts: OverlayBindings = {}): () => void {
   for (const el of Array.from(doc.querySelectorAll<HTMLElement>('[data-open]'))) {
     const id = el.getAttribute('data-open');
     if (!id) continue;
-    const handler = (): void => {
+    const handler = (event: Event): void => {
       const dialog = doc.getElementById(id);
+      // No dialog on this page: let the event run. The opener is often an <a> whose href is the
+      // no-JS fallback (Add product -> /admin/rugs/new), and that fallback must still work.
       if (!(dialog instanceof HTMLDialogElement)) return;
+      // The dialog EXISTS, so it is the experience Figma specifies (P3/P4 draw Add product as a
+      // slide-over, not a page). Without this the anchor navigated and the drawer was unreachable:
+      // it opened for one frame and the browser left the page. The whole drawer flow shipped dead.
+      event.preventDefault();
       openers.set(id, el);
       dialog.showModal();
       // <dialog> focuses the first focusable child, which is the Close control — so opening

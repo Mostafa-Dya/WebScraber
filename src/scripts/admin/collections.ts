@@ -33,6 +33,31 @@ export function collectionRow(c: CollectionLike, index: number, doc: Document = 
   const input = (field: string, value: string, label: string): HTMLInputElement =>
     el('input', { 'data-field': field, value, 'aria-label': label, class: 'input' }, [], doc);
 
+  /**
+   * A reorder control, cloned from the `#moveTpl` template the page renders with the Icon component.
+   *
+   * This used to insert the literal character ▲ / ▼ as the button's text, so a rebuilt row showed a
+   * bare triangle in the heading font where the server had rendered an icon. `chevron-up` is not in
+   * the handoff's icon set, so "up" is the same chevron rotated by `.crow__move--up`.
+   */
+  const moveButton = (act: 'up' | 'down', aria: string, d: Document): HTMLButtonElement => {
+    const tpl = d.getElementById('moveTpl');
+    const node = tpl instanceof HTMLTemplateElement ? tpl.content.firstElementChild?.cloneNode(true) : undefined;
+    if (node instanceof HTMLButtonElement) {
+      node.setAttribute('data-act', act);
+      node.setAttribute('aria-label', aria);
+      if (act === 'up') node.classList.add('crow__move--up');
+      return node;
+    }
+    // No template (an older page, or a test fixture): still a working, labelled control.
+    return el(
+      'button',
+      { type: 'button', class: `btn btn--ghost crow__move${act === 'up' ? ' crow__move--up' : ''}`, 'data-act': act, 'aria-label': aria },
+      '',
+      d,
+    );
+  };
+
   const ghost = (act: string, label: string, aria?: string): HTMLButtonElement =>
     el(
       'button',
@@ -55,8 +80,8 @@ export function collectionRow(c: CollectionLike, index: number, doc: Document = 
         `${c.rugs ?? 0} ${(c.rugs ?? 0) === 1 ? 'product' : 'products'}`,
         doc,
       ),
-      ghost('up', '▲', `Move ${c.name} up`),
-      ghost('down', '▼', `Move ${c.name} down`),
+      moveButton('up', `Move ${c.name} up`, doc),
+      moveButton('down', `Move ${c.name} down`, doc),
       ghost('edit', 'Edit'),
     ],
     doc,

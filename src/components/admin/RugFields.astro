@@ -17,8 +17,25 @@ interface Props {
   roundStep: number;
   driveScopeOk: boolean | null;
   nextId?: string;
+  /**
+   * False inside the Add-product drawer, whose FOOTER owns Fetch (Figma P3 80:1480 draws the action
+   * in the footer bar, not floating inline mid-body). The standalone /admin/rugs/new page — the
+   * no-JS fallback — has no footer, so it keeps the inline control. rug-form.ts finds the button by
+   * id across the whole document, so it does not care which of the two rendered it.
+   */
+  fetchButton?: boolean;
 }
-const { mode, rug, collections, tags, defaultStatus, roundStep, driveScopeOk, nextId } = Astro.props;
+const {
+  mode,
+  rug,
+  collections,
+  tags,
+  defaultStatus,
+  roundStep,
+  driveScopeOk,
+  nextId,
+  fetchButton = true,
+} = Astro.props;
 const edit = mode === 'edit';
 const v = (s: string | number | undefined): string => (s === undefined ? '' : String(s));
 const pressed = new Set(rug?.tags.map((t) => t.toLowerCase()) ?? []);
@@ -33,57 +50,82 @@ const openSite = rug ? `/rugs/${rug.slug}` : '#';
 const chosenCollections = new Set((rug?.collections ?? []).map((c) => c.trim().toLowerCase()));
 ---
 
-<div class="row">
-  {
-    !edit && (
-      <div class="grow">
-        <input
-          id="yourName"
-          placeholder="Your name for this rug — e.g. Khal Mohammadi"
-          autocomplete="off"
-          aria-label="Your name for this rug"
-        />
+{/* The add strip. Every control carries a VISIBLE label: these were placeholder-only, and a
+    placeholder disappears the moment you type — so the one time you need to know what a field is
+    (checking what you just entered) is the one time nothing tells you. The revealed `.fields` grid
+    below always had labels; this brings the top of the form up to the same standard. */}
+<div class="addform">
+  {/* P3 (80:1480) opens the drawer on the rug number. It used to live in `#preview`, which is
+      `display: none` until a scrape succeeds (admin.css `.preview`) — so the server allocated the
+      next id, rendered it, and then hid it, and the drawer opened on "Your name for this rug" with
+      its primary field nowhere on screen. */}
+  <div class="f">
+    <label for="f_id">Rug number (id)</label>
+    <input id="f_id" value={rug?.id ?? nextId ?? ''} readonly={edit} autocomplete="off" />
+    <p class="hint">Must be unique. It names the Drive folder and keys the sheet row.</p>
+  </div>
+
+  <div class="row">
+    {
+      !edit && (
+        <div class="f grow">
+          <label for="yourName">Your name for this rug</label>
+          <input id="yourName" placeholder="e.g. Khal Mohammadi" autocomplete="off" />
+        </div>
+      )
+    }
+    <div class="f narrow">
+      <span class="f__legend">Collections</span>
+      <MultiSelect
+        id="f_collection"
+        name="collection"
+        label="Collections"
+        placeholder="Choose collections…"
+        required
+        options={collections.map((c) => ({
+          value: c.name,
+          label: c.name,
+          selected: chosenCollections.has(c.name.trim().toLowerCase()),
+        }))}
+      />
+    </div>
+  </div>
+
+  <div class="f">
+    <span class="f__legend">Tags</span>
+    <div class="tagrow">
+      <Chips id="tagChips" label="Tags" chips={tagChips} multi />
+      <div class="newtag">
+        <label class="sr-only" for="newTag">New tag name</label>
+        <input id="newTag" placeholder="New tag" autocomplete="off" />
+        <button class="chip" id="btnNewTag" type="button">
+          Add tag
+        </button>
       </div>
-    )
-  }
-  <div class="narrow">
-    <MultiSelect
-      id="f_collection"
-      name="collection"
-      label="Collections"
-      placeholder="Collections…"
-      required
-      options={collections.map((c) => ({
-        value: c.name,
-        label: c.name,
-        selected: chosenCollections.has(c.name.trim().toLowerCase()),
-      }))}
-    />
+    </div>
   </div>
-</div>
-<div class="row tagrow">
-  <Chips id="tagChips" label="Tags" chips={tagChips} multi />
-  <div class="newtag">
-    <input id="newTag" placeholder="+ new tag" autocomplete="off" aria-label="New tag name" />
-    <button class="chip" id="btnNewTag" type="button">Add tag</button>
-  </div>
-</div>
 {
   !edit && (
     <>
-      <div class="row">
-        <div class="grow">
-          <input
-            id="url"
-            placeholder="Product link — ecarpetgallery.com or karavanrug.com"
-            inputmode="url"
-            autocomplete="off"
-            aria-label="Supplier product link"
-          />
+      <div class="f">
+        <label for="url">Supplier product link</label>
+        <div class="row">
+          <div class="grow">
+            <input
+              id="url"
+              placeholder="ecarpetgallery.com or karavanrug.com"
+              inputmode="url"
+              autocomplete="off"
+            />
+          </div>
+          {
+            fetchButton && (
+              <button class="go" id="btnFetch" type="button">
+                Fetch
+              </button>
+            )
+          }
         </div>
-        <button class="go" id="btnFetch" type="button">
-          Fetch
-        </button>
       </div>
       <p class="hint">Your name is what clients see. The link only supplies size, material, age and price.</p>
       <p class="hint" id="supplierTitle" hidden />
@@ -91,13 +133,10 @@ const chosenCollections = new Set((rug?.collections ?? []).map((c) => c.trim().t
     </>
   )
 }
+</div>
 
 <div id="preview" class:list={['preview', { on: edit }]}>
   <div class="fields">
-    <div class="f">
-      <label for="f_id">Rug number (id)</label>
-      <input id="f_id" value={rug?.id ?? nextId ?? ''} readonly={edit} autocomplete="off" />
-    </div>
     <div class="f">
       <label for="f_slug">Slug (URL)</label>
       <div class="pair">

@@ -828,9 +828,13 @@ it is now for. The visible consequence is a repricing — ECG $700 moves 1120 �
 example (`/hi6g2a3a%s`) uses `%`, which begins a percent-escape in a URL path; `%s` is not valid hex,
 so the link would be mangled or rejected. The obvious substitutes were the other RFC 3986 unreserved
 characters, `~` and `.`, and those were built first — **and would have been a real defect**. The same
-string is written into the sheet as `customer_slug` and into every Reactions row as `client`, both of
-which parse against `/^[A-Za-z0-9_-]{1,64}$/`. A `~` there does not look odd; the customer's own row
-fails to parse and the buyer disappears from the catalogue. The generator is therefore constrained to
+string is written into the sheet as the Customers tab's own `slug` and into every Reactions row as
+`client`. **Correction (D22, 2026-09-14): those two columns do NOT share an alphabet, and the
+sentence that used to stand here — "both of which parse against `/^[A-Za-z0-9_-]{1,64}$/`" — was
+false and caused a site-down defect.** Reactions uses that rule; Customers uses
+`SLUG_RE = /^[a-z0-9-]{1,80}$/`, which admits neither `~`, `.` nor `_`. The narrower column governs,
+so the filler set is `-` alone. A character outside it does not look odd; the customer's own row
+fails to parse, the buyer disappears, and past a 10 % drop ratio the whole catalogue 503s. The generator is therefore constrained to
 the **intersection** of what a URL path allows and what the sheet stores, and never places a filler
 first or last. The code is a locator, not a credential — it leaks roughly half the buyer's letters by
 design and carries perhaps 25 bits — which is acceptable only because §10 keeps a password gate
@@ -912,6 +916,327 @@ fallback is silent — the declaration is dropped and nothing complains. `--disp
 `--font-weight-bold`, `--leading-tight` and `--inset` were written from the handoff's naming rather
 than this repo's and would have shipped as a missing font, weight, line-height and background.
 `tests/unit/styles/token-cascade.test.ts` now asserts every token any component reads is defined.
+
+### D22 — Six defects the green gates were hiding (2026-09-14)
+
+**Decision.** A full scope audit ran against a tree where 1008 tests, `astro check`, lint, build and
+the 12-point geometry sweep were all green. It found **6 blockers and 30 major defects**. Every gate
+had been passing throughout. The lesson is recorded here because it governs how this repo should be
+checked from now on: **the gates prove nothing regressed, not that a requirement works.** Four of the
+six were invisible to the suite by construction — two were CSS cascade and serialisation facts no
+unit test observed, one was asserted by a test reading the wrong side of the behaviour, and one was
+a cross-module contract no single module's tests could see.
+
+**The underscore in a customer code was a site-down defect, and this ADR asserted the opposite.**
+D20 states that the code is stored in two columns "both of which parse against
+`/^[A-Za-z0-9_-]{1,64}$/`". That is false, and the false half is load-bearing. `ReactionRow
+.customer_slug` does use that rule, but the Customers tab's own `slug` uses `SLUG_RE =
+/^[a-z0-9-]{1,80}$/` — no underscore (`src/lib/sheets/parse.ts:70,142`). Measured: **38.9 % of
+generated codes contained `_`**. Such a row is written happily and dropped on every read, and because
+`Customers` is a `GUARDED_TAB` at `MAX_DROPPED_RATIO = 0.1` (`src/lib/sheets/read.ts:8-17`), **more
+than one bad customer in ten rejects the entire refresh and 503s the whole catalogue** — every buyer,
+not just the one with the bad link. The fix narrows `FILLER_SYMBOLS` to `'-'` AND narrows
+`CLIENT_CODE_RE` to match, so the generator's own guard now fails loudly rather than the sheet
+failing silently. `CLIENT_CODE_RE` must stay a subset of `SLUG_RE`; widening it re-arms the outage.
+
+**`hidden` did not hide, so the default admin Products view listed every rug twice.**
+`[hidden] { display: none }` lives in the user-agent origin, so `.grid { display: grid }` beat it and
+`view-switch.ts`'s `grid.hidden = true` had no effect. The unit test read the `.hidden` *property*,
+which was correctly `true` the entire time — the test and the screen disagreed and only the screen
+was right. Fixed with a `[hidden]` reset in the admin origin, and guarded by a live computed-style
+check in `verify-geometry.ts` rather than another declaration test, because only a real cascade can
+prove a cascade. `catalogue.css`, `editorial.css` and `controls.css` each patch one selector for the
+same reason; this is that fix made general.
+
+**Every inline row rename 400'd.** `POST /api/admin/rugs/:id` validates with `RugUpdate`, which is
+the whole rug plus a version — it replaces the row rather than patching it. `inline-row.ts` posted
+`{ name }`. The rename now reads the row first and returns it with one field changed, which also
+keeps optimistic concurrency honest because `version` comes from that same read. `slug` and
+`sourceUrl` are `.optional()` and not nullable, so an empty string fails validation and they are sent
+only when non-empty. The new guard asserts the posted body against the real `RugUpdate` schema, so it
+cannot drift from the route.
+
+**The like threshold was skin-deep.** `visibleLikes()` was correct and correctly used for the painted
+badge, while the raw sub-5 count shipped anyway in `data-like-count` and `data-likes`, and the "Most
+liked" sort ranked on those hidden numbers — publishing the whole secret ordering even though no
+digit was ever drawn. Both attributes are now thresholded. Because `likesOf` reads a missing
+attribute as 0, this also settles PLAN decision 4(c) the only way consistent with the requirement:
+**the sort ranks within the visible set and leaves every hidden-count rug in served order beneath
+it.** `POST /api/reactions` echoed exact counts back to anyone who asked — a body of 25
+`reaction: "none"` items writes nothing, spends no budget and returned 25 exact counts — so the
+response is thresholded for a named buyer. It is not thresholded for an anonymous visitor, because
+the public catalogue card renders a real rating line and needs the totals to repaint it.
+
+**Every customer's scrypt hash was serialised into the admin page.** `parseClients` sets
+`passwordHash` on every row despite a doc comment claiming otherwise, and both the clients API and
+the admin page spread the row wholesale into JSON. `withoutSecrets()` is now the only shape allowed
+to leave the server, written as an explicit destructure so a future secret on `ClientRow` forces a
+compile-time decision rather than shipping silently.
+
+**A 59-character customer name threw a 500.** `ClientInput` allows 60 characters and the field has no
+`maxlength`, so "half the name" plus fillers overflowed `CLIENT_CODE_RE`'s 28-character ceiling and
+the owner simply could not add that customer. `take` is capped at 24, which is the largest value that
+can never overflow once up to four fillers are woven in.
+
+**Every fix carries a mutation-tested guard.** Each new test was run against the reintroduced bug and
+confirmed to fail, then against the fix and confirmed to pass. A guard that has not been seen to fail
+is not evidence. Gates after this batch: **1014 tests, 0 typecheck errors, lint clean, build green,
+13/13 live geometry.**
+
+### D23 — A server module in a browser bundle killed the Customers screen (2026-09-14)
+
+**Decision.** The owner reported that no button on `/admin/clients` did anything — no new link, no
+password reset, no Active toggle — with one console error: `Module "node:crypto" has been
+externalized for browser compatibility … at auth.ts:1:50`.
+
+**Cause.** `src/scripts/admin/clients.ts` imported `customerPasswordProblem` from
+`src/lib/customer/auth.ts` to validate a typed password before sending it. That module imports
+`node:crypto` at the top for scrypt, HMAC and `timingSafeEqual`. Vite externalises `node:crypto` for
+the browser and its stub **throws on first property access**, so the import failed at module scope
+and nothing in that file ever bound. One bad import took down every handler on the screen — the
+failure is total, not partial, which is why it looked like "the whole page is dead" rather than one
+broken button.
+
+**Why nothing caught it.** Typecheck is satisfied (the types are real and the function is genuinely
+exported), lint is satisfied, the integration tests render the page through the container API and
+never execute its scripts, and `astro build` **warned and continued**: `Module "node:crypto" has been
+externalized for browser compatibility, imported by src/lib/customer/auth.ts`. That warning was
+visible in the build output during the D22 pass and was not acted on. A warning nobody is required to
+read is not a gate.
+
+**Fix.** The pure half — `CUSTOMER_MIN_PASSWORD` and `customerPasswordProblem`, which use no crypto
+at all — moved to `src/lib/customer/password-policy.ts`, a module that must never import a Node
+builtin. `customer/auth.ts` re-exports both, so every server caller is unchanged; the admin script
+imports the policy module directly. Confirmed on the built output: the shipped
+`clients.astro…js` bundle carries the password check and contains **zero** references to
+`node:crypto` or the Vite stub, and the build now emits **no** externalisation warnings at all
+(there were two).
+
+**The general rule, now enforced.** When a browser needs a constant or a validator that happens to
+live beside server crypto, split the shared part into its own Node-free module — never import the
+server one. `tests/unit/styles/client-bundle-purity.test.ts` walks the import graph from every entry
+under `src/scripts/` and fails on the first `node:*` it can reach, printing the whole chain. It
+carries its own mutation check (it asserts that `customer/auth.ts` IS still detected as a violation)
+so it cannot go quietly green if the walker breaks. Gates: **1049 tests**, 0 typecheck errors, lint
+clean, build green with no warnings, 13/13 live geometry.
+
+### D24 — The admin was a half-migrated stylesheet (2026-09-14)
+
+**Decision.** The owner reported the admin UI "not too good" — inputs, dropdowns and general feel.
+Rendering the real pages through the container API and screenshotting them with the live CSS showed
+the cause plainly, and it was not taste: **`admin.css` was still the `reference/admin.html` port**,
+while `controls.css` and `components.css` had moved onto the Figma token system. The admin was
+running a second, older design language beside the one the rest of the app uses.
+
+**What was actually wrong**, measured rather than judged:
+
+- **23 rules set `var(--mono)` at hardcoded 9, 10, 11, 12, 13 and 22px**, and ten of those were also
+  uppercase with 0.1–0.28em tracking. Form labels, buttons, chips, table headers, help text and
+  status messages were all tiny letterspaced monospace. Paragraphs of guidance rendered as terminal
+  output. Mono now survives on seven selectors only, each a machine value: product id, price, `<pre>`,
+  key names, the count badge, the stat numeral, copyable cells.
+- **Three control heights on one row** — 37.8 (inputs), 40.6 (buttons/chips), 42.2 (the multi-select).
+  Cause: the legacy `input` rule omitted `line-height`, so it inherited the ambient value and landed
+  4.4px short of the canonical `.input`. Now 42.2 for inputs and 40.6 for buttons everywhere, which
+  is what `controls.css` already produced and what Figma draws (41.8 / 40.8). Two heights by design,
+  not three by accident.
+- **Figma's 1px spacer frames were being painted as hairlines.** `.page-head__rule` and `.crow__rule`
+  gave every page header and collection row a long thin line running into the button, which reads as
+  a rendering fault. `PreviewHeader.astro` already documents the correct reading of the same element
+  — "a zoomed render shows no line there" — and `.pv-spacer` is correctly invisible. The admin simply
+  read it the other way. `.divider` is a real divider and is untouched.
+- **The add-rug strip had no visible labels at all** — name, collections, tags and supplier link were
+  placeholder-only, and a placeholder disappears exactly when you need it (checking what you typed).
+  At 390 the link placeholder truncated mid-word, so the field was unidentifiable. The revealed
+  `.fields` grid below it always had labels; the top of the form now matches it.
+- **The tag row had no rule of its own**, so chips, the new-tag input and its button fell into a bare
+  flex wrap at three different heights with the button orphaned under its field.
+
+**Convergence, not a new look.** Every value comes from tokens the project already had and the admin
+was ignoring — `--input-y`/`--control-y`, `--tight`, `--space-field`, `--size-label`, `--text-xs`.
+`.f label` is now identical to `controls.css`'s `.field__label` rather than a third label style that
+nearly agreed with it, and `.f__legend` exists so a control group whose own label is `sr-only` (the
+chip group, the multi-select) still shows one. No new visual language was invented and no Figma
+geometry changed: the 13-point live sweep still passes unaltered.
+
+**Guarded.** `tests/unit/styles/admin-typography.test.ts` fails on any monospace rule outside the
+machine-value allow-list, on any raw px `font-size`, and on an input or button without an explicit
+`line-height`. Mutation-tested against a reintroduced `.hint` regression. Gates: **1056 tests**, 0
+typecheck errors, lint clean, 13/13 geometry.
+
+### D25 — The admin under-delivered on Figma; the shared layer was never finished (2026-09-14)
+
+**Decision.** After D24 fixed the admin's typography and control metrics, the owner said the visual
+UI was still not good. D24 had treated it as a styling problem. It was not: six reviewers compared
+every admin screen against its Figma frame, and the finding was that **elements the file draws were
+never built**, plus two features that shipped dead.
+
+**Two features nobody had ever seen.**
+- **The Add-product drawer.** Figma specifies Add product as a slide-over (P3 80:1480, P4 80:1578),
+  `Drawer.astro` is fully built, and `/admin/rugs` renders it wired to the real form. But the button
+  carried both `href="/admin/rugs/new"` and `data-open="add-rug"`, and `overlay.ts` never called
+  `preventDefault()` — so the drawer opened for one frame and the browser navigated away. The `href`
+  is a deliberate no-JS fallback and is kept; the drawer now wins whenever the dialog exists.
+- **The page title.** Figma draws "PRODUCTS" over "412 products · 3 failed to save" (79:1390/79:1392);
+  the build rendered only the grey count line. Every admin page opened with no heading, which is most
+  of why the panel read as unfinished.
+
+**The shared layer.** These are all one-line faults that every screen inherited:
+- `td { vertical-align: top }` against a `.toggle` carrying `min-height: 44px` — so every Customers
+  row opened to ~60px with the text pinned at the top and the switch 22px below it. One declaration,
+  and the loudest single reason the tables looked broken.
+- `.acts`, the action cell, **had no rule at all**: a 21px Copy control baseline-aligned against a
+  32px button with a whitespace node between them.
+- `--subtle` is annotated "table row hover" in the tokens and was **unused** — no hover, no zebra.
+- `data-status="revoked"` was emitted on every customer row and **styled nowhere**, so a dead link
+  looked identical to a live one.
+- `.field { gap: var(--tight) }` — `--tight` is 12 in the preview realm but **4 in admin**, so every
+  label crowded its input and error messages sat flush against the field box. Moved to `--stack-sm`,
+  which is mode-invariant. The same token was behind "Open"/"Edit" running together in the row
+  actions.
+- The topbar's `meta` slot was plumbed through `AdminLayout` → `AppShell` and **no page ever passed
+  it**, so the right half of the bar was empty everywhere. `syncLabel()` fills it.
+- **Login** printed the wordmark twice with the strapline in brand red between them — the only red in
+  the panel — and `.bare` had no height and a 440 cap, so the drawn 400 card was clamped to 392 and
+  sat at the top of an empty viewport.
+
+**A regression this pass caused, and caught.** D24 added `[hidden] { display: none !important }` so
+the attribute would work. Below 768px the products table is `display: none` and `view-switch.ts`
+defaults to the table — so once `hidden` started being honoured, **a phone rendered the header, the
+filters, and no products at all.** Before the reset, the grid leaked through and mobile worked by
+accident. Fixed in `bindViewSwitch`, which must decide it in JS because no stylesheet can outrank
+`!important`; it re-evaluates on the breakpoint's `change` event so rotating a phone cannot strand
+the catalogue either.
+
+**A second data-visibility bug.** The Products status filter hardcoded "Active" as pressed, while
+`default_status` is a Settings value that legitimately returns `draft` — so a freshly scraped
+catalogue opened on "Nothing matches those filters" above a full sheet. The pressed chip now follows
+the data: never a filter that hides everything.
+
+**One reviewer finding rejected.** A reviewer called the unlit nav on `/admin` a bug and proposed
+lighting "Products". `tests/integration/admin-dashboard.test.ts:114` states the intent explicitly —
+"the dashboard is the wordmark link, not a tab" — and lighting Products would claim the owner is
+somewhere they are not. Reverted, with the reasoning recorded in `AdminLayout.astro` so it is not
+re-raised.
+
+**Still departing from Figma, deliberately and on the record.** Figma's Products screen draws three
+filter dropdowns (All collections / All sources / Any date); the build ships chip rows instead, which
+carry counts the dropdowns do not. That is invented UI and it stays only until the owner rules on it.
+
+**Guarded.** New: two live geometry checks that render the login card in its REAL container (the
+standalone probe never saw the `.bare` clamp, which is why 392 passed as 400 for weeks), and two
+view-switch tests driving an injectable `matchMedia`. Both mutation-tested — the container checks
+fail at exactly 392 and top-aligned on the old CSS. Gates: **1061 tests**, 0 typecheck errors, lint
+clean, build with no warnings, **15/15 live geometry**.
+
+### D26 — Finishing the admin: the drawer, the tag block, and two features with nothing behind them (2026-09-14)
+
+**Decision.** The remainder of the D25 build list, worked to the end.
+
+**The Add-product drawer now looks like P3.** Its footer slot was never passed, so `Drawer.astro`
+rendered a permanent ~17px empty bar under a full-width rule, and the only Fetch control was a small
+dark button floating inline mid-body. The footer now carries ghost Cancel + spacer + primary Fetch,
+with `.drawer__footer:empty { display: none }` so no future footer-less drawer shows a bare rule
+again. `RugFields` gained a `fetchButton` prop rather than a duplicate id: the drawer suppresses the
+inline control, and `/admin/rugs/new` — the no-JS fallback, which has no footer — keeps it.
+Two spacing faults went with it: the drawer's insets used `--space-inline`, which is 8 in admin
+against the drawn 16, and `.addform` painted a surface-plus-rule card *inside* a drawer that is
+already `--surface`, producing a same-coloured box on a box with doubled padding.
+
+**The drawer's primary field was invisible.** `#f_id` sat inside `#preview`, which is `display: none`
+until a scrape succeeds — so the server allocated the next id, rendered it, and hid it, and the
+drawer opened on "Your name for this rug" with its first field nowhere on screen. Hoisted to the top
+of the panel with its drawn hint. `fetchUrl` now refuses to scrape without it: the rug number keys
+the sheet row and names the Drive folder, so a scrape had nowhere to land, and it was previously
+checked only on SAVE — after the fetch had run and the modal had been reviewed.
+
+**A second banner was the wrong fix.** The review proposed a `.msg.err` element at the top of the
+panel. `#m1` already lives there and is already visible, so a second one would have been precisely
+the parallel system this project forbids. The new check writes to `#m1`.
+
+**Collections.** The reorder pair was two ghost buttons whose entire label was the character ▲ / ▼ —
+bare triangles in the heading font, reading as stray typography. Now the `chevron-down` icon, with
+"up" the same glyph rotated: `chevron-up` is not in the handoff's set (69:2) and `icons.test.ts` pins
+that set exactly, so adding a nineteenth glyph was not an option. Both ends are now `disabled`, since
+`move()` returns silently out of range and those buttons previously took focus and did nothing. The
+JS row builder clones a `<template>` for the same reason the Customers copy control does — it used to
+insert the literal character where the server had rendered an icon.
+
+**`.stack h3` was rendering section headings SMALLER and lighter than the body beneath them**
+(`--text-xs` / `--ink-soft`), so every block on the dashboard, Collections and Customers had no
+visible owner. It is a heading now. That one rule lifts every section in the panel.
+
+**The colour picker** was pinned to 38px in the Collections page's own `<style is:global>`, against
+the 41.8px controls beside it. Deleting that override *is* the fix — the generic `input` rule already
+supplies the shared padding and line-height, so it now matches its neighbours by inheritance.
+
+**Two things deliberately NOT built, both because the control would have had nothing behind it.**
+- **Delete a collection.** The review called its absence a straight gap. There is no DELETE endpoint
+  (`collections/[id].ts` is `methodNotAllowed('POST')`), and the real question is not the button: it
+  is what happens to rugs filed under a collection that is removed. That is a data decision for the
+  owner, not a visual fix.
+- **Removing the "Client saves" section.** A dead-looking heading over a lone Refresh button, and the
+  reviewer was right that the data has a home on the customer detail screen — but deleting a feature
+  is the owner's call, not a styling pass.
+
+Gates: **1062 tests**, 0 typecheck errors, lint clean, build with no warnings, **15/15 live geometry**.
+
+### D27 — The admin filter: three of Figma's four boxes, and a data-loss bug found on the way (2026-09-14)
+
+**Decision.** Figma's Filter Bar (23:183) draws search + three 180px selects — All collections, All
+sources, Any date. The build shipped search plus two rows of chips below the bar. Four independent
+positions argued the difference; the verdict adopts the drawn STRUCTURE and re-points its CONTENTS.
+
+**The filters move into the bar.** `FilterBar.astro` has always declared `slot="filters"` and
+`components.css` has always carried `.filterbar__select { width: 180px }` — Figma's exact
+measurement. Neither had a single reference anywhere in `src/`. This is the fourth instance of the
+same pattern in this codebase (the drawer footer, the topbar `meta` slot, `.acts`, `--subtle`): the
+component layer was built faithfully to the file and the pages never wired it up. Filling the slot
+also hands the table back roughly 110px of vertical space on every visit.
+
+**Collections becomes the drawn select, with the counts in the option labels.** It is the control
+that does not survive a real catalogue — eight collections already made two rows — and ADR D18
+capped the preview's type chips at eight for exactly this reason, on evidence from this same project.
+`Kilims (12)` keeps the number; it costs a click.
+
+**Status stays chips, and that is a departure with a reason.** The file draws no status control at
+all — and P2's table has no status column either — so a REQUIRED domain field has no expression
+anywhere in the frame. A file silent on a required field is a gap, not a ruling. `defaultStatusOf`
+can legitimately return `draft`, which is the case the page already guards, and a value the owner
+flips constantly deserves one click rather than a menu.
+
+**"All sources" ships as capability, not chrome.** `supplier` is a two-value enum, so a 180px box for
+two options is furniture; it joins the search haystack instead, in BOTH row and card so one filter
+still drives both views.
+
+**"Any date" is not built, for cause — and the cause is a bug.** `productFieldsToCells` writes a
+FULL-WIDTH row and sets `cells[scrapedAt] = f.scrapedAt ?? ''`. The create and retry paths each
+stamped the date inline, but **neither `fieldsOfRug` nor `rugFieldsFrom` carried the field** — so
+every ordinary edit (a price, a title, the inline rename) and every status change wrote an empty
+string over `scraped_at`. Proven before fixing: `expected '' to be '2026-09-01T10:00:00Z'`. Both
+helpers now carry it, and the update endpoint takes it from the ROW rather than the body, because it
+is provenance the server owns and `RugUpdate` rightly has no field for it. Building a date filter
+over a column the app erases would have been worse than not drawing one.
+
+**The filter neither design drew.** `pendingCount` — rugs whose Drive import never finished — was
+already computed and already printed in the header as text nobody could click. It is now a fifth
+status chip, "Needs photos N". It is deliberately NOT a status value: a half-imported rug can be
+active, draft or archived, so `matches()` asks about the import rather than the status column.
+
+**And the state that only existed in one view.** `RugCardAdmin` has rendered the pending badge and
+its retry button since it shipped; `RugRow` rendered neither — and the row is the DEFAULT view. So
+the only route to a half-imported rug was to switch to cards and scroll the catalogue hunting for
+badges. Brief §12 says the list offers to finish it; "every state ships" means in both views.
+
+**What the owner loses.** The catalogue's distribution no longer arrives unasked. A glance used to
+say twelve Kilims, eight Tulu, one unfiled; behind a select you only learn that by looking. The
+counts-in-labels trick does not fully repay it. That is the price of a control that still works at
+forty collections.
+
+Guarded: four `matches()` tests for the attention filter, four provenance tests asserting `scraped_at`
+survives every write path, and a component test rendering RugRow and RugCardAdmin from the SAME rug
+so the two views cannot drift apart again. All mutation-tested. Gates: **1074 tests**, 0 typecheck
+errors, lint clean, build with no warnings, 15/15 live geometry.
 
 ## 5. Sheet contract (created/validated by `scripts/init-sheet.ts`)
 

@@ -8,6 +8,7 @@ import AdminLayout from '../../../components/admin/AdminLayout.astro';
 import Chips from '../../../components/admin/Chips.astro';
 import RugCardAdmin from '../../../components/admin/RugCardAdmin.astro';
 import Button from '../../../components/ui/Button.astro';
+import Input from '../../../components/ui/Input.astro';
 import EmptyState from '../../../components/ui/EmptyState.astro';
 import RugTable from '../../../components/admin/RugTable.astro';
 import FilterBar from '../../../components/ui/FilterBar.astro';
@@ -19,7 +20,7 @@ import { nextRugId } from '../../../lib/admin/ids.ts';
 import { defaultStatusOf, roundStepOf } from '../../../lib/admin/settings.ts';
 import { jsonForScript } from '../../../lib/view.ts';
 import { driveScope, reservedIds } from '../../api/admin/_shared.ts';
-import { fetchAdminSnapshot, type AdminSnapshot } from '../../../lib/admin/read.ts';
+import { fetchAdminSnapshot, type AdminSnapshot , syncLabel } from '../../../lib/admin/read.ts';
 import { getClient } from '../../../lib/runtime.ts';
 import { consoleLogger, serializeError } from '../../../lib/sheets/errors.ts';
 import { orderedCollectionNames } from '../../../lib/sheets/parse.ts';
@@ -69,16 +70,28 @@ for (const name of [...collections.map((c) => c.name), ...names]) {
   collectionChips.push({ value: slug, label: canonical, count: counts.get(slug) ?? 0 });
 }
 if (counts.get('')) collectionChips.push({ value: '__none', label: 'No collection', count: counts.get('') });
+/* Figma presses "Active", and that is right whenever there ARE active rugs. But `default_status` is
+   a Settings value and legitimately returns 'draft' (settings.ts `defaultStatusOf`), so a freshly
+   scraped catalogue can be entirely drafts — and the screen then opens on "Nothing matches those
+   filters" above a full sheet, which reads as data loss. Press the filter that SHOWS the catalogue;
+   never one that hides it. */
+const pendingCount = rugs.filter((r) => r.commitStatus === 'pending').length;
+const hasActive = rugs.some((r) => r.status === 'active');
 const statusChips: Chip[] = [
-  { value: 'active', label: 'Active', pressed: true },
+  { value: 'active', label: 'Active', pressed: hasActive },
   { value: 'draft', label: 'Draft' },
   { value: 'archived', label: 'Archived' },
-  { value: 'all', label: 'Any status' },
+  { value: 'all', label: 'Any status', pressed: !hasActive },
 ];
+/* The filter neither design drew, and the one the owner needs most. `pendingCount` is already
+   computed below and already printed in the header as "N failed to save" — as plain text that
+   cannot be clicked. This makes the number the control. */
+if (pendingCount > 0) {
+  statusChips.push({ value: 'attention', label: 'Needs photos', count: pendingCount });
+}
 
 /* The one number on this screen that needs acting on: rows whose Drive folder exists but whose
    sheet row was never written (Figma P1 header, "412 products · 3 failed to save"). */
-const pendingCount = rugs.filter((r) => r.commitStatus === 'pending').length;
 
 /* Adding a product is an action on this list, not a destination (Figma revision 161:195). The drawer
    keeps the list mounted behind it, so cancelling costs nothing and you keep your place in the
@@ -106,12 +119,16 @@ const addData = {
   driveScopeOk,
   adminHeaders: snapshot?.report.adminHeaders ?? 'ok',
 };
+
+// Figma 25:236 — the topbar's status line. Empty on every screen until now.
+const syncLabel_ = snapshot ? syncLabel(snapshot.fetchedAt) : undefined;
 ---
 
-<AdminLayout title="Serio Ludere — Products" active="rugs">
+<AdminLayout title="Serio Ludere — Products" active="rugs" meta={syncLabel_}>
   {error && <div class="msg err on">Could not read the sheet: {error}</div>}
   <div class="page-head">
     <div class="page-head__titles">
+      <h1 class="page-head__title">Products</h1>
       <p class="page-head__count">
         {rugs.length}
         {rugs.length === 1 ? 'product' : 'products'}{pendingCount > 0 && ` · ${pendingCount} failed to save`}
@@ -131,9 +148,38 @@ const addData = {
       autocomplete="off"
       aria-label="Search products"
     />
+    {/* Figma's Filter Bar (23:183) is search + three 180px selects on ONE line. The build put two
+        rows of chips BELOW the bar instead, leaving `slot="filters"` — which FilterBar.astro has
+        always declared — unfilled, and `.filterbar__select` (components.css, the drawn 180px)
+        referenced by nothing. The filters move inside the bar, which is also ~100px of vertical
+        space handed back to the table.
+
+        Collections becomes the drawn select because it is the control that does not scale: eight
+        collections already made two rows, and ADR D18 capped the preview's type chips at eight for
+        exactly this reason. The counts move into the option labels rather than being lost.
+
+        Status stays chips: the file draws no status control at all, and the P2 table has no status
+        column either — so a required domain field has no expression anywhere in the frame. That is
+        a gap, not a ruling, and a value the owner flips constantly deserves one click. */}
+    <div slot="filters" class="filterbar__filters">
+      <Input
+        type="select"
+        id="f_collection_filter"
+        name="collection"
+        label="Filter by collection"
+        hideLabel
+        class="filterbar__select"
+      >
+        <option value="*">All collections</option>
+        {collectionChips.map((c) => (
+          <option value={c.value}>
+            {c.label} ({c.count ?? 0})
+          </option>
+        ))}
+      </Input>
+      <Chips id="statusChips" label="Status" chips={statusChips} />
+    </div>
   </FilterBar>
-  <Chips id="collectionChips" label="Collections" chips={collectionChips} />
-  <Chips id="statusChips" label="Status" chips={statusChips} />
   <p class="hint" id="count" role="status" aria-live="polite"></p>
   <div id="m-retry" class="msg"></div>
   <div id="empty-first" hidden={rugs.length !== 0}>
@@ -157,7 +203,15 @@ const addData = {
       roundStep={roundStep}
       driveScopeOk={driveScopeOk}
       nextId={nextId}
+      fetchButton={false}
     />
+    {/* P3 (80:1480) puts the drawer's actions in the footer bar. Without this slot the footer was an
+        empty 17px strip under a full-width rule, and the only Fetch control was a small dark button
+        floating inline mid-body — so the drawer looked like it ended in a rendering fault and its
+        primary action looked incidental. */}
+    <Button slot="footer" style="ghost" data-close="add-rug">Cancel</Button>
+    <span slot="footer" class="drawer__spacer"></span>
+    <Button slot="footer" style="primary" id="btnFetch">Fetch</Button>
   </Drawer>
   <script is:inline type="application/json" id="admin-data" set:html={jsonForScript(addData)} />
 

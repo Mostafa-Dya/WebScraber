@@ -17,7 +17,8 @@ import { customerRuntime } from '../../lib/customer/http.ts';
 import { getCache, getClient } from '../../lib/runtime.ts';
 import { consoleLogger } from '../../lib/sheets/errors.ts';
 import { insertReactionRows } from '../../lib/sheets/write.ts';
-import { handleReactions } from '../../lib/votes/handler.ts';
+import { handleReactions, type ReactionsResponseBody } from '../../lib/votes/handler.ts';
+import { visibleLikes } from '../../lib/view.ts';
 import { VISITOR_ID_RE, newVisitorId, visitorCookieName, visitorHash } from '../../lib/votes/identity.ts';
 
 const ONE_YEAR = 365 * 24 * 3600;
@@ -88,8 +89,36 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   });
   const headers: Record<string, string> = {};
   if (result.retryAfterSec) headers['retry-after'] = String(result.retryAfterSec);
-  return noStore(result.body, result.status, headers);
+  return noStore(withVisibleCounts(result.body, customer !== undefined), result.status, headers);
 };
+
+/**
+ * Apply the >= 5 like threshold to what a NAMED BUYER is told (owner requirement, 2026-09-13).
+ *
+ * The endpoint echoed every product's exact `likes`, `dislikes` and `rating` back to whoever asked.
+ * That made it a read oracle rather than a side effect of voting: a body of 25 `reaction: "none"`
+ * items writes nothing, spends no rate-limit budget, and returns 25 exact counts — so hiding the
+ * number on the card achieved nothing.
+ *
+ * The split is by realm, because the two realms genuinely differ. A named buyer is in the private
+ * preview, where the threshold applies and where nothing reads these fields anyway (the preview card
+ * has no `[data-rating-for]`, which is all `paintCounts` updates). An anonymous visitor is on the
+ * public catalogue, whose card renders a real "4.6 · 23 votes" line and needs the totals to repaint
+ * it. `rating` goes with `likes`: it is `likes / (likes + dislikes) x 5`, so returning it alongside
+ * `dislikes` hands back the count the threshold just removed.
+ */
+function withVisibleCounts(body: ReactionsResponseBody, isNamedCustomer: boolean): ReactionsResponseBody {
+  if (!isNamedCustomer || !body.results) return body;
+  return {
+    ...body,
+    results: body.results.map((r) => {
+      const shown = visibleLikes(r.likes);
+      return shown === undefined
+        ? { ...r, likes: 0, dislikes: 0, rating: 0 }
+        : { ...r, likes: shown };
+    }),
+  };
+}
 
 export const ALL: APIRoute = () =>
   noStore({ ok: false, error: 'method not allowed' }, 405, { allow: 'POST' });

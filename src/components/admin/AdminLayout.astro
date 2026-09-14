@@ -24,6 +24,10 @@ import Icon from '../ui/Icon.astro';
 export type AdminTab = 'dashboard' | 'add' | 'rugs' | 'collections' | 'clients' | 'audit' | 'google';
 
 const TAB_TO_SHELL: Partial<Record<AdminTab, ShellTab>> = {
+  // NOTE: `dashboard` is deliberately absent. /admin is reached from the wordmark, not from a nav
+  // tab, so no rail item is current there — lighting "Products" would claim you are somewhere you
+  // are not. A review flagged the three unlit rows as a bug; it is a decision, pinned by
+  // tests/integration/admin-dashboard.test.ts:114.
   add: 'products',
   rugs: 'products',
   collections: 'collections',
@@ -42,7 +46,12 @@ interface Props {
   /** Heading shown on the bare (login) layout. */
   sub?: string;
 }
-const { title, active, nav = true, meta, sub = 'Admin — private' } = Astro.props;
+// `nav={false}` (login) renders ONE centred card and nothing else. It used to print the wordmark
+// above the slot and a strapline under it — so the login page showed "SERIO LUDERE" twice with
+// "ADMIN — SIGN IN" in brand red between them, the only red in the panel, on the first screen the
+// owner sees each session. The card carries its own brand block; A1 (47:3) draws just the card.
+// `sub` is kept in the Props for the callers that still pass it, and is no longer rendered.
+const { title, active, nav = true, meta } = Astro.props;
 const shellTab = active ? TAB_TO_SHELL[active] : undefined;
 /** The topbar title is the page name, not the document title. */
 const heading = title.replace(/^Serio Ludere\s*—\s*/, '');
@@ -91,10 +100,6 @@ const heading = title.replace(/^Serio Ludere\s*—\s*/, '');
         </AppShell>
       ) : (
         <div class="bare">
-          <h1 class="bare__wordmark">
-            <a href="/admin">Serio Ludere</a>
-          </h1>
-          <p class="sub">{sub}</p>
           <main>
             <slot />
           </main>

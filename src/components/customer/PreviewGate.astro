@@ -1,8 +1,15 @@
 ---
 // The password gate (Figma 53:3 desktop, 58:206 at 390).
 //
-// A 560-wide column centred in the viewport, four groups separated by the same 64px the rest of the
-// site uses: the studio and what this page is, the buyer's name, the form, and the consent note.
+// A 560-wide column centred in the viewport, three groups separated by the same 64px the rest of the
+// site uses: the studio and what this page is, the form, and the consent note.
+//
+// Figma 53:3 draws a fourth group, "Welcome, {name}." The owner removed it (2026-09-14): the buyer's
+// name must not appear anywhere in the customer realm. The link is a locator that already leaks half
+// their letters, and printing the name in full on the page in front of the password turns a shared
+// screen or a shoulder-glance into an identification. "A private preview, prepared for you" already
+// says the page is theirs without naming them. The name is kept in the admin dashboard, which is
+// where the studio needs it.
 //
 // Two things are in the code that are not drawn in Figma, both necessary:
 //   - an error line under the button, because a wrong password has to say so somewhere;
@@ -12,9 +19,8 @@ import { STUDIO_NAME } from '../../lib/studio.ts';
 
 interface Props {
   slug: string;
-  displayName: string;
 }
-const { slug, displayName } = Astro.props;
+const { slug } = Astro.props;
 ---
 
 <main class="pv-gate">
@@ -23,8 +29,6 @@ const { slug, displayName } = Astro.props;
       <p class="pv-h1">{STUDIO_NAME}</p>
       <p class="pv-lede">A private preview, prepared for you</p>
     </div>
-
-    <p class="pv-h3 pv-gate-welcome">Welcome, {displayName}.</p>
 
     <form class="pv-gate-form" method="post" action={`/api/customers/${slug}/login`} data-gate={slug}>
       <label class="sr-only" for="gate-password">Password</label>
@@ -89,9 +93,6 @@ const { slug, displayName } = Astro.props;
     display: flex;
     flex-direction: column;
     gap: var(--stack-sm);
-    width: 100%;
-  }
-  .pv-gate-welcome {
     width: 100%;
   }
   .pv-gate-form {

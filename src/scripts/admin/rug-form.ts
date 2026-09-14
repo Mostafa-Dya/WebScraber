@@ -523,6 +523,14 @@ export function initRugForm(doc: Document = document, opts: RugFormOptions = {})
       msg(m1, 'Paste a link first.', 'err');
       return;
     }
+    // The rug number keys the sheet row and names the Drive folder, so a scrape without one has
+    // nowhere to land. It is the drawer's first field (P3 80:1480) and was previously checked only
+    // on save — by which point the fetch had already run and the modal had already been reviewed.
+    if (!f.id.value.trim()) {
+      msg(m1, 'Give the rug a number first — it keys the sheet row and names the Drive folder.', 'err');
+      f.id.focus();
+      return;
+    }
     hide(m2);
     setBusy(true);
     msg(m1, 'Reading the supplier page…', 'busy');

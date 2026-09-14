@@ -264,6 +264,25 @@ describe('add mode', () => {
     expect(cls('preview')).toBe('preview');
   });
 
+  it('refuses to fetch without a rug number, and spends no request doing it', async () => {
+    // The rug number keys the sheet row and names the Drive folder, so a scrape has nowhere to land
+    // without one. It is the drawer's first field (P3 80:1480) and used to be checked only on SAVE
+    // — by which point the scrape had already run and the owner had already reviewed the modal.
+    // It also used to be rendered inside `#preview`, which is display:none until a scrape succeeds,
+    // so the field the drawer opens on was not on screen at all.
+    form = mount(() => ({ status: 200, body: { ok: true, data: scraped, via: 'impit', cached: false, ms: 5 } }));
+    const id = document.getElementById('f_id') as HTMLInputElement;
+    const url = document.getElementById('url') as HTMLInputElement;
+    id.value = '';
+    url.value = 'https://ecarpetgallery.com/us_en/red-5x8-andelz-area-rugs-380114';
+    (document.getElementById('btnFetch') as HTMLButtonElement).click();
+
+    expect(cls('m1')).toBe('msg on err');
+    expect(text('m1')).toContain('rug a number');
+    expect(calls).toHaveLength(0); // nothing was sent
+    expect(document.activeElement).toBe(id); // and the cursor is in the field that needs filling
+  });
+
   it('Enter in "your name" moves to the link, Enter in the link fetches, the preview fills from the scrape', async () => {
     form = mount((url) =>
       url === '/api/admin/scrape'

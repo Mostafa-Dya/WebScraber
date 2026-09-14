@@ -265,10 +265,13 @@ const metaLong = [
     text-transform: uppercase;
     color: var(--ink);
   }
+  /* Spacer, not a rule — Figma's 1px flex-gap idiom. The Customers LIST already de-painted the
+     identical element (components.css `.page-head__rule`, `.crow__rule`) because painting it "reads
+     as a rendering fault rather than a design"; this screen was still drawing the line, so the two
+     halves of the same feature disagreed. */
   .cust__rule {
     flex: 1 1 auto;
-    height: var(--rule-width);
-    background: var(--rule);
+    min-width: var(--stack-md);
   }
 
   /* 240-wide cards, gap 16, wrapping (52:1292). */

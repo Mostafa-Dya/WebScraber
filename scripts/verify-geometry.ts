@@ -87,6 +87,26 @@ async function main(): Promise<void> {
     // A1 · 47:4 — the card is 400 wide.
     checks.push({ what: 'login card width', node: '47:4', got: (await box('.alogin')).w, want: 400 });
 
+    // …and 400 INSIDE its real container. The probe above renders `.alogin` standalone, so it never
+    // saw that `.bare` was `max-width: var(--container-xxs)` (440) with two 24px gutters under
+    // border-box — which clamped the drawn 400 to 392 on the actual page while this check passed.
+    // The same rule had no height, so the card sat at the top of an otherwise empty viewport.
+    await page.setContent(
+      html(`<div class="bare"><main><form class="alogin"><p class="alogin__wordmark">Serio Ludere</p>
+            </form></main></div>`),
+    );
+    const inBare = await page.locator('.alogin').boundingBox();
+    checks.push({ what: 'login card width in .bare', node: '47:4', got: inBare?.width ?? -1, want: 400 });
+    // Centred, not top-aligned: the card's middle should sit near the middle of the 1000-tall probe.
+    checks.push({
+      what: 'login card is centred',
+      node: '47:3',
+      got: Math.round((inBare?.y ?? 0) + (inBare?.height ?? 0) / 2),
+      want: 500,
+      tol: 40,
+    });
+    await page.setContent(html(page1440));
+
     // F5 · 52:1265 — each Stat Block is 200 wide.
     checks.push({ what: 'stat block width', node: '52:1265', got: (await box('.statblock')).w, want: 200 });
 
@@ -98,6 +118,24 @@ async function main(): Promise<void> {
       got: (await box('.gcard__image')).h,
       want: 300,
     });
+
+    // P2 — the `hidden` attribute must actually hide. `[hidden] { display: none }` is a USER-AGENT
+    // rule, so `.grid { display: grid }` silently beat it and view-switch.ts's `grid.hidden = true`
+    // did nothing: the default list view rendered every rug twice, once as a row and once as a card.
+    // Only a real cascade can prove this — the unit test read the `.hidden` PROPERTY, which was
+    // correctly `true` the whole time.
+    await page.setContent(
+      html(`<div id="table"><table class="rugtable"><tbody><tr><td>x</td></tr></tbody></table></div>
+            <div id="grid" class="grid" hidden><article class="card">x</article></div>`),
+    );
+    const gridDisplay = await page.locator('#grid').evaluate((e) => getComputedStyle(e).display);
+    checks.push({
+      what: 'hidden grid is really hidden',
+      node: 'P2 79:1344',
+      got: gridDisplay === 'none' ? 1 : 0,
+      want: 1,
+    });
+    await page.setContent(html(page1440));
 
     // F5 · 52:1261 — the four blocks sit on one row 16 apart.
     const b0 = await page.locator('.statblock').nth(0).boundingBox();

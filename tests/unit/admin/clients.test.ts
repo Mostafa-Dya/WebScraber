@@ -15,6 +15,16 @@ import { isReservedSlug } from '../../../src/lib/customer/auth.ts';
 /** The site's Votes `client` column rule (src/lib/sheets/parse.ts CLIENT_RE, handler.ts Body.client). */
 const SITE_CLIENT_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
+/**
+ * The CUSTOMERS tab's own `slug` rule (src/lib/sheets/parse.ts SLUG_RE, CustomerRow.slug).
+ *
+ * This is the constraint that actually governs, and checking only SITE_CLIENT_RE above is what let
+ * the underscore bug ship: the two columns do NOT share an alphabet. A code this rejects is written
+ * to the sheet happily and then dropped on every read, and because `Customers` is a GUARDED_TAB at a
+ * 0.1 drop ratio, a couple of such customers reject the whole refresh and 503 the entire site.
+ */
+const CUSTOMERS_SLUG_RE = /^[a-z0-9-]{1,80}$/;
+
 describe('client codes (ADMIN_SPEC §6.1, owner 2026-09-13)', () => {
   /**
    * A deterministic stand-in for the crypto source: always returns 0, so Fisher-Yates is the
@@ -111,9 +121,44 @@ describe('client codes (ADMIN_SPEC §6.1, owner 2026-09-13)', () => {
     for (let i = 0; i < 20; i++) expect(clientCode('X')).toMatch(CLIENT_CODE_RE);
   });
 
+  it('never mints a code the Customers tab would reject — the site-down guard', () => {
+    // The regression this exists for: `_` was a filler until 2026-09-14, 38.9 % of codes carried
+    // one, every such row was dropped on read, and the guarded-tab ratio turned that into a
+    // catalogue-wide 503. Both alphabets must hold, and the Customers one is the strict one.
+    const names = ['Gida Hussami', 'Ana Lee', 'X', 'Hala Nasser', 'نادية', '中村 花子', 'a'.repeat(60)];
+    for (const name of names) {
+      for (let i = 0; i < 300; i++) {
+        const code = clientCode(name);
+        expect(code, `${name} -> ${code}`).toMatch(CUSTOMERS_SLUG_RE);
+        expect(code, `${name} -> ${code}`).toMatch(SITE_CLIENT_RE);
+        expect(code, `${name} -> ${code}`).toMatch(CLIENT_CODE_RE);
+      }
+    }
+  });
+
+  it('refuses an underscore outright, so the old filler cannot come back', () => {
+    // CLIENT_CODE_RE is the one guard `clientCode` checks before returning, so tightening it is what
+    // makes a re-widened FILLER_SYMBOLS fail loudly instead of silently taking the site down.
+    expect('hi6g2a3a_s').not.toMatch(CLIENT_CODE_RE);
+    expect(() => clientLink('https://x.test', 'hi6g2a3a_s')).toThrow();
+  });
+
+  it('keeps the longest name ClientInput allows addable, rather than throwing a 500', () => {
+    // ClientInput caps the name at 60 characters and the field has no maxlength, so "half of it"
+    // plus fillers used to overflow CLIENT_CODE_RE's 28 and `clientCode` threw — the owner simply
+    // could not add that customer.
+    for (const name of ['a'.repeat(60), 'Mohammed Bin Abdulaziz Al-Rashid Interior Design Studio LLC']) {
+      for (let i = 0; i < 50; i++) {
+        const code = clientCode(name);
+        expect(code.length, code).toBeLessThanOrEqual(28);
+        expect(code).toMatch(CLIENT_CODE_RE);
+      }
+    }
+  });
+
   it('builds the link from the runtime origin only', () => {
-    expect(clientLink('https://catalogue.serioludere.com/some/path', 'hi6g2a3a_s')).toBe(
-      'https://catalogue.serioludere.com/hi6g2a3a_s',
+    expect(clientLink('https://catalogue.serioludere.com/some/path', 'hi6g2a3a-s')).toBe(
+      'https://catalogue.serioludere.com/hi6g2a3a-s',
     );
     expect(clientLink('http://localhost:4321', 'x-1')).toBe('http://localhost:4321/x-1');
     expect(() => clientLink('https://x.test', 'Bad Code')).toThrow();

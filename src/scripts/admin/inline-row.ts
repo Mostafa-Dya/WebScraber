@@ -12,7 +12,7 @@
 // the editing state, the ID on the error state), and the error state's ID input is the duplicate-ID
 // recovery path rather than a general-purpose field — so widening this to "any cell" would be
 // inventing an interaction the file does not draw.
-import { post, type ApiOptions } from './api.ts';
+import { get, post, type ApiOptions } from './api.ts';
 
 const SAVED_HOLD_MS = 1200;
 
@@ -20,6 +20,72 @@ interface RugPatchResponse {
   ok?: boolean;
   error?: string;
   message?: string;
+}
+
+/** The subset of the admin rug this file needs to rebuild a full update body. */
+interface RugForRename {
+  version: string;
+  slug: string;
+  description: string;
+  collections: string[];
+  tags: string[];
+  photos: string[];
+  widthCm?: number;
+  lengthCm?: number;
+  material: string;
+  method: string;
+  age: string;
+  origin: string;
+  priceUsd?: number;
+  rotate: string;
+  featured: boolean;
+  status: string;
+  sourceUrl: string;
+  supplier: string;
+  supplierRef: string;
+  notes: string;
+}
+
+/**
+ * `POST /api/admin/rugs/:id` validates with `RugUpdate`, which is the WHOLE rug plus a version — it
+ * replaces the row rather than patching it. Sending `{ name }` alone therefore 400s on the missing
+ * `collections` and `version`, which is what every inline rename did until 2026-09-14.
+ *
+ * So the rename reads the row first and returns it with one field changed. The GET is also what
+ * makes the write safe: `version` comes from the same read, so the route's optimistic-concurrency
+ * check still refuses a rename that would clobber an edit made in another tab.
+ */
+function renameBody(rug: RugForRename, name: string): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    name,
+    version: rug.version,
+    description: rug.description,
+    collections: rug.collections,
+    tags: rug.tags,
+    photos: rug.photos,
+    widthCm: rug.widthCm,
+    lengthCm: rug.lengthCm,
+    material: rug.material,
+    method: rug.method,
+    age: rug.age,
+    origin: rug.origin,
+    priceUsd: rug.priceUsd,
+    rotate: rug.rotate,
+    featured: rug.featured,
+    status: rug.status,
+    supplier: rug.supplier,
+    supplierRef: rug.supplierRef,
+    notes: rug.notes,
+    // Never re-round on a rename: the owner is correcting a title, not repricing the rug.
+    roundPrice: false,
+  };
+  // `slug` and `sourceUrl` are `.optional()` on the DTO, NOT nullable — an empty string fails
+  // validation ("https only"), and a rug with no source URL carries exactly that. So send them only
+  // when they hold something. Omitting `slug` is also what keeps the URL stable across a rename,
+  // which is the route's documented behaviour.
+  if (rug.slug) body.slug = rug.slug;
+  if (rug.sourceUrl) body.sourceUrl = rug.sourceUrl;
+  return body;
 }
 
 /** The row's four drawn states. `read` is the server-rendered resting state. */
@@ -98,11 +164,15 @@ export function bindInlineRows(opts: InlineRowBindings = {}): () => void {
       }
       setState(row, 'saving');
       const id = row.dataset.id ?? '';
-      const res = await post<RugPatchResponse>(
-        `/api/admin/rugs/${encodeURIComponent(id)}`,
-        { name: next },
-        opts.api,
-      );
+      const path = `/api/admin/rugs/${encodeURIComponent(id)}`;
+      const current = await get<{ rug?: RugForRename }>(path, opts.api);
+      if (!current.ok || !current.data.rug) {
+        setState(row, 'error');
+        showMessage(row, current.ok ? 'That change was not saved.' : current.message);
+        input.focus();
+        return;
+      }
+      const res = await post<RugPatchResponse>(path, renameBody(current.data.rug, next), opts.api);
       if (res.ok) {
         restore(next);
         showMessage(row, null);

@@ -9,7 +9,21 @@ export const SLUG_RE = /^[a-z0-9-]{1,80}$/;
 // A customer route segment: alphanumeric at both ends, with `-` and `_` fillers allowed inside
 // (src/lib/admin/clients.ts scrambles these). Deliberately a SUBSET of the sheet's customer_slug
 // rule /^[A-Za-z0-9_-]{1,64}$/, because the same string is stored there and in every Reactions row.
-export const CLIENT_CODE_RE = /^[a-z0-9]([a-z0-9\-_]{0,26})[a-z0-9]$/;
+/**
+ * The customer code alphabet. Deliberately NARROWER than the Reactions `client` column, and it is
+ * the narrower of the two that governs.
+ *
+ * `_` was permitted here until 2026-09-14 on the belief that both sheet columns shared one alphabet.
+ * They do not: `ReactionRow.customer_slug` parses with `/^[A-Za-z0-9_-]{1,64}$/`, but the Customers
+ * tab's own `slug` parses with `SLUG_RE = /^[a-z0-9-]{1,80}$/` (src/lib/sheets/parse.ts:70,142) —
+ * no underscore. A code containing `_` was therefore written happily and then dropped on every read,
+ * and because `Customers` is a GUARDED_TAB at MAX_DROPPED_RATIO 0.1 (src/lib/sheets/read.ts:8-17),
+ * more than one bad row in ten rejected the WHOLE refresh and took the catalogue down with a 503.
+ * Measured before the fix: 38.9 % of generated codes contained `_`.
+ *
+ * So this must stay a subset of SLUG_RE. Widening it re-arms a site-wide outage.
+ */
+export const CLIENT_CODE_RE = /^[a-z0-9]([a-z0-9-]{0,26})[a-z0-9]$/;
 export const VERSION_RE = /^[a-f0-9]{16}$/;
 
 const Id = z.string().regex(ID_RE);

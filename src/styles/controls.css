@@ -165,12 +165,22 @@
    Padding is deliberately off the 4pt grid — 10.4 block / 12.8 inline are Prestige's own
    --input-padding-block / --input-padding-inline. Rounding them to 12 would make every input
    3.2px taller than the storefront's and break the visual match on the preview (handoff 67:11). */
+/* 8, mode-invariant — NOT `--tight`, which resolves to 12 in the preview realm but 4 in admin
+   (modes.css). At 4 the label crowds its input and, worse, the error and locked messages sit almost
+   flush against the field box, which reads as a rendering fault rather than a designed relationship.
+   The drawn nesting is 8 inside the 12 fieldset gap, and only a mode-invariant token gives that in
+   both realms. */
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--tight);
+  gap: var(--stack-sm);
 }
 
+/* In the locked state the input, its button and the reveal glyph all grey out; without this the
+   label was the one element left at full ink, so the field read as active. */
+.field:has(.input:disabled) .field__label {
+  color: var(--ink-muted);
+}
 .field__label {
   font-family: var(--heading);
   font-size: var(--size-label);

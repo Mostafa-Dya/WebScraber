@@ -35,7 +35,18 @@ function write(store: Storage | undefined, mode: SortMode): void {
   }
 }
 
-/** The like count a card carries, as the server rendered it; 0 when absent or malformed. */
+/**
+ * The like count a card carries, as the server rendered it; 0 when absent or malformed.
+ *
+ * "Absent" is the load-bearing case. `[slug]/index.astro` emits `data-likes` through `visibleLikes`,
+ * so a rug below MIN_VISIBLE_LIKES carries no attribute at all — the browser is never told its
+ * count. Reading that as 0 is what makes "Most liked" rank within the VISIBLE set and leave every
+ * hidden-count rug in the server's order beneath it.
+ *
+ * That is the deliberate resolution of the conflict between the sort and the threshold: a sort over
+ * the true counts would have published the hidden ranking ordinally, so the number stayed secret
+ * while the order gave it away.
+ */
 function likesOf(card: HTMLElement): number {
   const n = Number(card.dataset.likes);
   return Number.isFinite(n) ? n : 0;

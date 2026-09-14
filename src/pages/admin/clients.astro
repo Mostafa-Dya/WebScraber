@@ -8,9 +8,11 @@ import AdminLayout from '../../components/admin/AdminLayout.astro';
 import Button from '../../components/ui/Button.astro';
 import Modal from '../../components/ui/Modal.astro';
 import CredentialPanel from '../../components/ui/CredentialPanel.astro';
-import { clientLink } from '../../lib/admin/clients.ts';
+import { clientLink, withoutSecrets } from '../../lib/admin/clients.ts';
+import EmptyState from '../../components/ui/EmptyState.astro';
+import CopyButton from '../../components/ui/CopyButton.astro';
 import { adminRuntime } from '../../lib/admin/http.ts';
-import { fetchAdminSnapshot, type AdminSnapshot } from '../../lib/admin/read.ts';
+import { fetchAdminSnapshot, type AdminSnapshot , syncLabel } from '../../lib/admin/read.ts';
 import { getClient } from '../../lib/runtime.ts';
 import { consoleLogger, serializeError } from '../../lib/sheets/errors.ts';
 import { jsonForScript } from '../../lib/view.ts';
@@ -24,14 +26,21 @@ try {
   consoleLogger.error('admin clients read failed', { error: safe });
   error = safe.message;
 }
+// `withoutSecrets` first: this object is serialised into the page as JSON (see `admin-data` below),
+// so a bare `...c` published every customer's stored scrypt hash to anything that could read the
+// admin HTML. The link is still regenerated from the runtime SITE_URL rather than trusted from the
+// sheet (ADMIN_SPEC 3.2).
 const clients = (snapshot?.clients ?? []).map((c) => ({
-  ...c,
+  ...withoutSecrets(c),
   link: clientLink(adminRuntime.siteUrl, c.code),
 }));
 const data = { clients, siteOrigin: new URL(adminRuntime.siteUrl).origin };
+
+// Figma 25:236 — the topbar's status line. Empty on every screen until now.
+const syncLabel_ = snapshot ? syncLabel(snapshot.fetchedAt) : undefined;
 ---
 
-<AdminLayout title="Serio Ludere — Clients" active="clients">
+<AdminLayout title="Serio Ludere — Customers" active="clients" meta={syncLabel_}>
   {error && <div class="msg err on">Could not read the sheet: {error}</div>}
 
   {
@@ -109,15 +118,27 @@ const data = { clients, siteOrigin: new URL(adminRuntime.siteUrl).origin };
 
   <section class="stack" aria-labelledby="h-clients">
     <div class="page-head">
-      <p class="page-head__count">
-        {clients.length}
-        {clients.length === 1 ? 'link' : 'links'}
-      </p>
+      <div class="page-head__titles">
+        <h1 class="page-head__title">Customers</h1>
+        <p class="page-head__count">
+          {clients.length}
+          {clients.length === 1 ? 'link' : 'links'}
+        </p>
+      </div>
       <span class="page-head__rule"></span>
       <Button icon="plus" data-open="new-client">New customer link</Button>
     </div>
     <div id="m9" class="msg"></div>
-    <div class="table-wrap">
+    {
+      clients.length === 0 && (
+        <EmptyState
+          type="first-run"
+          title="No customer links yet"
+          message="A customer link is a private preview of the catalogue, opened with a password you give them."
+        />
+      )
+    }
+    <div class="table-wrap" hidden={clients.length === 0}>
       <table id="clientTable">
         <thead>
           <tr>
@@ -163,9 +184,7 @@ const data = { clients, siteOrigin: new URL(adminRuntime.siteUrl).origin };
                   </label>
                 </td>
                 <td class="acts">
-                  <button type="button" class="copy" data-copy={c.link} data-label="Copy link">
-                    <span data-copy-label>Copy link</span>
-                  </button>
+                  <CopyButton value={c.link} label="Copy link" />
                   <button type="button" class="btn btn--ghost" data-act="password">
                     Reset password
                   </button>
@@ -176,11 +195,16 @@ const data = { clients, siteOrigin: new URL(adminRuntime.siteUrl).origin };
         </tbody>
       </table>
     </div>
-    <p class="hint">
-      Copy-link is the most-used action here — the control changes icon, label and colour for 2 seconds. A
-      toast alone is missable when copying several in a row.
-    </p>
-    {clients.length === 0 && <div class="msg busy on">No clients yet.</div>}
+    {/* The caption describes the table, so it goes when the table does. The old empty state was a
+        `.msg busy` — the INFO/loading tone — printed under a live seven-column header with no rows
+        beneath it, so a first run looked like a screen still fetching rather than a screen waiting
+        for you to do something. */}
+    {clients.length > 0 && (
+      <p class="hint">
+        Copy-link is the most-used action here — the control changes icon, label and colour for 2 seconds. A
+        toast alone is missable when copying several in a row.
+      </p>
+    )}
   </section>
 
   <section class="stack" aria-labelledby="h-access">
@@ -226,6 +250,13 @@ const data = { clients, siteOrigin: new URL(adminRuntime.siteUrl).origin };
       </div>
     </form>
   </dialog>
+
+  {/* The row builder in scripts/admin/clients.ts rebuilds a whole <tr> after a toggle or a password
+      reset. It used to hand-roll the copy control with no icons and no `data-copied-label`, so the
+      icon swap this page's own caption promises had nothing to act on, and the rebuilt row silently
+      differed from the one the server sent. Cloning this template makes both paths the same DOM by
+      construction, and the SVG stays in the Icon component instead of being retyped in JS. */}
+  <template id="copyTpl"><CopyButton value="" label="Copy link" /></template>
 
   <script is:inline type="application/json" id="admin-data" set:html={jsonForScript(data)} />
   <script>

@@ -163,28 +163,39 @@ function expectCspClean(html: string): void {
 }
 
 describe('/admin/rugs', () => {
-  it('renders collection + status chips with counts, cards for every status, and the filter script', async () => {
+  it('puts the collection filter in the bar as a select with counts, and keeps status as chips', async () => {
     state.down = false;
     const { status, html } = await render(RugsPage, '/admin/rugs');
     expect(status).toBe(200);
     expect(html).toContain('aria-current="page"');
-    expect(html).toMatch(/data-value="\*" aria-pressed="true">\s*All\s*3/);
-    expect(html).toMatch(/data-value="kilims" aria-pressed="false">\s*Kilims\s*1/);
-    expect(html).toMatch(/data-value="tulu"[^>]*>\s*Tulu\s*1/);
-    expect(html).toMatch(/data-value="__none"[^>]*>\s*No collection\s*1/);
+    // Collections are the drawn 180px select inside FilterBar's `filters` slot — chips did not
+    // survive a real catalogue, and ADR D18 already capped the preview's chips at eight for the same
+    // reason. The counts move into the option labels rather than being lost.
+    expect(html).toContain('id="f_collection_filter"');
+    expect(html).toContain('filterbar__select');
+    expect(html).toMatch(/<option value="\*">All collections<\/option>/);
+    expect(html).toMatch(/<option value="kilims">\s*Kilims\s*\(1\)/);
+    expect(html).toMatch(/<option value="tulu">\s*Tulu\s*\(1\)/);
+    expect(html).toMatch(/<option value="__none">\s*No collection\s*\(1\)/);
+    // …and the collection chip group is gone, not merely hidden.
+    expect(html).not.toContain('id="collectionChips"');
+    // Status stays chips: the file draws no status control, and a required domain field needs one.
     expect(html).toMatch(/data-value="active" aria-pressed="true"/);
     expect(html).toContain('href="/admin/rugs/SL-021"');
     expect(html).toContain('data-status="archived"');
     expect(html).toContain('class="card status-draft"');
     expect(html).toContain('Yellow &lt;b&gt;x&lt;/b&gt;');
     expect(html).not.toContain('<b>x</b>');
-    expect(html).toContain('data-search="winks sl-021 1389 winks"');
+    // Figma's "All sources" dropdown, delivered as capability rather than chrome: `supplier` is a
+    // two-value enum, so a 180px select for two options is furniture. Typing "karavan" finds them.
+    expect(html).toContain('data-search="winks sl-021 1389 winks karavanrug"');
     expect(html).toContain('api/image/1U8FwNPCdm-n8RUvSNRcJLBA_27u-Pjkb?w=800');
     expect(html).toContain('data-rot="0"');
     expect(html).toContain('135 × 190 cm');
     expect(html).toContain('$576');
     expectCspClean(html);
   });
+
 });
 
 describe('/admin/rugs/new', () => {
@@ -285,6 +296,18 @@ describe('/admin/clients', () => {
     expect(html).toContain('id="btnReport"');
     expect(html).toContain('"siteOrigin":"https://catalogue.example.test"');
     expectCspClean(html);
+  });
+
+  it('never serialises a stored password hash into the page', async () => {
+    // Until 2026-09-14 this page did `{ ...c, link }` over a row that `parseClients` fills with
+    // `passwordHash` for EVERY customer, and then emitted the object as JSON in `#admin-data`. A
+    // scrypt hash is not a password, but publishing one per buyer turns a single admin-session leak
+    // into an offline cracking target for the whole customer list.
+    // Asserting on the KEY rather than a fixture value keeps this true whatever the fixture holds.
+    state.down = false;
+    const { html } = await render(ClientsPage, '/admin/clients');
+    expect(html).not.toContain('passwordHash');
+    expect(html).not.toContain('password_hash');
   });
 });
 

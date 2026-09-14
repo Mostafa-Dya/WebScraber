@@ -10,11 +10,11 @@ const card = (id: string, collection: string, status: string, search: string): s
 beforeEach(() => {
   document.body.innerHTML = `
     <input id="q" />
-    <div id="collectionChips" class="chips">
-      <button type="button" class="chip on" data-value="*" aria-pressed="true">All</button>
-      <button type="button" class="chip" data-value="kilims" aria-pressed="false">Kilims</button>
-      <button type="button" class="chip" data-value="__none" aria-pressed="false">No collection</button>
-    </div>
+    <select id="f_collection_filter">
+      <option value="*">All collections</option>
+      <option value="kilims">Kilims (1)</option>
+      <option value="__none">No collection (1)</option>
+    </select>
     <div id="statusChips" class="chips">
       <button type="button" class="chip on" data-value="active" aria-pressed="true">Active</button>
       <button type="button" class="chip" data-value="draft" aria-pressed="false">Draft</button>
@@ -49,6 +49,38 @@ describe('matches()', () => {
   });
 });
 
+describe('the "Needs photos" filter', () => {
+  // The filter neither Figma nor the build drew, and the one the owner reaches for most: a rug whose
+  // Drive import never finished. The page already COUNTED these rows and printed the number in the
+  // header as text nobody could click. It is not a status value — a half-imported rug can be active,
+  // draft or archived — so it asks about the import, not about the status column.
+  const pendingDraft = { status: 'draft', attention: 'photos', collections: 'kilims' };
+  const pendingActive = { status: 'active', attention: 'photos', collections: 'kilims' };
+  const fine = { status: 'active', attention: '', collections: 'kilims' };
+  const f = { collection: '*', status: 'attention', q: '' };
+
+  it('finds half-imported rugs whatever their status', () => {
+    expect(matches(pendingDraft, f)).toBe(true);
+    expect(matches(pendingActive, f)).toBe(true);
+  });
+
+  it('excludes rugs whose import finished', () => {
+    expect(matches(fine, f)).toBe(false);
+  });
+
+  it('still respects the collection and the search box', () => {
+    expect(matches({ ...pendingActive, collections: 'tulu' }, { ...f, collection: 'kilims' })).toBe(false);
+    expect(matches({ ...pendingActive, search: 'winks' }, { ...f, q: 'nothing' })).toBe(false);
+  });
+
+  it('does not leak into the ordinary status filters', () => {
+    // "Active" must not start matching pending rugs just because they carry the attention flag.
+    expect(matches(pendingDraft, { collection: '*', status: 'active', q: '' })).toBe(false);
+    expect(matches(pendingActive, { collection: '*', status: 'active', q: '' })).toBe(true);
+    expect(matches(fine, { collection: '*', status: 'all', q: '' })).toBe(true);
+  });
+});
+
 describe('initRugList()', () => {
   it('starts on Active, filters on chip clicks and typing, announces the count and the empty state', () => {
     const list = initRugList();
@@ -60,7 +92,11 @@ describe('initRugList()', () => {
     expect(document.getElementById('count')?.textContent).toBe('2 rugs shown');
     document.querySelector<HTMLButtonElement>('#statusChips [data-value="all"]')!.click();
     expect(visible()).toEqual(['SL-021', 'SL-022', 'SL-023']);
-    document.querySelector<HTMLButtonElement>('#collectionChips [data-value="__none"]')!.click();
+(() => {
+      const sel = document.getElementById('f_collection_filter') as HTMLSelectElement;
+      sel.value = '__none';
+      sel.dispatchEvent(new Event('change'));
+    })();
     expect(visible()).toEqual(['SL-023']);
     expect(document.getElementById('count')?.textContent).toBe('1 rug shown');
     const q = document.getElementById('q') as HTMLInputElement;
@@ -70,7 +106,11 @@ describe('initRugList()', () => {
     // Cards exist but none match: the no-results state, not the first-run one.
     expect(document.getElementById('empty-none')?.hidden).toBe(false);
     expect(document.getElementById('empty-first')?.hidden).toBe(true);
-    document.querySelector<HTMLButtonElement>('#collectionChips [data-value="*"]')!.click();
+(() => {
+      const sel = document.getElementById('f_collection_filter') as HTMLSelectElement;
+      sel.value = '*';
+      sel.dispatchEvent(new Event('change'));
+    })();
     expect(visible()).toEqual(['SL-022']);
     expect(document.getElementById('empty-none')?.hidden).toBe(true);
     expect(document.getElementById('empty-first')?.hidden).toBe(true);

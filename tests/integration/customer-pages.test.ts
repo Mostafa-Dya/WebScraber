@@ -102,11 +102,16 @@ async function render(
 }
 
 describe('/{slug} — the gate', () => {
-  it('greets a known buyer by name and asks only for the password', async () => {
+  it('asks only for the password and never names the buyer', async () => {
     state.down = false;
     const { status, html } = await render(CustomerCatalog, '/hala', { slug: 'hala' });
     expect(status).toBe(200);
-    expect(html).toContain('Welcome, Hala.');
+    // Owner, 2026-09-14: the buyer's name appears nowhere in the customer realm. Figma 53:3 draws
+    // "Welcome, {name}." above the form; printing it in front of the password turns a shared screen
+    // into an identification, and the studio already has the name in the admin.
+    expect(html).not.toContain('Welcome, Hala.');
+    expect(html).not.toContain('Hala');
+    // The page still says whose it is, without saying who they are.
     expect(html).toContain('A private preview, prepared for you');
     expect(html).toContain('View the catalogue');
     expect(html).toContain('action="/api/customers/hala/login"');
@@ -147,8 +152,10 @@ describe('/{slug} — the signed-in catalog', () => {
     state.down = false;
     const { status, html } = await render(CustomerCatalog, '/hala', { slug: 'hala' }, { customer: 'hala' });
     expect(status).toBe(200);
-    expect(html).toMatch(/class="pv-who"[^>]*>Hala</);
-    expect(html).not.toContain('Welcome, Hala.'); // the greeting belongs to the gate
+    // The header used to carry `<span class="pv-who">Hala</span>` (Figma 53:37). Removed with the
+    // gate greeting on the owner's instruction: no buyer name anywhere in this realm.
+    expect(html).not.toContain('pv-who');
+    expect(html).not.toContain('Hala');
     expect(html).toContain('The collection');
     expect(html).not.toContain('action="/api/customers/hala/login"');
     expect(html).toContain('Winks');
@@ -169,6 +176,22 @@ describe('/{slug} — the signed-in catalog', () => {
     expect(html).toContain('noindex');
   });
 
+  it('never ships a like count below the threshold — not even in an attribute', async () => {
+    // Owner requirement 2026-09-13: the count is visible only at >= 5. The fixture rug sits at 3
+    // (tests/helpers/ranges.ts), so this is non-vacuous: until 2026-09-14 the page served
+    // `data-like-count="3"` and `data-likes="3"` with the badge correctly blank, which published
+    // the exact number to View Source and published the whole hidden ranking to the "Most liked"
+    // sort. "Not painted" is not the requirement; "not present" is.
+    state.down = false;
+    const { html } = await render(CustomerCatalog, '/hala', { slug: 'hala' }, { customer: 'hala' });
+    expect(html).not.toMatch(/data-like-count="[0-4]"/);
+    expect(html).not.toMatch(/data-likes="[0-4]"/);
+    // …and the attribute is absent entirely rather than emptied, so the sort reads it as 0 and
+    // leaves the rug in served order instead of ranking it.
+    expect(html).not.toContain('data-likes=""');
+    expect(html).toContain('pv-card-likes');
+  });
+
   it('offers a type filter strip closing with the buyer’s own shortlist', async () => {
     state.down = false;
     const { html } = await render(CustomerCatalog, '/hala', { slug: 'hala' }, { customer: 'hala' });
@@ -180,6 +203,43 @@ describe('/{slug} — the signed-in catalog', () => {
     expect(html).toMatch(/data-filter="kilim"/);
     // Each card publishes its tags so the strip can filter without a round trip.
     expect(html).toMatch(/data-card[^>]*data-tags="[^"]*kilim/);
+  });
+});
+
+describe('the buyer’s name never reaches the customer realm', () => {
+  // Owner instruction, 2026-09-14: remove the name from everything client-facing, keep it in the
+  // admin. Checked across ALL THREE customer-facing renders in one place, because the leak was in
+  // three unrelated spots at once — the gate heading (PreviewGate), the header chip (PreviewHeader)
+  // and the <title> — and a per-component assertion would not have caught the third.
+  //
+  // The fixture buyer is "Hala Nasser" on slug "hala", so the SLUG is deliberately not asserted
+  // against: the scrambled route is derived from the name by design (owner requirement, D20) and is
+  // the one place half those letters still appear. This checks the DISPLAY NAME.
+  it.each([
+    ['the gate (signed out)', () => render(CustomerCatalog, '/hala', { slug: 'hala' })],
+    [
+      'the catalog (signed in)',
+      () => render(CustomerCatalog, '/hala', { slug: 'hala' }, { customer: 'hala' }),
+    ],
+    [
+      'the detail page',
+      () =>
+        render(
+          CustomerDetail,
+          '/hala/SL-021',
+          { slug: 'hala', productId: 'SL-021' },
+          { customer: 'hala' },
+        ),
+    ],
+  ])('%s never prints the display name', async (_label, go) => {
+    state.down = false;
+    const { html } = await go();
+    expect(html).not.toContain('Hala');
+    expect(html).not.toContain('Nasser');
+    expect(html).not.toContain('Welcome,');
+    expect(html).not.toContain('pv-who');
+    // …including the tab title, which is read over a shoulder and lands in browser history.
+    expect(html).not.toMatch(/<title>[^<]*Hala[^<]*<\/title>/);
   });
 });
 

@@ -3,7 +3,9 @@
 //
 // One row, 152 tall on the catalog header (53:35) and 148 on the detail header (57:226): the detail
 // wordmark is H4, not H3, so its line box is 19 rather than 24 and 64 + 19 + 64 + 1 = 148. Left is
-// the wordmark or a back link, right the buyer's name or the wordmark, with a flexible gap between.
+// the wordmark or a back link, right the wordmark on the detail header. Figma 53:37 puts the buyer's
+// name on the right of the catalog header; the owner removed it (2026-09-14) along with the gate
+// greeting, so the customer realm never prints who the buyer is. The name stays in the admin.
 // The 1142×1 box sitting between them in the Figma frame is a spacer, not a rule — a zoomed render
 // shows no line there.
 //
@@ -13,8 +15,6 @@
 interface Props {
   /** Where the wordmark links. Inside a realm this is the buyer's own catalog, never `/`. */
   home: string;
-  /** Shown on the right of the catalog header. */
-  displayName?: string;
   /**
    * Replaces the wordmark on the left; the wordmark then moves to the right (the detail header).
    * `shortLabel` is the 390 copy: Figma draws '← Back to the collection' at 1440 (57:227) and just
@@ -22,7 +22,7 @@ interface Props {
    */
   back?: { href: string; label: string; shortLabel?: string };
 }
-const { home, displayName, back } = Astro.props;
+const { home, back } = Astro.props;
 ---
 
 <header class:list={['pv-header', back && 'pv-header--detail']}>
@@ -53,7 +53,6 @@ const { home, displayName, back } = Astro.props;
           Serio Ludere
         </a>
         <span class="pv-spacer" aria-hidden="true" />
-        {displayName && <span class="pv-who">{displayName}</span>}
       </>
     )
   }

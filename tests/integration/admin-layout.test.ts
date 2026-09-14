@@ -60,7 +60,7 @@ describe('AdminLayout', () => {
     expect(html.match(/aria-current="page"/g)).toHaveLength(1);
   });
 
-  it('renders bare on the login page and takes a custom sub line', async () => {
+  it('renders the login page as ONE card — no shell, no second wordmark, no strapline', async () => {
     const container = await AstroContainer.create();
     const html = await container.renderToString(AdminLayout, {
       props: { title: 'Login', nav: false, sub: 'Admin — sign in' },
@@ -68,7 +68,14 @@ describe('AdminLayout', () => {
     });
     expect(html).not.toContain('class="shell__nav"');
     expect(html).not.toContain('/admin/logout');
-    expect(html).toContain('<p class="sub">Admin — sign in</p>');
     expect(html).toContain('<div class="bare">');
+    // A1 (47:3) draws a single centred card. This branch used to print the wordmark above the slot
+    // and the `sub` line under it, so the login page showed "SERIO LUDERE" twice with
+    // "ADMIN — SIGN IN" in brand red between them — the only red in the panel, on the first screen
+    // the owner sees each session. The card carries its own brand block, so the shell carries none.
+    expect(html).not.toContain('bare__wordmark');
+    expect(html).not.toContain('<p class="sub">');
+    // …and the prop is still accepted, so no caller breaks; it simply renders nothing.
+    expect(html).not.toContain('Admin — sign in');
   });
 });

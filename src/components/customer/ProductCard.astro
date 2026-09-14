@@ -58,8 +58,12 @@ const likes = visibleLikes(card.likes);
     }
     <a class="pv-card-hit" href={href} tabindex="-1" aria-hidden="true"></a>
     <div class="pv-card-react">
-      {/* Rendered server-side from the shared count; prefs.ts keeps it in step as reactions land. */}
-      <span class="pv-card-likes" data-like-count={card.likes} hidden={likes === undefined}>
+      {/* Rendered server-side, and THRESHOLDED — `likes` is visibleLikes(card.likes), so a rug under
+          MIN_VISIBLE_LIKES has no count in the attribute, not merely a hidden one. Emitting
+          `card.likes` here shipped the exact sub-5 number to every buyer in the page source while
+          the badge was correctly blank, which defeated the requirement it was meant to implement.
+          Astro drops an undefined attribute, so `hidden` and the attribute now agree. */}
+      <span class="pv-card-likes" data-like-count={likes} hidden={likes === undefined}>
         {likes ?? ''}
       </span>
       <Reactions rugId={card.id} mode="card" />

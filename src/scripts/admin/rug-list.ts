@@ -22,6 +22,8 @@ export interface CardData {
   collections?: string;
   status?: string;
   search?: string;
+  /** 'photos' when the row's Drive import never finished; '' otherwise. */
+  attention?: string;
 }
 
 /**
@@ -36,7 +38,13 @@ function slugsOf(card: CardData): string[] {
 
 /** Pure: does a card's data-* set pass the filter? */
 export function matches(card: CardData, f: ListFilter): boolean {
-  if (f.status !== 'all' && (card.status ?? '') !== f.status) return false;
+  // "Needs photos" is a cross-cutting state, not a status value: a half-imported rug can be active,
+  // draft or archived, so this asks about the import rather than about the status column. It is the
+  // filter the owner reaches for most and the one neither design drew — the page already counted
+  // these rows and printed the number as text nobody could click.
+  if (f.status === 'attention') {
+    if (!card.attention) return false;
+  } else if (f.status !== 'all' && (card.status ?? '') !== f.status) return false;
   const slugs = slugsOf(card);
   if (f.collection === '__none') {
     if (slugs.length > 0) return false;
@@ -106,8 +114,12 @@ export function initRugList(doc: Document = document): RugList {
   const emptyNone = maybe('empty-none', doc);
   const cards = [...doc.querySelectorAll<HTMLElement>('[data-card]')];
 
+  const collectionSelect = maybe<HTMLSelectElement>('f_collection_filter', doc);
+
   const filter = (): ListFilter => ({
-    collection: collectionChips.values()[0] ?? '*',
+    // The collection filter moved from a chip group into the Filter Bar's drawn 180px select: chips
+    // did not survive a real catalogue, and the counts now live in the option labels.
+    collection: collectionSelect?.value || '*',
     status: statusChips.values()[0] ?? 'active',
     q: q.value,
   });
@@ -133,8 +145,8 @@ export function initRugList(doc: Document = document): RugList {
     if (emptyNone) emptyNone.hidden = total === 0 || shown !== 0;
   };
 
-  const collectionChips = initChips(byId('collectionChips', doc), { onChange: apply });
   const statusChips = initChips(byId('statusChips', doc), { onChange: apply });
+  collectionSelect?.addEventListener('change', apply);
   q.addEventListener('input', apply);
   doc.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-retry]');

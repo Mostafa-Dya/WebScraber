@@ -206,11 +206,8 @@
   white-space: nowrap;
 }
 
-.pv-header .pv-who {
-  font-size: var(--text-sm);
-  color: var(--ink-soft);
-  white-space: nowrap;
-}
+/* `.pv-who` (Figma 53:37, the buyer's name on the right of the catalog header) was removed on
+   2026-09-14: the owner's instruction is that the customer realm never prints who the buyer is. */
 
 /* ---------- page rhythm ---------- */
 

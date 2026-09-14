@@ -38,11 +38,17 @@ export function rand6(): string {
    1. NOT "%". The owner's example uses it, but "%" begins a percent-escape in a URL path, and "%s"
       is not valid hex — browsers and the router would mangle or reject the link.
 
-      The fillers are "-" and "_" only. `~` and `.` are equally unreserved in a path segment
-      (RFC 3986 §2.3) and were the first choice, but this code is ALSO written into the sheet as
-      `customer_slug` and into every Reactions row as `client`, both of which parse against
-      /^[A-Za-z0-9_-]{1,64}$/. A "~" there does not merely look odd: the customer's own row fails to
-      parse and the buyer disappears from the catalogue entirely.
+      The filler is "-", and only "-". `~` and `.` are equally unreserved in a path segment
+      (RFC 3986 §2.3) and were the first choice, but this code is ALSO written into the sheet — as
+      the Customers tab's own `slug`, and as `client` on every Reactions row. Those two columns do
+      NOT share an alphabet: Reactions parses `/^[A-Za-z0-9_-]{1,64}$/`, but Customers parses
+      `SLUG_RE = /^[a-z0-9-]{1,80}$/`. The narrower one governs, and it admits neither `~`, `.`
+      nor `_`.
+
+      This was got wrong until 2026-09-14, when "_" was still a filler: 38.9 % of codes carried one,
+      every such row was dropped on read, and — because Customers is a GUARDED_TAB at a 0.1 drop
+      ratio — a couple of those customers rejected the entire refresh and 503'd the whole site, not
+      just that buyer's link.
 
    2. Never first or last. A code that starts with "." or ends with "-" is legal in a path but reads
       as broken, and a leading dot hides the segment on some filesystems if it is ever mirrored.
@@ -52,8 +58,15 @@ export function rand6(): string {
    acceptable ONLY because §10 puts a password gate behind the route; the URL alone opens nothing.
 --------------------------------------------------------------------------------------------- */
 
-/** Unreserved in a URL path AND accepted by the sheet's customer_slug / client column. */
-const FILLER_SYMBOLS = '-_';
+/**
+ * Unreserved in a URL path AND accepted by BOTH sheet columns the code is written into.
+ *
+ * `-` is the whole set. `_` was here until 2026-09-14 and was a site-down defect: the Customers tab
+ * parses its `slug` with `/^[a-z0-9-]{1,80}$/`, so an underscored code was dropped on every read and
+ * the guarded-tab ratio turned a couple of such customers into a catalogue-wide 503. See the note on
+ * CLIENT_CODE_RE in ./dto.ts. Do not re-add `_`, `~` or `.`.
+ */
+const FILLER_SYMBOLS = '-';
 const FILLER_DIGITS = '0123456789';
 
 /** A uniform integer in [0, max), rejection-sampled from crypto bytes. Injectable for tests. */
@@ -93,7 +106,12 @@ export function scrambleName(name: string, rnd: RandomInt = cryptoRandomInt): st
   // rejects outright — the owner would simply be unable to add that customer. Pad with random
   // characters until there is enough to scramble.
   while (pool.length < 4) pool += ALPHABET[rnd(ALPHABET.length)];
-  const take = Math.min(pool.length, Math.max(3, Math.ceil(pool.length / 2)));
+  // …and a LONG name overflows the other end. ClientInput allows a 60-character name, so "half" can
+  // reach 30 letters; add up to 4 fillers and the code passes CLIENT_CODE_RE's 28-character ceiling,
+  // which made `clientCode` throw and the owner simply could not add that customer (a 500 on Add).
+  // 24 + 4 fillers = 28 exactly, so the cap is the largest value that can never overflow.
+  const MAX_TAKE = 24;
+  const take = Math.min(pool.length, MAX_TAKE, Math.max(3, Math.ceil(pool.length / 2)));
   const picked = shuffled([...pool], rnd).slice(0, take);
 
   // Weave 3–4 fillers into the INTERIOR gaps only, so the code always begins and ends alphanumeric.
@@ -180,8 +198,28 @@ export interface ClientRow {
   createdBy: string;
   /** Regenerated from the runtime SITE_URL, never stored. */
   link: string;
-  /** Present only when the row was just written; never rendered. */
+  /**
+   * The stored scrypt hash. Needed in-process to verify a buyer's password, and it must NEVER reach
+   * a response body or a rendered page — use `withoutSecrets` on every path that leaves the server.
+   *
+   * This was documented as "present only when the row was just written" and was not: `parseClients`
+   * sets it on every row, and both the admin page and the clients API spread the row wholesale, so
+   * every customer's hash was being serialised into HTML an admin session could read.
+   */
   passwordHash?: string;
+}
+
+/**
+ * A client row with the password hash removed — the only shape allowed to leave the server.
+ *
+ * Written as an explicit destructure rather than `delete`, so adding a future secret to `ClientRow`
+ * forces a compile-time decision here instead of silently shipping it.
+ */
+export function withoutSecrets<T extends ClientRow>(c: T): Omit<T, 'passwordHash'> {
+  // Generic so the caller keeps whatever it started with: `AdminClient` adds `version`, which the
+  // admin table renders as `data-version`, and a non-generic return type would silently drop it.
+  const { passwordHash: _passwordHash, ...safe } = c;
+  return safe;
 }
 
 /** Customers columns: slug, display_name, password_hash, note, created_at, active. */

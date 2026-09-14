@@ -24,7 +24,7 @@ import ProductCard from '../../components/customer/ProductCard.astro';
 import TagFilters from '../../components/customer/TagFilters.astro';
 import { findCustomer, noteVisit } from '../../lib/customer/http.ts';
 import { baseCurrency, loadCatalogue, ratesFor } from '../../lib/runtime.ts';
-import { activeRugs, cardView, tagSlug } from '../../lib/view.ts';
+import { activeRugs, cardView, tagSlug, visibleLikes } from '../../lib/view.ts';
 
 const slug = (Astro.params.slug ?? '').toLowerCase();
 const { snapshot, error } = await loadCatalogue();
@@ -71,7 +71,9 @@ const tags = [...counts.values()]
   .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
   .slice(0, MAX_TAG_CHIPS);
 
-const title = customer ? `Serio Ludere — ${customer.displayName}` : 'Serio Ludere';
+// Never the buyer's name (owner, 2026-09-14): the tab title is read over a shoulder, lands in
+// browser history, and is what a screen-share shows before anything else.
+const title = 'Serio Ludere';
 ---
 
 <PreviewLayout title={title} rates={rates} customer={signedIn ? slug : undefined}>
@@ -95,12 +97,12 @@ const title = customer ? `Serio Ludere — ${customer.displayName}` : 'Serio Lud
     )
   }
 
-  {!error && customer && !signedIn && <PreviewGate slug={slug} displayName={customer.displayName} />}
+  {!error && customer && !signedIn && <PreviewGate slug={slug} />}
 
   {
     !error && customer && signedIn && (
       <>
-        <PreviewHeader home={`/${slug}`} displayName={customer.displayName} />
+        <PreviewHeader home={`/${slug}`} />
         <main class="pv-main">
           <section class="pv-wrap pv-title">
             <div class="pv-title-row">
@@ -128,7 +130,7 @@ const title = customer ? `Serio Ludere — ${customer.displayName}` : 'Serio Lud
                     data-card
                     data-rug={card.id}
                     data-tags={card.tags.map((t) => t.slug || tagSlug(t.name, catalogue.tags)).join(' ')}
-                    data-likes={card.likes}
+                    data-likes={visibleLikes(card.likes)}
                   >
                     <ProductCard
                       card={card}

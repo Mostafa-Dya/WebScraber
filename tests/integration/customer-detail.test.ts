@@ -64,8 +64,8 @@ vi.mock('../../src/lib/runtime.ts', () => ({
         range: ranges[4]!,
         values: [
           [...HEADERS.Customers],
-          ['a1b_2c', 'Hala Nasser', 'VIP', 'active', '2026-09-01', 'owner', 'https://old/?c=x'],
-          ['n0v_1s', 'Never Visited', '', 'active', '2026-09-02', 'owner', ''],
+          ['a1b-2c', 'Hala Nasser', 'VIP', 'active', '2026-09-01', 'owner', 'https://old/?c=x'],
+          ['n0v-1s', 'Never Visited', '', 'active', '2026-09-02', 'owner', ''],
         ],
       };
       out[5] = { range: ranges[5]!, values: [[...HEADERS.AuditLog]] };
@@ -75,8 +75,8 @@ vi.mock('../../src/lib/runtime.ts', () => ({
         values: [
           [...HEADERS.Reactions],
           // event_id, customer_slug, product_id, reaction, source, created_at
-          ['e1', 'a1b_2c', 'SL-021', 'like', 'detail', '2026-09-10T10:00:00Z'],
-          ['e2', 'a1b_2c', 'SL-022', 'dislike', 'detail', '2026-09-10T10:05:00Z'],
+          ['e1', 'a1b-2c', 'SL-021', 'like', 'detail', '2026-09-10T10:00:00Z'],
+          ['e2', 'a1b-2c', 'SL-022', 'dislike', 'detail', '2026-09-10T10:05:00Z'],
         ],
       };
       out[7] = {
@@ -84,8 +84,8 @@ vi.mock('../../src/lib/runtime.ts', () => ({
         values: [
           [...HEADERS.Visits],
           // event_id, customer_slug, occurred_at, user_agent, referrer
-          ['v1', 'a1b_2c', '2026-09-02T08:00:00Z', 'desktop', ''],
-          ['v2', 'a1b_2c', '2026-09-12T08:00:00Z', 'desktop', ''],
+          ['v1', 'a1b-2c', '2026-09-02T08:00:00Z', 'desktop', ''],
+          ['v2', 'a1b-2c', '2026-09-12T08:00:00Z', 'desktop', ''],
         ],
       };
       return out;
@@ -140,11 +140,11 @@ describe('/admin/clients/[code]', () => {
   });
 
   it('404s a code that matches the shape but belongs to nobody', async () => {
-    expect((await render('z9q_4w')).status).toBe(404);
+    expect((await render('z9q-4w')).status).toBe(404);
   });
 
   it('shows the four stat blocks with the drawn tones', async () => {
-    const { status, html } = await render('a1b_2c');
+    const { status, html } = await render('a1b-2c');
     expect(status).toBe(200);
     expect(html).toContain('Hala Nasser');
     // Sessions comes from Visits, liked/disliked from Reactions — the join this page exists for.
@@ -160,14 +160,14 @@ describe('/admin/clients/[code]', () => {
   });
 
   it('puts the liked product IDs on one copy control — the real export', async () => {
-    const { html } = await render('a1b_2c');
+    const { html } = await render('a1b-2c');
     expect(html).toContain('data-copy="SL-021"');
     expect(html).toContain('Copy 1 product ID'); // singular, not "1 product IDs"
   });
 
   it('renders a buyer who has a link but has never opened it', async () => {
     // This is the row the owner most wants to see, and the one a naive join drops.
-    const { status, html } = await render('n0v_1s');
+    const { status, html } = await render('n0v-1s');
     expect(status).toBe(200);
     expect(html).toContain('Never Visited');
     expect(html).toContain('never opened');
@@ -178,7 +178,7 @@ describe('/admin/clients/[code]', () => {
   });
 
   it('escapes sheet text and carries no inline handlers', async () => {
-    const { html } = await render('a1b_2c');
+    const { html } = await render('a1b-2c');
     expect(html).not.toMatch(/\son[a-z]+=/i);
     expect(html).not.toMatch(/\sstyle="/);
   });

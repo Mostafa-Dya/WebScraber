@@ -67,7 +67,9 @@ export const POST = adminPost(RugUpdate, async ({ context, body }) => {
     ? roundUpToStep(body.priceUsd, roundStepOf(snapshot.settings))
     : body.priceUsd;
   const before = fieldsOfRug(rug);
-  const after = rugFieldsFrom(body, { slug, collections, tags, priceUsd });
+  // `scrapedAt` comes from the ROW, never the body: it is provenance, and the full-width write
+  // would otherwise blank it on every edit.
+  const after = rugFieldsFrom(body, { slug, collections, tags, priceUsd, scrapedAt: rug.scrapedAt });
   const diff = diffFields(auditable(before), auditable(after));
   if (diff.changed.length === 0) {
     return noStore({ ok: true, rug, unchanged: true });
